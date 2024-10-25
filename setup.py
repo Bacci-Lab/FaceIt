@@ -14,5 +14,5 @@ setup(
     author_email='faezeh.rabbani97@gmail.com',
     description='A pipeline for detecting and analyzing facial movements.',
     install_requires=requirements,
-    include_package_data=True,
+    
 )
