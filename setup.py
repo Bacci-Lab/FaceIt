@@ -7,13 +7,13 @@ with open('requirements.txt') as f:
 setup(
     name='FaceIt',
     version='1.0.0',
-    packages=find_packages(),  # Automatically find the 'FaceIt' package
-    package_data={'': ['FaceIt/*']},
+    packages=find_packages(),  # Automatically finds packages like FaceIt
     url='https://github.com/faezehrabbani97/FaceIt',
     license='MIT',
     author='Faezeh Rabbani',
     author_email='faezeh.rabbani97@gmail.com',
     description='A pipeline for detecting and analyzing facial movements like eye-tracking and mouse muzzle detection.',
-    install_requires=[requirements],
-    include_package_data=True, 
+    install_requires=requirements,
+    include_package_data=True,  # Ensure additional files are included
+    python_requires='>=3.6',
 )
