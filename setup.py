@@ -14,6 +14,6 @@ setup(
     author='Faezeh Rabbani',
     author_email='faezeh.rabbani97@gmail.com',
     description='A pipeline for detecting and analyzing facial movements like eye-tracking and mouse muzzle detection.',
-    install_requires=requirements,
+    install_requires=[requirements],
     include_package_data=True, 
 )
