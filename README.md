@@ -2,9 +2,6 @@
 This pipeline is designed to detect and analyze facial movements, including eye-tracking and mouse muzzle movement. It utilizes image processing techniques to capture, track, and analyze facial dynamics for various applications.
 
 
-experimental procedures followed French and European guidelines for animal experimentation and in compliance with the institutional animal welfare guidelines of the Paris Brain Institute
-
-
 
 ## Installation
 1. Among [Python](https://www.python.org/downloads/) versions search for 3.9.16 and install it on your operating system.
@@ -21,3 +18,5 @@ python -m venv FaceIt
 ```
 pip install git+https://github.com/faezehrabbani97/FaceIt.git
 ```
+
+experimental procedures followed French and European guidelines for animal experimentation and in compliance with the institutional animal welfare guidelines of the Paris Brain Institute
