@@ -14,4 +14,5 @@ setup(
     author_email='faezeh.rabbani97@gmail.com',  # Your email
     description='A pipeline for detecting and analyzing facial movements like eye-tracking and mouse muzzle detection.',  # Short description
     install_requires=requirements,  # Read dependencies from the requirements.txt
+    include_package_data=True,
 )
