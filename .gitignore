@@ -1,6 +1,7 @@
 # Ignore virtual environment directories
 venv/
 env/
+FaceIt/
 
 
 # Byte-compiled / optimized / DLL files
