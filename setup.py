@@ -8,6 +8,7 @@ setup(
     name='FaceIt',
     version='1.0.0',
     packages=find_packages(),  # Automatically find the 'FaceIt' package
+    package_data={'': ['FaceIt/*']},
     url='https://github.com/faezehrabbani97/FaceIt',
     license='MIT',
     author='Faezeh Rabbani',
