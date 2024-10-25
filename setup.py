@@ -5,9 +5,9 @@ with open('requirements.txt') as f:
     requirements = f.read().splitlines()
 
 setup(
-    name='FACEIT_codes',
+    name='FaceIt',
     version='1.0.0',
-    packages=['FaceIt'],  # Explicitly list the FaceIt package
+    packages=['FACEIT_codes'],  # Explicitly list the FaceIt package
     url='https://github.com/faezehrabbani97/FaceIt',
     license='MIT',
     author='Faezeh Rabbani',
