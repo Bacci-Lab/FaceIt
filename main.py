@@ -2,7 +2,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QVBoxLayout, QSizePolicy
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5.QtWidgets import QMessageBox
-import function
+import functions
 import os.path
 import numpy as np
 import os
@@ -114,7 +114,7 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
             return
         if self.parent.eye_corner_mode:
             print("(event.pos().x(), event.pos().y()", (self.scene_pos.x(), self.scene_pos.y()))
-            self.parent.eye_corner_center = function.add_eyecorner(self.scene_pos.x(),self.scene_pos.y(),
+            self.parent.eye_corner_center = functions.add_eyecorner(self.scene_pos.x(),self.scene_pos.y(),
                                                                          self.parent.scene2, self.parent.graphicsView_subImage)
             self.parent.eye_corner_mode = False
 
@@ -369,12 +369,12 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
     def mouseReleaseEvent(self, event):
         if self.dragging:
             if self.dragging_face:
-                self.sub_region, self.parent.Face_frame = function.show_ROI(self.face_ROI, self.parent.image)
-                _ = function.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation, save_path = None)
+                self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation, save_path = None)
                 self.parent.set_frame(self.parent.Face_frame)
             elif self.dragging_pupil:
-                self.parent.sub_region, self.parent.Pupil_frame = function.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = function.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2,"pupil",self.parent.saturation,  save_path = save_path)
+                self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2,"pupil",self.parent.saturation,  save_path = save_path)
                 self.parent.set_frame(self.parent.Pupil_frame)
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
@@ -396,12 +396,12 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
             self.dragging_blank = False
         elif self.Resizing:
             if self.Resize_face:
-                self.sub_region, self.parent.Face_frame = function.show_ROI(self.face_ROI, self.parent.image)
-                _ = function.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation,  save_path)
+                self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation,  save_path)
                 self.parent.set_frame(self.parent.Face_frame)
             elif self.Resize_pupil:
-                self.parent.sub_region, self.parent.Pupil_frame = function.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = function.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2, "pupil",self.parent.saturation, save_path)
+                self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2, "pupil",self.parent.saturation, save_path)
                 self.parent.set_frame(self.parent.Pupil_frame)
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
@@ -463,7 +463,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Add_blank_button.clicked.connect(lambda: self.execute_blank_roi())
 
     def execute_blank_roi(self):
-        function.Add_ROI(
+        functions.Add_ROI(
             self.scene,
             self.scene2,
             self.image,
@@ -483,7 +483,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             reflection_center=self.reflection_center)
 
     def execute_pupil_roi(self):
-        function.Add_ROI(
+        functions.Add_ROI(
             self.scene,
             self.scene2,
             self.image,
@@ -503,7 +503,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         )
         self.set_pupil_roi_pressed(True)
     def execute_face_roi(self):
-        function.Add_ROI(
+        functions.Add_ROI(
             self.scene,
             self.scene2,
             self.image,
@@ -521,7 +521,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             Button5=None)
         self.set_Face_ROI_pressed(True)
     def execute_reflect_roi(self):
-        function.Add_ROI(
+        functions.Add_ROI(
             self.scene,
             self.scene2,
             self.image,
@@ -574,7 +574,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.graphicsView_pupil = QtWidgets.QGraphicsView(self.centralwidget)
         self.vertical_process_Layout.addWidget(self.graphicsView_pupil)
         self.slider_layout = QtWidgets.QHBoxLayout()
-        self.Slider_frame = function.setup_sliders(self.centralwidget, 0, self.len_file, 0, "horizontal")
+        self.Slider_frame = functions.setup_sliders(self.centralwidget, 0, self.len_file, 0, "horizontal")
         self.slider_layout.addWidget(self.Slider_frame)
         self.lineEdit_frame_number = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit_frame_number.setFixedWidth(50)
@@ -618,7 +618,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.saturation_Label.setStyleSheet("color: white;")
         self.sliderLayout.addWidget(self.saturation_Label)
         self.saturation_slider_layout = QtWidgets.QHBoxLayout()
-        self.saturation_Slider = function.setup_sliders(self.centralwidget, 0, 150, 0, "horizontal")
+        self.saturation_Slider = functions.setup_sliders(self.centralwidget, 0, 150, 0, "horizontal")
         self.saturation_slider_layout.addWidget(self.saturation_Slider)
         self.lineEdit_satur_value = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit_satur_value.setFixedWidth(50)
@@ -635,9 +635,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Process_Button.clicked.connect(self.process)
         self.Add_eyecorner.clicked.connect(self.eyecorner_clicked)
     def setup_styles(self):
-        self.centralwidget.setStyleSheet(function.get_stylesheet())
-        function.set_button_style(self.saturation_Slider, "QSlider")
-        function.set_button_style(self.Slider_frame, "QSlider")
+        self.centralwidget.setStyleSheet(functions.get_stylesheet())
+        functions.set_button_style(self.saturation_Slider, "QSlider")
+        functions.set_button_style(self.Slider_frame, "QSlider")
         self.lineEdit_frame_number.setStyleSheet("background-color: #999999")
         self.lineEdit_satur_value.setStyleSheet("background-color: #999999")
 
@@ -800,7 +800,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.lineEdit_satur_value.setText(str(self.saturation_Slider.value()))
         self.saturation = value
         if self.sub_region is not None:
-            _ = function.display_sub_region(self.graphicsView_subImage, self.sub_region, self.scene2,
+            _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.scene2,
                                                  "pupil", self.saturation, save_path = save_path)
         else:
             pass
@@ -853,13 +853,13 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         for i, current_image in enumerate(tqdm(images, desc="Pupil Processing")):
             self.progressBar.setValue(i + 1)
             QtWidgets.QApplication.processEvents()
-            sub_region, _ = function.show_ROI(pupil, current_image)
+            sub_region, _ = functions.show_ROI(pupil, current_image)
             if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
                 sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
-            sub_region = function.change_saturation(sub_region, saturation)
+            sub_region = functions.change_saturation(sub_region, saturation)
             sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
             ###########################################
-            _, Center, _, _, _, Curren_Area = function.detect_pupil(sub_region_rgba, blank_ellipse, reflect_ellipse)
+            _, Center, _, _, _, Curren_Area = functions.detect_pupil(sub_region_rgba, blank_ellipse, reflect_ellipse)
             pupil_dilation.append(Curren_Area)
             pupil_center.append(Center)
             pupil_center_X.append(int(Center[0]))
@@ -972,13 +972,13 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def display_Graphics(self,folder_path):
         self.frame = 0
         if self.NPY == True:
-            self.image = function.load_npy_by_index(folder_path, self.frame)
+            self.image = functions.load_npy_by_index(folder_path, self.frame)
         elif self.video == True:
-            self.image = function.load_frame_by_index(folder_path, self.frame)
-        function.initialize_attributes(self, self.image)
-        self.scene2 = function.second_region(self.graphicsView_subImage,
+            self.image = functions.load_frame_by_index(folder_path, self.frame)
+        functions.initialize_attributes(self, self.image)
+        self.scene2 = functions.second_region(self.graphicsView_subImage,
                                                                         self.graphicsView_MainFig, self.image_width, self.image_height)
-        self.graphicsView_MainFig, self.scene = function.display_region \
+        self.graphicsView_MainFig, self.scene = functions.display_region \
             (self.image, self.graphicsView_MainFig, self.image_width, self.image_height)
 
     def eyecorner_clicked(self):
@@ -1054,21 +1054,21 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def get_np_frame(self, frame):
         self.frame = frame
         if self.NPY == True:
-            self.image = function.load_npy_by_index(self.folder_path,
+            self.image = functions.load_npy_by_index(self.folder_path,
                                                            self.frame)
         elif self.video == True:
-            self.image = function.load_frame_by_index(self.folder_path,
+            self.image = functions.load_frame_by_index(self.folder_path,
                                                             self.frame)
         self.lineEdit_frame_number.setText(str(self.Slider_frame.value()))
-        self.graphicsView_MainFig, self.scene = function.display_region\
+        self.graphicsView_MainFig, self.scene = functions.display_region\
             (self.image,self.graphicsView_MainFig, self.image_width, self.image_height, self.scene)
 
 
 
         if self.Pupil_ROI_exist:
             self.pupil_ROI = self.graphicsView_MainFig.pupil_ROI
-            self.sub_region, self.Pupil_frame = function.show_ROI(self.pupil_ROI, self.image)
-            self.pupil_ellipse_items = function.display_sub_region(self.graphicsView_subImage, self.sub_region,
+            self.sub_region, self.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.image)
+            self.pupil_ellipse_items = functions.display_sub_region(self.graphicsView_subImage, self.sub_region,
                                                                             self.scene2,
                                                                             "pupil", self.saturation, save_path,
                                                                             self.blank_ellipse, self.reflect_ellipse,
@@ -1076,8 +1076,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         else:
             if self.Face_ROI_exist:
                 self.face_ROI = self.graphicsView_MainFig.face_ROI
-                self.sub_region, self.face_ROI = function.show_ROI(self.face_ROI, self.image)
-                _ = function.display_sub_region(self.graphicsView_subImage, self.sub_region,
+                self.sub_region, self.face_ROI = functions.show_ROI(self.face_ROI, self.image)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region,
                                                          self.scene2,
                                                          "face", self.saturation, save_path,
                                                          self.blank_ellipse, self.reflect_ellipse,
