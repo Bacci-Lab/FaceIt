@@ -7,7 +7,8 @@ with open('requirements.txt') as f:
 setup(
     name='FaceIt',
     version='1.0.0',
-    packages=['FACEIT_codes'],  # Explicitly list the FaceIt package
+    packages=find_packages()
+    package_data=['FACEIT_codes'],  # Explicitly list the FaceIt package
     url='https://github.com/faezehrabbani97/FaceIt',
     license='MIT',
     author='Faezeh Rabbani',
