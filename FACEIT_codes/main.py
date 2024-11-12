@@ -948,7 +948,14 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             X_saccade, Y_saccade, pupil_distance_from_corner,width, height
 
     def openImageFolder(self):
-        self.folder_path = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder", r"C:\Users\faezeh.rabbani\ASSEMBLE\15-53-26\debug_face")
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        print("project_root", project_root)
+        default_path = os.path.join(project_root, "test_data", "test_images")
+        print("default_path", default_path)
+
+        self.folder_path = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Folder", default_path
+        )
         if self.folder_path:
             self.save_path = self.folder_path
             npy_files = [f for f in os.listdir(self.folder_path) if f.endswith('.npy')]
