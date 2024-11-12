@@ -187,19 +187,19 @@ def show_ROI(ROI, image):
     frame = [top,bottom, left,right]
     return sub_region, frame
 
-def motion_Energy_comput(direction, frame):
-    Motion_energy = []
-    file_list = sorted([f for f in os.listdir(direction) if f.endswith('.npy')])
-    previous_ROI = None
-    for i, file_name in enumerate(tqdm(file_list, desc="Processing files")):
-        current_array = np.load(os.path.join(direction, file_name), allow_pickle=True)
-        current_ROI = current_array[frame[0]:frame[1], frame[2]:frame[3]]
-        current_ROI = current_ROI.flatten()
-        if previous_ROI is not None:
-            motionEnergyI = np.mean((current_ROI - previous_ROI)**2)
-            Motion_energy.append(motionEnergyI)
-        previous_ROI = current_ROI
-    return Motion_energy
+# def motion_Energy_comput(direction, frame):
+#     Motion_energy = []
+#     file_list = sorted([f for f in os.listdir(direction) if f.endswith('.npy')])
+#     previous_ROI = None
+#     for i, file_name in enumerate(tqdm(file_list, desc="Processing files")):
+#         current_array = np.load(os.path.join(direction, file_name), allow_pickle=True)
+#         current_ROI = current_array[frame[0]:frame[1], frame[2]:frame[3]]
+#         current_ROI = current_ROI.flatten()
+#         if previous_ROI is not None:
+#             motionEnergyI = np.mean((current_ROI - previous_ROI)**2)
+#             Motion_energy.append(motionEnergyI)
+#         previous_ROI = current_ROI
+#     return Motion_energy
 
 
 def change_saturation(image, saturation_scale):

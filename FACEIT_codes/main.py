@@ -618,21 +618,22 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Process_Button.setEnabled(False)
         self.rightGroupBoxLayout.addWidget(self.Process_Button)
         self.detect_blinking_Button = QtWidgets.QPushButton("Detect blinking")
-        # self.detect_blinking_Button.setEnabled(False)
         self.rightGroupBoxLayout.addWidget(self.detect_blinking_Button)
         ##############
         self.Undo_blinking_Button = QtWidgets.QPushButton("Undo blinking")
-        #self.Undo_blinking_Button.setEnabled(False)
         self.rightGroupBoxLayout.addWidget(self.Undo_blinking_Button)
         ##############
         self.Save_Button = QtWidgets.QPushButton("Save")
-        # self.Save_Button.setEnabled(False)
+        self.Save_Button.setEnabled(False)
         self.rightGroupBoxLayout.addWidget(self.Save_Button)
         ###################
         self.checkBox_face = QtWidgets.QCheckBox("Whisker Pad")
         self.leftGroupBoxLayout.addWidget(self.checkBox_face)
         self.checkBox_pupil = QtWidgets.QCheckBox("Pupil")
         self.leftGroupBoxLayout.addWidget(self.checkBox_pupil)
+
+        self.checkBox_nwb = QtWidgets.QCheckBox("Save nwb")
+        self.leftGroupBoxLayout.addWidget(self.checkBox_nwb)
 
 
 
@@ -659,12 +660,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.lineEdit_frame_number.editingFinished.connect(self.update_slider)
         self.Process_Button.clicked.connect(self.process)
         self.Add_eyecorner.clicked.connect(self.eyecorner_clicked)
-        self.Undo_blinking_Button.clicked.connect(self.Undo_blinking)
-        self.detect_blinking_Button.clicked.connect(lambda: self.detect_blinking(self.pupil_dilation, self.width, self.height, self.X_saccade, self.Y_saccade))
-        # Connect the button to the save_data function
-        self.Save_Button.clicked.connect(
-            lambda: self.save_data(self.pupil_center, self.pupil_center_X, self.pupil_center_y, self.final_pupil_area, self.X_saccade_updated , self.Y_saccade_updated,
-                                   self.pupil_distance_from_corner, self.width, self.height))
+        self.Undo_blinking_Button.clicked.connect(self.init_undo_blinking)
+        self.detect_blinking_Button.clicked.connect(self.start_blinking_detection)
+        self.Save_Button.clicked.connect(self.init_save_data)
+            # lambda: self.save_data(self.pupil_center, self.pupil_center_X, self.pupil_center_y, self.final_pupil_area, self.X_saccade_updated , self.Y_saccade_updated,
+            #                        self.pupil_distance_from_corner, self.width, self.height))
 
 
     def setup_styles(self):
@@ -685,6 +685,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             QtWidgets.QWidget().setLayout(old_layout)
 
     def plot_result(self, data, graphicsView, label, color='#D97A53', saccade=None):
+        self.Save_Button.setEnabled(True)
         self.clear_graphics_view(graphicsView)
         # Create the figure and axes
         fig, ax = plt.subplots()
@@ -800,8 +801,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
                     elif self.video:
                         self.images = self.load_frames_from_video(self.folder_path)
                     self.Image_loaded = True
-                motion_energy = self.motion_Energy_comput(self.images)
-                self.plot_result(motion_energy, self.graphicsView_whisker, "motion")
+                self.motion_energy = self.motion_Energy_comput(self.images)
+                self.plot_result(self.motion_energy, self.graphicsView_whisker, "motion")
             else:
                 self.warning("NO Face ROI is chosen!")
 
@@ -821,6 +822,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def face_check(self):
         return self.checkBox_face.isChecked()
+    def nwb_check(self):
+        return self.checkBox_nwb.isChecked()
 
     def set_pupil_roi_pressed(self, value):
         self.Pupil_ROI_exist = value
@@ -911,18 +914,41 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         pupil_center = np.array(pupil_center)
         X_saccade = self.Saccade(pupil_center_X)
         Y_saccade = self.Saccade(pupil_center_y)
+        pupil_width = np.array(pupil_width)
+        pupil_height = np.array(pupil_height)
 
         if self.eye_corner_center is not None:
-            pupil_distance_from_corner = [
+            pupil_distance_from_corner = np.array([
                     math.sqrt((x - self.eye_corner_center[0]) ** 2 + (y - self.eye_corner_center[1]) ** 2) for x, y in
-                    pupil_center]
+                    pupil_center])
         else:
-            pupil_distance_from_corner = np.nan
+            pupil_distance_from_corner = np.full((len(X_saccade),), np.nan)
+
 
 
         return  pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,  X_saccade, Y_saccade, pupil_distance_from_corner, pupil_width, pupil_height
 
-    def save_data(self, pupil_center,pupil_center_X, pupil_center_y, pupil_dilation,X_saccade, Y_saccade, pupil_distance_from_corner, width, height ):
+    def init_save_data(self):
+        len_data = 100
+        if self.pupil_check() == False:
+            self.pupil_center = np.full((len_data,), np.nan)
+            self.pupil_center_X = np.full((len_data,), np.nan)
+            self.pupil_center_y = np.full((len_data,), np.nan)
+            self.final_pupil_area = np.full((len_data,), np.nan)
+            self.X_saccade_updated = np.full((len_data,), np.nan)
+            self.Y_saccade_updated = np.full((len_data,), np.nan)
+            self.pupil_distance_from_corner = np.full((len_data,), np.nan)
+            self.width = np.full((len_data,), np.nan)
+            self.height = np.full((len_data,), np.nan)
+        if self.face_check() == False:
+            self.motion_energy = np.full((len_data,), np.nan)
+
+        self.save_data(self.pupil_center, self.pupil_center_X, self.pupil_center_y, self.final_pupil_area,
+                       self.X_saccade_updated, self.Y_saccade_updated,
+                       self.pupil_distance_from_corner, self.width, self.height, self.motion_energy)
+
+
+    def save_data(self, pupil_center,pupil_center_X, pupil_center_y, pupil_dilation,X_saccade, Y_saccade, pupil_distance_from_corner, width, height,motion_energy ):
         data_dict = {
             'pupil_center': pupil_center,
             'pupil_X_position': pupil_center_X,
@@ -933,9 +959,12 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             'pupil_distance_from_corner': pupil_distance_from_corner,
             'pupil area width':width,
             'pupil area height': height,
+            'motion energy': motion_energy,
         }
         save_directory = os.path.join(self.save_path, "faceit.npz")
         np.savez(save_directory, **data_dict)
+        # if self.nwb_check() == True:
+        #     self.save_nwb
 
     def start_pupil_dilation_computation(self, images):
         pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
@@ -943,7 +972,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.pupil_dilation_comput(images, self.saturation,self.blank_ellipse, self.reflect_ellipse)
         self.final_pupil_area = pupil_dilation
         self.X_saccade_updated = X_saccade
-        self.y_saccade_updated = Y_saccade
+        self.Y_saccade_updated = Y_saccade
         return pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
             X_saccade, Y_saccade, pupil_distance_from_corner,width, height
 
@@ -1034,23 +1063,37 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.graphicsView_MainFig, self.scene = functions.display_region \
             (self.image, self.graphicsView_MainFig, self.image_width, self.image_height)
 
+    def start_blinking_detection(self):
+        if hasattr(self, 'pupil_dilation'):
+            self.detect_blinking(self.pupil_dilation, self.width, self.height, self.X_saccade, self.Y_saccade)
+
+        else:
+            print("self.pupil_dilation does not exist")
+            self.warning("Process Pupil first")
+
+    def init_undo_blinking(self):
+        if hasattr(self, 'pupil_dilation'):
+            self.Undo_blinking()
+
+        else:
+            self.warning("Process Pupil first")
+
+
+
     def detect_blinking(self, pupil,Width, height, x_saccade, y_saccade):
+
         Width = np.array(Width)
         height = np.array(height)
         self.X_saccade_updated = np.array(x_saccade)
-        self.y_saccade_updated = np.array(y_saccade)
+        self.Y_saccade_updated = np.array(y_saccade)
         ratio = Width / height
         blinking_id_ratio = pupil_detection.detect_blinking(ratio, 20)
         blinking_id_area = pupil_detection.detect_blinking(pupil, 10)
         combined_blinking_ids = list(set(blinking_id_ratio + blinking_id_area))
+        combined_blinking_ids = [x for x in combined_blinking_ids if x < len(self.X_saccade_updated[0])]
         combined_blinking_ids.sort()
-
-        print("Length of self.X_saccade_updated:", len(self.X_saccade_updated))
-        print("Max index in combined_blinking_ids:", max(combined_blinking_ids))
-        print("self.X_saccade_updated", self.X_saccade_updated)
-        print("combined_blinking_ids", combined_blinking_ids)
-        self.X_saccade_updated[combined_blinking_ids] = np.nan
-        self.y_saccade_updated[combined_blinking_ids] = np.nan
+        self.X_saccade_updated[0][combined_blinking_ids] = np.nan
+        self.Y_saccade_updated[0][combined_blinking_ids] = np.nan
         self.interpolated_pupil = pupil_detection.interpolate(combined_blinking_ids, pupil)
         self.plot_result(self.interpolated_pupil, self.graphicsView_pupil, "pupil", color="palegreen",
                          saccade=self.X_saccade)
@@ -1060,7 +1103,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def Undo_blinking(self):
         self.final_pupil_area = np.array(self.pupil_dilation)
         self.X_saccade_updated = np.array(self.X_saccade)
-        self.y_saccade_updated = np.array(self.y_saccade)
+        self.Y_saccade_updated = np.array(self.Y_saccade)
         self.plot_result(self.pupil_dilation, self.graphicsView_pupil, "pupil", color="palegreen",
                          saccade=self.X_saccade)
 
@@ -1185,7 +1228,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "Face Tracker"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "FaceIt"))
         self.lineEdit_satur_value.setText(_translate("MainWindow", "0"))
 
 
