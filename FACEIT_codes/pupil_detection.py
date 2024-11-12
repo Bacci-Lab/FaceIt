@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+import bottleneck as bn
 from sklearn.cluster import DBSCAN
 def find_ellipse(binary_image):
     coords = np.column_stack(np.where(binary_image > 0))
@@ -62,7 +63,21 @@ def find_claster(binary_image):
         for point in xy:
             cv2.circle(detected_cluster,(point[1], point[0]), 1, (255,), -1)
     return detected_cluster
-
+def detect_blinking(pupil,thr, window=8):
+    blink_detection = bn.move_var(pupil, window=window, min_count=1)
+    threshold = (np.max(blink_detection) - np.min(blink_detection)) /thr
+    blink_indices = {i for i, val in enumerate(blink_detection) if val > threshold}
+    blink_indices.update({i + j for i in blink_indices for j in range(-1, 2)})
+    blink_ids_sorted = sorted(blink_indices)
+    return blink_ids_sorted
+def interpolate(blinking_id,data):
+    mask = np.ones(len(data), dtype=bool)
+    mask[blinking_id] = False
+    x_full = np.arange(len(data))
+    x_valid = x_full[mask]
+    data_valid = data[mask]
+    data_interpolated = np.interp(x_full, x_valid, data_valid)
+    return data_interpolated
 #------------------------------------------Show all clusters-----------------------------------
 #colors = [plt.cm.Spectral(each) for each in np.linspace(0, 1, len(unique_labels))]
 # plt.figure(figsize=(8, 6))
