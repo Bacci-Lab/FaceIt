@@ -27,4 +27,5 @@ build/
 
 # Windows files
 Thumbs.db
+!FACEIT_codes/
 
