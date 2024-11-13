@@ -6,6 +6,7 @@ import functions
 import os.path
 import numpy as np
 import os
+from analysis import ProcessHandler
 import bottleneck as bn
 import math
 import cv2
@@ -111,11 +112,11 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
         self.scene_pos = self.mapToScene(event.pos())
         if event.button() == QtCore.Qt.RightButton:
             return
-        if self.parent.eye_corner_mode:
-            print("(event.pos().x(), event.pos().y()", (self.scene_pos.x(), self.scene_pos.y()))
-            self.parent.eye_corner_center = functions.add_eyecorner(self.scene_pos.x(),self.scene_pos.y(),
-                                                                         self.parent.scene2, self.parent.graphicsView_subImage)
-            self.parent.eye_corner_mode = False
+        if hasattr(self.parent, 'eye_corner_mode'):
+            if self.parent.eye_corner_mode:
+                self.parent.eye_corner_center = functions.add_eyecorner(self.scene_pos.x(),self.scene_pos.y(),
+                                                                             self.parent.scene2, self.parent.graphicsView_subImage)
+                self.parent.eye_corner_mode = False
 
 
 
@@ -437,11 +438,16 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
             self.updateHandles(center_x, center_y, handle_type, 3)
 
 class FaceMotionApp(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+        # Create an instance of the class that has the `process` function
+        self.process_handler = ProcessHandler(self)
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.setWindowIcon(QtGui.QIcon(r"C:\Users\faezeh.rabbani\Downloads\logo.jpg"))
         self.NPY = False
         self.video = False
+        self.find_grooming_threshold = False
         self.len_file = 1
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.Main_V_Layout = QtWidgets.QVBoxLayout(self.centralwidget)
@@ -586,6 +592,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.vertical_process_Layout.addWidget(self.progressBar)
         self.Main_V_Layout.addLayout(self.vertical_process_Layout)
 
+    def change_cursor_color(self):
+        self.find_grooming_threshold = True
     def setup_buttons(self):
         self.mainLayout = QtWidgets.QHBoxLayout(self.centralwidget)
         self.leftGroupBox = QtWidgets.QGroupBox(self.centralwidget)
@@ -617,24 +625,39 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Process_Button = QtWidgets.QPushButton("Process")
         self.Process_Button.setEnabled(False)
         self.rightGroupBoxLayout.addWidget(self.Process_Button)
+        self.Save_Button = QtWidgets.QPushButton("Save")
+        self.Save_Button.setEnabled(False)
+        self.rightGroupBoxLayout.addWidget(self.Save_Button)
         self.detect_blinking_Button = QtWidgets.QPushButton("Detect blinking")
         self.rightGroupBoxLayout.addWidget(self.detect_blinking_Button)
         ##############
         self.Undo_blinking_Button = QtWidgets.QPushButton("Undo blinking")
         self.rightGroupBoxLayout.addWidget(self.Undo_blinking_Button)
-        ##############
-        self.Save_Button = QtWidgets.QPushButton("Save")
-        self.Save_Button.setEnabled(False)
-        self.rightGroupBoxLayout.addWidget(self.Save_Button)
-        ###################
+
+        self.grooming_Button = QtWidgets.QPushButton("Detect Grooming")
+        # self.grooming_Button.setEnabled(False)
+        self.rightGroupBoxLayout.addWidget(self.grooming_Button)
+
+        self.Undo_grooming_Button = QtWidgets.QPushButton("Undo Grooming")
+        self.rightGroupBoxLayout.addWidget(self.Undo_grooming_Button)
+        ##################
+        self.exclude_blinking_Button = QtWidgets.QPushButton("exclude blinking")
+        self.rightGroupBoxLayout.addWidget(self.exclude_blinking_Button)
+        #################################
+        self.grooming_limit_Label = QtWidgets.QLabel("grooming threshold")
+        self.grooming_limit_Label.setFixedSize(100, 20)
+        self.grooming_limit_Label.setStyleSheet("color: white;")
+        self.rightGroupBoxLayout.addWidget(self.grooming_limit_Label)
+        #########################
+        self.lineEdit_grooming_y = QtWidgets.QLineEdit(self.centralwidget)
+        self.lineEdit_grooming_y.setFixedWidth(50)
+        self.rightGroupBoxLayout.addWidget(self.lineEdit_grooming_y)
         self.checkBox_face = QtWidgets.QCheckBox("Whisker Pad")
         self.leftGroupBoxLayout.addWidget(self.checkBox_face)
         self.checkBox_pupil = QtWidgets.QCheckBox("Pupil")
         self.leftGroupBoxLayout.addWidget(self.checkBox_pupil)
-
         self.checkBox_nwb = QtWidgets.QCheckBox("Save nwb")
         self.leftGroupBoxLayout.addWidget(self.checkBox_nwb)
-
 
 
     def setup_saturation(self):
@@ -658,13 +681,14 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.load_np.triggered.connect(self.openImageFolder)
         self.Slider_frame.valueChanged.connect(self.get_np_frame)
         self.lineEdit_frame_number.editingFinished.connect(self.update_slider)
-        self.Process_Button.clicked.connect(self.process)
+        self.Process_Button.clicked.connect(self.process_handler.process)
         self.Add_eyecorner.clicked.connect(self.eyecorner_clicked)
         self.Undo_blinking_Button.clicked.connect(self.init_undo_blinking)
         self.detect_blinking_Button.clicked.connect(self.start_blinking_detection)
         self.Save_Button.clicked.connect(self.init_save_data)
-            # lambda: self.save_data(self.pupil_center, self.pupil_center_X, self.pupil_center_y, self.final_pupil_area, self.X_saccade_updated , self.Y_saccade_updated,
-            #                        self.pupil_distance_from_corner, self.width, self.height))
+        self.grooming_Button.clicked.connect(self.change_cursor_color)
+        self.Undo_grooming_Button.clicked.connect(self.undo_grooming)
+
 
 
     def setup_styles(self):
@@ -673,6 +697,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         functions.set_button_style(self.Slider_frame, "QSlider")
         self.lineEdit_frame_number.setStyleSheet("background-color: #999999")
         self.lineEdit_satur_value.setStyleSheet("background-color: #999999")
+        self.lineEdit_grooming_y.setStyleSheet("background-color: #999999")
 
     def clear_graphics_view(self, graphicsView):
         """Clear any existing layout or widgets in the graphicsView."""
@@ -711,9 +736,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         # Customize axes
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_visible(False)
+        ax.spines['left'].set_visible(True)
         ax.spines['bottom'].set_visible(True)
-        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=True)
+        ax.tick_params(left=True, bottom=False, labelleft=True, labelbottom=True)
 
         # Add legend
         legend = ax.legend(loc='upper right', fontsize=8, frameon=False)
@@ -742,12 +767,20 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.panning = False
         self.press_event = None
 
+        def create_colored_cursor(color, size=(35, 4)):
+            """Create a custom cursor with the specified color."""
+            pixmap = QtGui.QPixmap(*size)
+            pixmap.fill(color)
+            return QtGui.QCursor(pixmap)
+
         def on_press(event):
             if event.inaxes != ax:
                 return
             self.panning = True
             self.press_event = event
-            ax.set_cursor(1)
+            event.canvas.setCursor(QtGui.QCursor(QtCore.Qt.ClosedHandCursor))
+            if self.find_grooming_threshold == True:
+                event.canvas.setCursor(create_colored_cursor(QtGui.QColor('blue')))
 
         def on_motion(event):
             if not self.panning or self.press_event is None or event.xdata is None:
@@ -760,7 +793,16 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         def on_release(event):
             self.panning = False
             self.press_event = None
-            ax.set_cursor(0)
+            event.canvas.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+
+        def on_click(event):
+            if self.find_grooming_threshold == True:
+                if event.inaxes == ax and event.ydata is not None:
+                    self.grooming_thr = event.ydata
+                    print(f"Clicked at y: {event.ydata:.2f}")
+                    self.find_grooming_threshold = False
+                    self.lineEdit_grooming_y.setText(str(int(event.ydata)))
+                    self.display_removed_grooming(self.grooming_thr, self.motion_energy)
 
         def zoom(event):
             current_xlim = ax.get_xlim()
@@ -777,34 +819,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         fig.canvas.mpl_connect('motion_notify_event', on_motion)
         fig.canvas.mpl_connect('button_release_event', on_release)
         fig.canvas.mpl_connect('scroll_event', zoom)
-
-    def process(self):
-        if self.pupil_check() == True:
-            if self.Pupil_ROI_exist:
-                if self.Image_loaded == False:
-                    if self.NPY:
-                        self.images = self.load_images_from_directory(self.folder_path)
-                    elif self.video:
-                        self.images = self.load_frames_from_video(self.folder_path)
-                    self.Image_loaded = True
-                self.pupil_dilation, self.pupil_center_X, self.pupil_center_y, self.pupil_center, \
-                    self.X_saccade, self.Y_saccade, self.pupil_distance_from_corner, self.width, self.height = self.start_pupil_dilation_computation(self.images)
-                self.plot_result(self.pupil_dilation, self.graphicsView_pupil,"pupil", color="palegreen", saccade = self.X_saccade)
-            else:
-                self.warning("NO Pupil ROI is chosen!")
-
-        if self.face_check() == True:
-            if self.Face_ROI_exist:
-                if self.Image_loaded == False:
-                    if self.NPY:
-                        self.images = self.load_images_from_directory(self.folder_path)
-                    elif self.video:
-                        self.images = self.load_frames_from_video(self.folder_path)
-                    self.Image_loaded = True
-                self.motion_energy = self.motion_Energy_comput(self.images)
-                self.plot_result(self.motion_energy, self.graphicsView_whisker, "motion")
-            else:
-                self.warning("NO Face ROI is chosen!")
+        fig.canvas.mpl_connect('button_press_event', on_click)
 
     def set_frame(self, face_frame=None, Pupil_frame=None, reflect_ellipse = None, blank_ellipse = None):
         if face_frame is not None:
@@ -853,81 +868,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.lineEdit_frame_number.setText(str(self.Slider_frame.value()))
 
 
-    def motion_Energy_comput(self, image):
-        frame = self.Face_frame
-        Motion_energy = []
-        total_files = len(image)
-        self.progressBar.setMaximum(total_files)
-        previous_ROI = None
-        for i, current_array  in enumerate(tqdm(image, desc="Processing motion Energy")):
-            self.progressBar.setValue(i + 1)
-            QtWidgets.QApplication.processEvents()
-            current_ROI = current_array[frame[0]:frame[1], frame[2]:frame[3]]
-            current_ROI = current_ROI.flatten()
-            if previous_ROI is not None:
-                motionEnergyI = np.mean((current_ROI - previous_ROI) ** 2)
-                Motion_energy.append(motionEnergyI)
-            previous_ROI = current_ROI
-        self.progressBar.setValue(total_files)
-        return Motion_energy
-    def Saccade(self, pupil_center_i):
-        saccade = [pupil_center_i[i] - pupil_center_i[i - 1] for i in range(1, len(pupil_center_i))]
-        saccade = np.array(saccade)
-        saccade = saccade.astype(float)
-        saccade[abs(saccade) < 2] = np.nan
-        saccade = saccade.reshape(1, -1)
-        return saccade
-
-    def pupil_dilation_comput(self, images, saturation, blank_ellipse, reflect_ellipse):
-        pupil = self.graphicsView_MainFig.pupil_ROI
-        total_files = len(images)
-        pupil_dilation = []
-        pupil_center_X = []
-        pupil_center_y = []
-        pupil_center = []
-        pupil_width = []
-        pupil_height = []
-
-        self.progressBar.setMaximum(total_files)
-        for i, current_image in enumerate(tqdm(images, desc="Pupil Processing")):
-            self.progressBar.setValue(i + 1)
-            QtWidgets.QApplication.processEvents()
-            sub_region, _ = functions.show_ROI(pupil, current_image)
-            if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
-                sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
-            sub_region = functions.change_saturation(sub_region, saturation)
-            sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
-            ###########################################
-            _, Center, width, height, _, Curren_Area = functions.detect_pupil(sub_region_rgba, blank_ellipse, reflect_ellipse)
-            pupil_width.append(width)
-            pupil_height.append(height)
-            pupil_dilation.append(Curren_Area)
-            pupil_center.append(Center)
-            pupil_center_X.append(int(Center[0]))
-            pupil_center_y.append(int(Center[1]))
-
-        self.progressBar.setValue(total_files)
-
-        pupil_dilation = np.array(pupil_dilation)
-        pupil_center_X  = np.array(pupil_center_X)
-        pupil_center_y = np.array(pupil_center_y)
-        pupil_center = np.array(pupil_center)
-        X_saccade = self.Saccade(pupil_center_X)
-        Y_saccade = self.Saccade(pupil_center_y)
-        pupil_width = np.array(pupil_width)
-        pupil_height = np.array(pupil_height)
-
-        if self.eye_corner_center is not None:
-            pupil_distance_from_corner = np.array([
-                    math.sqrt((x - self.eye_corner_center[0]) ** 2 + (y - self.eye_corner_center[1]) ** 2) for x, y in
-                    pupil_center])
-        else:
-            pupil_distance_from_corner = np.full((len(X_saccade),), np.nan)
-
-
-
-        return  pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,  X_saccade, Y_saccade, pupil_distance_from_corner, pupil_width, pupil_height
-
     def init_save_data(self):
         len_data = 100
         if self.pupil_check() == False:
@@ -969,7 +909,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def start_pupil_dilation_computation(self, images):
         pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
             X_saccade, Y_saccade, pupil_distance_from_corner, width, height =\
-            self.pupil_dilation_comput(images, self.saturation,self.blank_ellipse, self.reflect_ellipse)
+            self.process_handler.pupil_dilation_comput(images, self.saturation,self.blank_ellipse, self.reflect_ellipse)
         self.final_pupil_area = pupil_dilation
         self.X_saccade_updated = X_saccade
         self.Y_saccade_updated = Y_saccade
@@ -1065,11 +1005,25 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):
-            self.detect_blinking(self.pupil_dilation, self.width, self.height, self.X_saccade, self.Y_saccade)
+            self.process_handler.detect_blinking(self.pupil_dilation, self.width, self.height, self.X_saccade, self.Y_saccade)
 
         else:
             print("self.pupil_dilation does not exist")
             self.warning("Process Pupil first")
+    def display_removed_grooming(self, grooming_thr, facemotion ):
+        print(" grooming_thr is ", grooming_thr )
+        self.facemotion_without_grooming = self.remove_grooming(grooming_thr, facemotion)
+        self.plot_result(self.facemotion_without_grooming, self.graphicsView_whisker, "motion")
+
+    def remove_grooming(self,grooming_thr, facemotion):
+        grooming_ids = np.where(facemotion>=grooming_thr)
+        facemotion = np.array(facemotion)
+        self.facemotion_without_grooming = np.copy(facemotion)
+        self.facemotion_without_grooming[grooming_ids] = grooming_thr
+        return self.facemotion_without_grooming
+
+    def undo_grooming(self):
+        self.plot_result(self.motion_energy, self.graphicsView_whisker, "motion")
 
     def init_undo_blinking(self):
         if hasattr(self, 'pupil_dilation'):
@@ -1078,26 +1032,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         else:
             self.warning("Process Pupil first")
 
-
-
-    def detect_blinking(self, pupil,Width, height, x_saccade, y_saccade):
-
-        Width = np.array(Width)
-        height = np.array(height)
-        self.X_saccade_updated = np.array(x_saccade)
-        self.Y_saccade_updated = np.array(y_saccade)
-        ratio = Width / height
-        blinking_id_ratio = pupil_detection.detect_blinking(ratio, 20)
-        blinking_id_area = pupil_detection.detect_blinking(pupil, 10)
-        combined_blinking_ids = list(set(blinking_id_ratio + blinking_id_area))
-        combined_blinking_ids = [x for x in combined_blinking_ids if x < len(self.X_saccade_updated[0])]
-        combined_blinking_ids.sort()
-        self.X_saccade_updated[0][combined_blinking_ids] = np.nan
-        self.Y_saccade_updated[0][combined_blinking_ids] = np.nan
-        self.interpolated_pupil = pupil_detection.interpolate(combined_blinking_ids, pupil)
-        self.plot_result(self.interpolated_pupil, self.graphicsView_pupil, "pupil", color="palegreen",
-                         saccade=self.X_saccade)
-        self.final_pupil_area = np.array(self.interpolated_pupil)
 
 
     def Undo_blinking(self):
@@ -1230,6 +1164,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "FaceIt"))
         self.lineEdit_satur_value.setText(_translate("MainWindow", "0"))
+        self.lineEdit_grooming_y.setText(_translate("MainWindow", "0"))
 
 
 
