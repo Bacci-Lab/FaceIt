@@ -3,7 +3,7 @@ import os.path
 import numpy as np
 from pynwb import NWBFile, NWBHDF5IO
 from datetime import datetime
-
+from FACEIT_codes import pupil_detection
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtGui import QPixmap
 
@@ -187,19 +187,6 @@ def show_ROI(ROI, image):
     frame = [top,bottom, left,right]
     return sub_region, frame
 
-# def motion_Energy_comput(direction, frame):
-#     Motion_energy = []
-#     file_list = sorted([f for f in os.listdir(direction) if f.endswith('.npy')])
-#     previous_ROI = None
-#     for i, file_name in enumerate(tqdm(file_list, desc="Processing files")):
-#         current_array = np.load(os.path.join(direction, file_name), allow_pickle=True)
-#         current_ROI = current_array[frame[0]:frame[1], frame[2]:frame[3]]
-#         current_ROI = current_ROI.flatten()
-#         if previous_ROI is not None:
-#             motionEnergyI = np.mean((current_ROI - previous_ROI)**2)
-#             Motion_energy.append(motionEnergyI)
-#         previous_ROI = current_ROI
-#     return Motion_energy
 
 
 def change_saturation(image, saturation_scale):
@@ -214,7 +201,7 @@ def change_saturation(image, saturation_scale):
         # Convert back to BGR
         bgr_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
     return bgr_image
-import pupil_detection
+
 
 def detect_pupil(chosen_frame_region, blank_ellipse, reflect_ellipse):
     sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
@@ -285,7 +272,6 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation, save_p
         pupil_ellipse_item.setTransformOriginPoint(int(P_detected_center[0]),
                                                    int(P_detected_center[1]))  # Set the origin point for rotation
         pupil_ellipse_item.setRotation(np.degrees(angle))
-        print("this is pupil angel test", np.degrees(angle))
         pen = QtGui.QPen(QtGui.QColor(89, 141, 81))
         pen.setWidth(1)
         pen.setStyle(QtCore.Qt.DashLine)

@@ -2,20 +2,13 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QVBoxLayout, QSizePolicy
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5.QtWidgets import QMessageBox
-import functions
-import os.path
+from FACEIT_codes import functions
 import numpy as np
-import os
 from analysis import ProcessHandler
-import bottleneck as bn
-import math
-import cv2
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import queue
-import threading
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-import pupil_detection
+from Save import SaveHandler
+from Load_data import LoadData
+from FACEIT_codes import display_and_plots
+
 save_path = r"C:\Users\faezeh.rabbani\ASSEMBLE\15-53-26\FaceCamera-imgs\check\sub_region.png"
 
 class CustomGraphicsView(QtWidgets.QGraphicsView):
@@ -442,6 +435,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         super().__init__()
         # Create an instance of the class that has the `process` function
         self.process_handler = ProcessHandler(self)
+        self.save_handler = SaveHandler(self)
+        self.load_handler = LoadData(self)
+        self.plot_handler = display_and_plots.PlotHandler(self)
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.setWindowIcon(QtGui.QIcon(r"C:\Users\faezeh.rabbani\Downloads\logo.jpg"))
@@ -603,7 +599,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.mainLayout.addWidget(self.rightGroupBox)
 
         self.rightGroupBoxLayout = QtWidgets.QVBoxLayout(self.rightGroupBox)
-        #########################################
         self.leftGroupBoxLayout = QtWidgets.QVBoxLayout(self.leftGroupBox)
         # Set the main layout to the central widget
         self.centralwidget.setLayout(self.mainLayout)
@@ -676,16 +671,16 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Main_V_Layout.addLayout(self.sliderLayout)
 
     def setup_connections(self):
-        self.LoadVideo.triggered.connect(self.Load_video)
+        self.LoadVideo.triggered.connect(self.load_handler.load_video)
+        self.load_np.triggered.connect(self.load_handler.open_image_folder)
         self.saturation_Slider.valueChanged.connect(self.satur_value)
-        self.load_np.triggered.connect(self.openImageFolder)
         self.Slider_frame.valueChanged.connect(self.get_np_frame)
         self.lineEdit_frame_number.editingFinished.connect(self.update_slider)
         self.Process_Button.clicked.connect(self.process_handler.process)
         self.Add_eyecorner.clicked.connect(self.eyecorner_clicked)
         self.Undo_blinking_Button.clicked.connect(self.init_undo_blinking)
         self.detect_blinking_Button.clicked.connect(self.start_blinking_detection)
-        self.Save_Button.clicked.connect(self.init_save_data)
+        self.Save_Button.clicked.connect(self.save_handler.init_save_data)
         self.grooming_Button.clicked.connect(self.change_cursor_color)
         self.Undo_grooming_Button.clicked.connect(self.undo_grooming)
 
@@ -709,117 +704,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
                     child.widget().deleteLater()
             QtWidgets.QWidget().setLayout(old_layout)
 
-    def plot_result(self, data, graphicsView, label, color='#D97A53', saccade=None):
-        self.Save_Button.setEnabled(True)
-        self.clear_graphics_view(graphicsView)
-        # Create the figure and axes
-        fig, ax = plt.subplots()
-        x_values = np.arange(0, len(data))
-        ax.plot(x_values, data, color=color, label=label, linestyle='--')
-
-        # Adjust the plot limits
-        data_min = np.min(data)
-        data_max = np.max(data)
-        range_val = (data_max - data_min)
-
-        # Plot the saccade if available
-        if saccade is not None:
-            y_values = [data_max + range_val / 10, data_max + range_val / 5]
-            ax.pcolormesh(x_values, y_values, saccade, cmap='RdYlGn', shading='flat')
-
-        # Set background and axes properties
-        fig.patch.set_facecolor('#3d4242')
-        ax.set_facecolor('#3d4242')
-        ax.set_xlim(left=0, right=len(data))
-        ax.set_ylim(bottom=data_min, top=data_max + range_val / 4)
-
-        # Customize axes
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_visible(True)
-        ax.spines['bottom'].set_visible(True)
-        ax.tick_params(left=True, bottom=False, labelleft=True, labelbottom=True)
-
-        # Add legend
-        legend = ax.legend(loc='upper right', fontsize=8, frameon=False)
-        for text in legend.get_texts():
-            text.set_color("white")
-
-        # Handle zooming and panning
-        self.setup_interaction_events(fig, ax)
-
-        # Setup canvas and add to the graphics view
-        canvas = FigureCanvas(fig)
-        canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        canvas.updateGeometry()
-
-        layout = QtWidgets.QVBoxLayout(graphicsView)
-        layout.addWidget(canvas)
-        graphicsView.setLayout(layout)
-
-        ax.grid(False)
-        fig.tight_layout(pad=0)
-        fig.subplots_adjust(bottom=0.15)
-        canvas.draw()
-
-    def setup_interaction_events(self, fig, ax):
-        """Setup zoom and pan events for the plot."""
-        self.panning = False
-        self.press_event = None
-
-        def create_colored_cursor(color, size=(35, 4)):
-            """Create a custom cursor with the specified color."""
-            pixmap = QtGui.QPixmap(*size)
-            pixmap.fill(color)
-            return QtGui.QCursor(pixmap)
-
-        def on_press(event):
-            if event.inaxes != ax:
-                return
-            self.panning = True
-            self.press_event = event
-            event.canvas.setCursor(QtGui.QCursor(QtCore.Qt.ClosedHandCursor))
-            if self.find_grooming_threshold == True:
-                event.canvas.setCursor(create_colored_cursor(QtGui.QColor('blue')))
-
-        def on_motion(event):
-            if not self.panning or self.press_event is None or event.xdata is None:
-                return
-            dx = event.xdata - self.press_event.xdata
-            xlim = ax.get_xlim()
-            ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
-            fig.canvas.draw_idle()
-
-        def on_release(event):
-            self.panning = False
-            self.press_event = None
-            event.canvas.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-
-        def on_click(event):
-            if self.find_grooming_threshold == True:
-                if event.inaxes == ax and event.ydata is not None:
-                    self.grooming_thr = event.ydata
-                    print(f"Clicked at y: {event.ydata:.2f}")
-                    self.find_grooming_threshold = False
-                    self.lineEdit_grooming_y.setText(str(int(event.ydata)))
-                    self.display_removed_grooming(self.grooming_thr, self.motion_energy)
-
-        def zoom(event):
-            current_xlim = ax.get_xlim()
-            xdata = event.xdata
-            if xdata is None:
-                return
-            zoom_factor = 0.9 if event.button == 'up' else 1.1
-            new_xlim = [xdata - (xdata - current_xlim[0]) * zoom_factor,
-                        xdata + (current_xlim[1] - xdata) * zoom_factor]
-            ax.set_xlim(new_xlim)
-            fig.canvas.draw_idle()
-
-        fig.canvas.mpl_connect('button_press_event', on_press)
-        fig.canvas.mpl_connect('motion_notify_event', on_motion)
-        fig.canvas.mpl_connect('button_release_event', on_release)
-        fig.canvas.mpl_connect('scroll_event', zoom)
-        fig.canvas.mpl_connect('button_press_event', on_click)
 
     def set_frame(self, face_frame=None, Pupil_frame=None, reflect_ellipse = None, blank_ellipse = None):
         if face_frame is not None:
@@ -868,44 +752,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.lineEdit_frame_number.setText(str(self.Slider_frame.value()))
 
 
-    def init_save_data(self):
-        len_data = 100
-        if self.pupil_check() == False:
-            self.pupil_center = np.full((len_data,), np.nan)
-            self.pupil_center_X = np.full((len_data,), np.nan)
-            self.pupil_center_y = np.full((len_data,), np.nan)
-            self.final_pupil_area = np.full((len_data,), np.nan)
-            self.X_saccade_updated = np.full((len_data,), np.nan)
-            self.Y_saccade_updated = np.full((len_data,), np.nan)
-            self.pupil_distance_from_corner = np.full((len_data,), np.nan)
-            self.width = np.full((len_data,), np.nan)
-            self.height = np.full((len_data,), np.nan)
-        if self.face_check() == False:
-            self.motion_energy = np.full((len_data,), np.nan)
-
-        self.save_data(self.pupil_center, self.pupil_center_X, self.pupil_center_y, self.final_pupil_area,
-                       self.X_saccade_updated, self.Y_saccade_updated,
-                       self.pupil_distance_from_corner, self.width, self.height, self.motion_energy)
-
-
-    def save_data(self, pupil_center,pupil_center_X, pupil_center_y, pupil_dilation,X_saccade, Y_saccade, pupil_distance_from_corner, width, height,motion_energy ):
-        data_dict = {
-            'pupil_center': pupil_center,
-            'pupil_X_position': pupil_center_X,
-            'pupil_Y_position': pupil_center_y,
-            'pupil_area': pupil_dilation,
-            'X_saccade': X_saccade,
-            'Y_saccade': Y_saccade,
-            'pupil_distance_from_corner': pupil_distance_from_corner,
-            'pupil area width':width,
-            'pupil area height': height,
-            'motion energy': motion_energy,
-        }
-        save_directory = os.path.join(self.save_path, "faceit.npz")
-        np.savez(save_directory, **data_dict)
-        # if self.nwb_check() == True:
-        #     self.save_nwb
-
     def start_pupil_dilation_computation(self, images):
         pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
             X_saccade, Y_saccade, pupil_distance_from_corner, width, height =\
@@ -916,92 +762,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         return pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
             X_saccade, Y_saccade, pupil_distance_from_corner,width, height
 
-    def openImageFolder(self):
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        print("project_root", project_root)
-        default_path = os.path.join(project_root, "test_data", "test_images")
-        print("default_path", default_path)
 
-        self.folder_path = QtWidgets.QFileDialog.getExistingDirectory(
-            self, "Select Folder", default_path
-        )
-        if self.folder_path:
-            self.save_path = self.folder_path
-            npy_files = [f for f in os.listdir(self.folder_path) if f.endswith('.npy')]
-            self.len_file = len(npy_files)
-            self.Slider_frame.setMaximum(self.len_file - 1)
-            self.NPY = True
-            self.video = False
-            self.display_Graphics(self.folder_path)
-            self.FaceROIButton.setEnabled(True)
-            self.PupilROIButton.setEnabled(True)
-
-    def Load_video(self):
-        self.folder_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load Video", "",
-                                                             "Video Files (*.avi)")
-        if self.folder_path:
-            directory_path = os.path.dirname(self.folder_path)
-            self.save_path = directory_path
-            cap = cv2.VideoCapture(self.folder_path)
-            self.len_file = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            cap.release()
-
-            self.Slider_frame.setMaximum(self.len_file - 1)
-            self.video = True
-            self.NPY = False
-            self.display_Graphics(self.folder_path)
-            self.FaceROIButton.setEnabled(True)
-            self.PupilROIButton.setEnabled(True)
-
-
-
-    def load_image(self, filepath, image_height=384):
-        """Load and resize a single image from the given file path."""
-        try:
-            current_image = np.load(filepath, allow_pickle=True)
-            original_height, original_width = current_image.shape
-            aspect_ratio = original_width / original_height
-            image_width = int(image_height * aspect_ratio)
-            resized_image = cv2.resize(current_image, (image_width, image_height), interpolation=cv2.INTER_AREA)
-            return resized_image
-        except Exception as e:
-            print(f"Error loading image {filepath}: {e}")
-            return None
-
-
-    def load_images_from_directory(self, directory, image_height=384, max_workers=8):
-        """Load images in parallel from the directory with a progress bar update."""
-        file_list = sorted([os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')])
-
-        if self.progressBar:
-            self.progressBar.setMaximum(len(file_list))
-
-        images = []
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(self.load_image, file, image_height): file for file in file_list}
-
-            for i, future in enumerate(as_completed(futures)):
-                image = future.result()
-                if image is not None:
-                    images.append(image)
-                if self.progressBar:
-                    self.progressBar.setValue(i + 1)
-
-        if self.progressBar:
-            self.progressBar.setValue(len(file_list))
-        return images
-    def display_Graphics(self,folder_path):
-        self.frame = 0
-        if self.NPY == True:
-            self.image = functions.load_npy_by_index(folder_path, self.frame)
-        elif self.video == True:
-            self.image = functions.load_frame_by_index(folder_path, self.frame)
-        functions.initialize_attributes(self, self.image)
-        self.scene2 = functions.second_region(self.graphicsView_subImage,
-                                                                        self.graphicsView_MainFig, self.image_width, self.image_height)
-        self.graphicsView_MainFig, self.scene = functions.display_region \
-            (self.image, self.graphicsView_MainFig, self.image_width, self.image_height)
 
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):
@@ -1010,10 +771,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         else:
             print("self.pupil_dilation does not exist")
             self.warning("Process Pupil first")
-    def display_removed_grooming(self, grooming_thr, facemotion ):
-        print(" grooming_thr is ", grooming_thr )
-        self.facemotion_without_grooming = self.remove_grooming(grooming_thr, facemotion)
-        self.plot_result(self.facemotion_without_grooming, self.graphicsView_whisker, "motion")
+
 
     def remove_grooming(self,grooming_thr, facemotion):
         grooming_ids = np.where(facemotion>=grooming_thr)
@@ -1022,8 +780,13 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.facemotion_without_grooming[grooming_ids] = grooming_thr
         return self.facemotion_without_grooming
 
+    def display_removed_grooming(self, grooming_thr, facemotion ):
+        print(" grooming_thr is ", grooming_thr )
+        self.facemotion_without_grooming = self.remove_grooming(grooming_thr, facemotion)
+        self.plot_handler.plot_result(self.facemotion_without_grooming, self.graphicsView_whisker, "motion")
+
     def undo_grooming(self):
-        self.plot_result(self.motion_energy, self.graphicsView_whisker, "motion")
+        self.plot_handler.plot_result(self.motion_energy, self.graphicsView_whisker, "motion")
 
     def init_undo_blinking(self):
         if hasattr(self, 'pupil_dilation'):
@@ -1038,79 +801,14 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.final_pupil_area = np.array(self.pupil_dilation)
         self.X_saccade_updated = np.array(self.X_saccade)
         self.Y_saccade_updated = np.array(self.Y_saccade)
-        self.plot_result(self.pupil_dilation, self.graphicsView_pupil, "pupil", color="palegreen",
+        self.plot_handler.plot_result(self.pupil_dilation, self.graphicsView_pupil, "pupil", color="palegreen",
                          saccade=self.X_saccade)
 
     def eyecorner_clicked(self):
         self.eye_corner_mode = True
         print("is true", self.eye_corner_mode )
 
-    def load_frames_from_video(self, video_path, max_workers=8, buffer_size=32,image_height=384):
 
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            print(f"Error: Cannot open video file {video_path}.")
-            return None
-
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        frames = []
-        frame_queue = queue.Queue(maxsize=buffer_size)
-
-        def producer():
-            """Producer thread to read frames and put them into the queue."""
-            for _ in range(total_frames):
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frame_queue.put(frame)
-
-            frame_queue.put(None)  # Sentinel to indicate end of frames
-
-        def resize_frame(frame, image_height):
-            # Unpack the height, width, and color channels (if they exist)
-            if len(frame.shape) == 3:
-                original_height, original_width, _ = frame.shape  # For color images
-            else:
-                original_height, original_width = frame.shape  # For grayscale images
-
-            aspect_ratio = original_width / original_height
-            image_width = int(image_height * aspect_ratio)
-
-            # Resize the frame to the new dimensions
-            return cv2.resize(frame, (image_width, image_height), interpolation=cv2.INTER_AREA)
-
-        def consumer():
-            """Consumer thread to process frames from the queue."""
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
-                with tqdm(total=total_frames, desc="Processing video frames") as pbar:
-                    while True:
-                        frame = frame_queue.get()
-                        if frame is None:
-                            break
-                        # Submit resized frame to the thread pool
-                        future = executor.submit(resize_frame, frame, image_height)
-                        futures.append(future)
-
-                        # Once a future completes, collect the result
-                        for future in as_completed(futures):
-                            frames.append(future.result())
-                            pbar.update(1)
-                            futures.remove(future)  # Remove completed future
-
-        # Start producer thread
-        producer_thread = threading.Thread(target=producer)
-        producer_thread.start()
-
-        # Start consumer thread
-        consumer()
-
-        # Ensure all frames are processed and video capture is released
-        producer_thread.join()
-        cap.release()
-
-        return frames
-    ##########################################################################################################
     def get_np_frame(self, frame):
         self.frame = frame
         if self.NPY == True:

@@ -5,21 +5,27 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QSizePolicy
 
 class PlotHandler:
-    def __init__(self,app_instance):
+    def __init__(self, app_instance):
+        """
+        Initializes the PlotHandler with a reference to the main application instance.
+
+        Parameters:
+        - app_instance: The main application instance that uses this handler.
+        """
         self.app_instance = app_instance
         self.panning = False
         self.press_event = None
 
     def plot_result(
-            self,
-            data: np.ndarray,
-            graphics_view: QtWidgets.QGraphicsView,
-            label: str,
-            color: str = '#D97A53',
-            saccade: np.ndarray = None,
-            background_color: str = '#3d4242',
-            grid: bool = False,
-            legend_fontsize: int = 8
+        self,
+        data: np.ndarray,
+        graphics_view: QtWidgets.QGraphicsView,
+        label: str,
+        color: str = '#D97A53',
+        saccade: np.ndarray = None,
+        background_color: str = '#3d4242',
+        grid: bool = False,
+        legend_fontsize: int = 8
     ):
         """
         Plots the data on a given graphics view using Matplotlib.
@@ -37,83 +43,51 @@ class PlotHandler:
         if data is None or len(data) == 0:
             raise ValueError("Data for plotting cannot be None or empty.")
 
-        # Clear the graphics view and set up the canvas
         self._clear_graphics_view(graphics_view)
 
-        # Create figure and axes
         fig, ax = plt.subplots()
-        self._plot_data(ax, data, label, color)
-        self._plot_saccade(ax, saccade, data)
-
-        # Customize the plot
-        self._customize_plot(fig, ax, data, background_color, grid, legend_fontsize)
-
-        # Integrate the plot into the graphics view
+        self._plot_main_data(ax, data, label, color)
+        self._configure_plot_appearance(ax, fig, data, saccade, background_color, grid, legend_fontsize)
         self._integrate_canvas_into_view(graphics_view, fig)
 
-    def _plot_data(self, ax: plt.Axes, data: np.ndarray, label: str, color: str):
+    def _plot_main_data(self, ax: plt.Axes, data: np.ndarray, label: str, color: str):
         """Plots the main data on the provided axes."""
         x_values = np.arange(len(data))
         ax.plot(x_values, data, color=color, label=label, linestyle='--')
 
-    def _plot_saccade(self, ax: plt.Axes, saccade: np.ndarray, data: np.ndarray):
-        """Plots the saccade data as a colormap if provided."""
-        if saccade is not None:
-            data_max = np.max(data)
-            range_val = np.max(data) - np.min(data)
-            y_min = data_max + range_val / 10
-            y_max = data_max + range_val / 5
-            x_values = np.arange(len(data))
-            ax.pcolormesh(x_values, [y_min, y_max], saccade, cmap='RdYlGn', shading='flat')
-
-    def _customize_plot(
-            self,
-            fig: plt.Figure,
-            ax: plt.Axes,
-            data: np.ndarray,
-            background_color: str,
-            grid: bool,
-            legend_fontsize: int
+    def _configure_plot_appearance(
+        self, ax: plt.Axes, fig: plt.Figure, data: np.ndarray, saccade: np.ndarray,
+        background_color: str, grid: bool, legend_fontsize: int
     ):
-        """Customizes the appearance of the plot."""
+        """Configures the appearance of the plot."""
         data_min, data_max = np.min(data), np.max(data)
         range_val = data_max - data_min
+
+        if saccade is not None:
+            self._plot_saccade(ax, saccade, data_max, range_val)
 
         fig.patch.set_facecolor(background_color)
         ax.set_facecolor(background_color)
         ax.set_xlim(0, len(data))
         ax.set_ylim(data_min, data_max + range_val / 4)
-
-        # Customize axes and ticks
-        for spine in ['top', 'right']:
-            ax.spines[spine].set_visible(False)
-        for spine in ['left', 'bottom']:
-            ax.spines[spine].set_visible(True)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(True)
+        ax.spines['bottom'].set_visible(True)
         ax.tick_params(left=True, bottom=False, labelleft=True, labelbottom=True)
-
-        # Add legend and set font color
         legend = ax.legend(loc='upper right', fontsize=legend_fontsize, frameon=False)
         for text in legend.get_texts():
             text.set_color("white")
 
         ax.grid(grid)
-
-        # Add zoom and pan interactions
         self._setup_interaction_events(fig, ax)
 
-    def _integrate_canvas_into_view(self, graphics_view: QtWidgets.QGraphicsView, fig: plt.Figure):
-        """Integrates the Matplotlib canvas into the provided PyQt graphics view."""
-        canvas = FigureCanvas(fig)
-        canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        canvas.updateGeometry()
-
-        layout = QtWidgets.QVBoxLayout(graphics_view)
-        layout.addWidget(canvas)
-        graphics_view.setLayout(layout)
-
-        fig.tight_layout(pad=0)
-        fig.subplots_adjust(bottom=0.15)
-        canvas.draw()
+    def _plot_saccade(self, ax: plt.Axes, saccade: np.ndarray, data_max: float, range_val: float):
+        """Plots the saccade data as a colormap on the provided axes."""
+        y_min = data_max + range_val / 10
+        y_max = data_max + range_val / 5
+        x_values = np.arange(len(saccade))
+        ax.pcolormesh(x_values, [y_min, y_max], saccade, cmap='RdYlGn', shading='flat')
 
     def _integrate_canvas_into_view(self, graphics_view: QtWidgets.QGraphicsView, fig: plt.Figure):
         """Integrates the Matplotlib canvas into the PyQt graphics view."""
@@ -139,11 +113,8 @@ class PlotHandler:
                     child.widget().deleteLater()
             QtWidgets.QWidget().setLayout(old_layout)
 
-    def _setup_interaction_events(self, fig, ax):
-        """Sets up basic zoom and pan events for the plot."""
-        self.panning = False
-        self.press_event = None
-
+    def _setup_interaction_events(self, fig: plt.Figure, ax: plt.Axes):
+        """Sets up zoom, pan, and click events for the plot."""
         def on_press(event):
             if event.inaxes != ax:
                 return
@@ -155,8 +126,7 @@ class PlotHandler:
             if not self.panning or self.press_event is None or event.xdata is None:
                 return
             dx = event.xdata - self.press_event.xdata
-            xlim = ax.get_xlim()
-            ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
+            ax.set_xlim(ax.get_xlim()[0] - dx, ax.get_xlim()[1] - dx)
             fig.canvas.draw_idle()
 
         def on_release(event):
@@ -166,23 +136,24 @@ class PlotHandler:
 
         def on_click(event):
             """Handles click events for setting grooming threshold."""
-            if self.app_instance.find_grooming_threshold:
+            if getattr(self.app_instance, 'find_grooming_threshold', False):
                 if event.inaxes == ax and event.ydata is not None:
                     self.app_instance.grooming_thr = event.ydata
                     print(f"Clicked at y: {event.ydata:.2f}")
                     self.app_instance.find_grooming_threshold = False
-                    self.app_instance.lineEdit_grooming_y.setText(str(int(event.ydata)))
-                    self.app_instance.display_removed_grooming(self.app_instance.grooming_thr, self.app_instance.motion_energy)
+                    if hasattr(self.app_instance, 'lineEdit_grooming_y'):
+                        self.app_instance.lineEdit_grooming_y.setText(str(int(event.ydata)))
+                    if hasattr(self.app_instance, 'display_removed_grooming'):
+                        self.app_instance.display_removed_grooming(self.app_instance.grooming_thr, getattr(self.app_instance, 'motion_energy', []))
 
         def zoom(event):
             """Handles zooming based on mouse scroll events."""
             current_xlim = ax.get_xlim()
-            xdata = event.xdata
-            if xdata is None:
+            if event.xdata is None:
                 return
             zoom_factor = 0.9 if event.button == 'up' else 1.1
-            new_xlim = [xdata - (xdata - current_xlim[0]) * zoom_factor,
-                        xdata + (current_xlim[1] - xdata) * zoom_factor]
+            new_xlim = [event.xdata - (event.xdata - current_xlim[0]) * zoom_factor,
+                        event.xdata + (current_xlim[1] - event.xdata) * zoom_factor]
             ax.set_xlim(new_xlim)
             fig.canvas.draw_idle()
 

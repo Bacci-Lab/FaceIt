@@ -1,13 +1,15 @@
 import numpy as np
 from PyQt5 import QtWidgets
-import pupil_detection
-import functions
+from FACEIT_codes import pupil_detection
+from FACEIT_codes import functions
+from FACEIT_codes import display_and_plots
 import math
 import cv2
 class ProcessHandler:
     def __init__(self, app_instance):
         # Store a reference to the app instance for accessing its attributes and methods
         self.app_instance = app_instance
+
 
     def process(self):
         """Processes pupil and face data if selected and images are loaded."""
@@ -36,7 +38,7 @@ class ProcessHandler:
             self.app_instance.start_pupil_dilation_computation(self.app_instance.images)
 
         # Plot the result
-        self.app_instance.plot_result(
+        self.app_instance.plot_handler.plot_result(
             self.app_instance.pupil_dilation,
             self.app_instance.graphicsView_pupil,
             "pupil",
@@ -58,7 +60,7 @@ class ProcessHandler:
         self.app_instance.motion_energy = self.motion_Energy_comput(self.app_instance.images)
 
         # Plot the result
-        self.app_instance.plot_result(
+        self.app_instance.plot_handler.plot_result(
             self.app_instance.motion_energy,
             self.app_instance.graphicsView_whisker,
             "motion"
@@ -110,10 +112,10 @@ class ProcessHandler:
         if not self.app_instance.Image_loaded:
             if self.app_instance.NPY:
                 # Load images from a directory of .npy files
-                self.app_instance.images = self.app_instance.load_images_from_directory(self.app_instance.folder_path)
+                self.app_instance.images = self.app_instance.load_handler.load_images_from_directory(self.app_instance.folder_path)
             elif self.app_instance.video:
                 # Load images from a video file
-                self.app_instance.images = self.app_instance.load_frames_from_video(self.app_instance.folder_path)
+                self.app_instance.images = self.app_instance.load_handler.load_frames_from_video(self.app_instance.folder_path)
 
             # Mark images as loaded
             self.app_instance.Image_loaded = True
@@ -158,7 +160,7 @@ class ProcessHandler:
         self.app_instance.interpolated_pupil = pupil_detection.interpolate(combined_blinking_ids, pupil)
 
         # Plot the interpolated pupil data with the detected saccade events
-        self.app_instance.plot_result(
+        self.app_instance.plot_handler.plot_result(
             self.app_instance.interpolated_pupil,
             self.app_instance.graphicsView_pupil,
             "pupil",
@@ -280,4 +282,5 @@ class ProcessHandler:
         saccade = saccade.reshape(1, -1)
 
         return saccade
+
 
