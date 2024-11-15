@@ -182,7 +182,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Process_Button.setEnabled(False)
         self.rightGroupBoxLayout.addWidget(self.Process_Button)
         self.Save_Button = QtWidgets.QPushButton("Save")
-        self.Save_Button.setEnabled(False)
+
         self.rightGroupBoxLayout.addWidget(self.Save_Button)
         self.detect_blinking_Button = QtWidgets.QPushButton("Detect blinking")
         self.rightGroupBoxLayout.addWidget(self.detect_blinking_Button)
