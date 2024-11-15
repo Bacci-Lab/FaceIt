@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QSizePolicy
-
+from FACEIT_codes import functions
 class PlotHandler:
     def __init__(self,app_instance):
         self.app_instance = app_instance
@@ -191,3 +191,74 @@ class PlotHandler:
         fig.canvas.mpl_connect('button_release_event', on_release)
         fig.canvas.mpl_connect('scroll_event', zoom)
         fig.canvas.mpl_connect('button_press_event', on_click)
+
+class Display:
+    def __init__(self, app_instance):
+        """
+        Initializes the Display class with a reference to the main app instance.
+
+        Parameters:
+        - app_instance: The main application instance to access its attributes.
+        """
+        self.app_instance = app_instance
+
+    def update_frame_view(self, frame):
+        """
+        Updates the displayed frame in the graphics view and handles the display of the pupil and face regions of interest (ROIs).
+
+        Parameters:
+        - frame (int): The frame index to be displayed.
+        """
+        self.app_instance.frame = frame
+
+        # Load the image based on the data type (NPY or video)
+        if self.app_instance.NPY:
+            self.app_instance.image = functions.load_npy_by_index(self.app_instance.folder_path, frame)
+        elif self.app_instance.video:
+            self.app_instance.image = functions.load_frame_by_index(self.app_instance.folder_path, frame)
+
+        # Update the displayed frame number
+        self.app_instance.lineEdit_frame_number.setText(str(self.app_instance.Slider_frame.value()))
+
+        # Display the main image and update the scene
+        self.app_instance.graphicsView_MainFig, self.app_instance.scene = functions.display_region(
+            self.app_instance.image, self.app_instance.graphicsView_MainFig,
+            self.app_instance.image_width, self.app_instance.image_height, self.app_instance.scene
+        )
+
+        # Check if a pupil ROI exists and update its display if present
+        if self.app_instance.Pupil_ROI_exist:
+            self._display_pupil_roi()
+        # Check if a face ROI exists and update its display if present
+        elif self.app_instance.Face_ROI_exist:
+            self._display_face_roi()
+
+    def _display_pupil_roi(self):
+        """
+        Displays the pupil ROI on the graphics view.
+        """
+        self.app_instance.pupil_ROI = self.app_instance.graphicsView_MainFig.pupil_ROI
+        self.app_instance.sub_region, self.app_instance.Pupil_frame = functions.show_ROI(
+            self.app_instance.pupil_ROI, self.app_instance.image
+        )
+        self.app_instance.pupil_ellipse_items = functions.display_sub_region(
+            self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
+            self.app_instance.scene2, "pupil", self.app_instance.saturation,
+            self.app_instance.blank_ellipse, self.app_instance.reflect_ellipse,
+            self.app_instance.pupil_ellipse_items, Detect_pupil=True
+        )
+
+    def _display_face_roi(self):
+        """
+        Displays the face ROI on the graphics view.
+        """
+        self.app_instance.face_ROI = self.app_instance.graphicsView_MainFig.face_ROI
+        self.app_instance.sub_region, _ = functions.show_ROI(
+            self.app_instance.face_ROI, self.app_instance.image
+        )
+        functions.display_sub_region(
+            self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
+            self.app_instance.scene2, "face", self.app_instance.saturation,
+            self.app_instance.blank_ellipse, self.app_instance.reflect_ellipse,
+            self.app_instance.pupil_ellipse_items, Detect_pupil=False
+        )

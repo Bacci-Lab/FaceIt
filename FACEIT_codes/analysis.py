@@ -2,7 +2,6 @@ import numpy as np
 from PyQt5 import QtWidgets
 from FACEIT_codes import pupil_detection
 from FACEIT_codes import functions
-from FACEIT_codes import display_and_plots
 import math
 import cv2
 class ProcessHandler:

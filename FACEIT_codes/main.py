@@ -1,434 +1,13 @@
-from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import QVBoxLayout, QSizePolicy
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5.QtWidgets import QMessageBox
 from FACEIT_codes import functions
 import numpy as np
 from analysis import ProcessHandler
 from Save import SaveHandler
 from Load_data import LoadData
+from Graphical_ROIS import ROIHandler
 from FACEIT_codes import display_and_plots
-
-save_path = r"C:\Users\faezeh.rabbani\ASSEMBLE\15-53-26\FaceCamera-imgs\check\sub_region.png"
-
-class CustomGraphicsView(QtWidgets.QGraphicsView):
-    def __init__(self, parent=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.parent = parent
-        self.setMouseTracking(True)
-        self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(self.showContextMenu)
-        self.sub_region = None
-        self.dragging = False
-        self.dragging_face = False
-        self.eye_corner_mode = False
-        self.dragging_pupil = False
-        self.Resizing = False
-        self.Resize_face = False
-        self.Resize_pupil = False
-        self.face_ROI = None
-        self.eyecorner = None
-        self.pupil_ROI = None
-        self.eye_corner_center = None
-        self.oval_width = 100
-        self.rect_width = 100
-        self.ROI_width = 100
-        self.oval_height = 50
-        self.ROI_height = 50
-        self.rect_height = 50
-        self.offset = QtCore.QPoint()
-        self.scene_pos = None
-        self.previous_mouse_pos = None
-        self.Face_frame = None
-        self.Pupil_frame = None
-        self.current_ROI = None
-        #----------------------------------- initiate reflection-----------------------------------
-        self.Resize_reflect = False
-        self.dragging_reflect = False
-        self.reflect_ROI = None
-        self.reflect_ROIs = []
-        self.reflect_handles_list = []
-        self.reflect_widths = []
-        self.reflect_heights = []
-        self.Reflect_centers = []
-        self.reflect_ellipse = None
-        #------------------------------------ initiate blank---------------------------------------
-        self.dragging_blank = False
-        self.Resize_blank = False
-        self.blank_ROI = None
-        self.blank_ROIs = []
-        self.blank_handles_list = []
-        self.blank_heights = []
-        self.blank_widths = []
-        self.blank_centers = []
-        self.blank_ellipse = None
-        self.All_blanks = None
-        self.pupil_ellipse_items = None
-
-    def showContextMenu(self, pos):
-        context_menu = QtWidgets.QMenu(self)
-        delete_action = context_menu.addAction("Delete ROI")
-        action = context_menu.exec_(self.mapToGlobal(pos))
-        if action == delete_action:
-            self.scene_pos = self.mapToScene(pos)
-            self.delete(self.scene_pos)
-
-
-
-    def delete(self, scene_pos):
-        for idx, blank_ROI in enumerate(self.blank_ROIs):
-            blank_handle = self.blank_handles_list[idx]
-            if blank_ROI.contains(scene_pos):
-                self.scene().removeItem(blank_ROI)
-                self.scene().removeItem(blank_handle['right'])
-                del self.blank_ROIs[idx]
-                del self.blank_handles_list[idx]
-                del self.blank_heights[idx]
-                del self.blank_widths[idx]
-                del self.blank_centers[idx]
-                break
-
-        for idx, reflect_ROI in enumerate(self.reflect_ROIs):
-            reflect_handle = self.reflect_handles_list[idx]
-            if reflect_ROI.contains(scene_pos):
-                self.scene().removeItem(reflect_ROI)
-                self.scene().removeItem(reflect_handle['right'])
-                del self.reflect_ROIs[idx]
-                del self.reflect_handles_list[idx]
-                del self.Reflect_centers[idx]
-                del self.reflect_widths[idx]
-                del self.reflect_heights[idx]
-                break
-
-    def mousePressEvent(self, event):
-
-        self.scene_pos = self.mapToScene(event.pos())
-        if event.button() == QtCore.Qt.RightButton:
-            return
-        if hasattr(self.parent, 'eye_corner_mode'):
-            if self.parent.eye_corner_mode:
-                self.parent.eye_corner_center = functions.add_eyecorner(self.scene_pos.x(),self.scene_pos.y(),
-                                                                             self.parent.scene2, self.parent.graphicsView_subImage)
-                self.parent.eye_corner_mode = False
-
-
-
-
-        if self.pupil_ROI:
-            for handle_name, handle in self.pupil_handles.items():
-                if handle.contains(self.scene_pos):
-                    self.Resizing = True
-                    self.Resize_pupil = True
-
-                    self.previous_mouse_pos_pupil = (event.pos().x(), event.pos().y())
-                    return
-
-            if self.pupil_ROI.contains(self.scene_pos):
-                self.parent.current_ROI = "pupi"
-                self.dragging = True
-                self.dragging_pupil = True
-                self.previous_mouse_pos_pupil = (event.pos().x(), event.pos().y())
-
-                return
-
-        if self.face_ROI:
-            for handle_name, handle in self.face_handles.items():
-                if handle.contains(self.scene_pos):
-                    self.Resizing = True
-                    self.Resize_face = True
-
-                    self.previous_mouse_pos_face = (event.pos().x(), event.pos().y())
-                    return
-
-            if self.face_ROI.contains(self.scene_pos):
-                self.parent.current_ROI = "face"
-                self.dragging = True
-                self.dragging_face = True
-                self.previous_mouse_pos_face = (event.pos().x(), event.pos().y())
-
-                return
-
-        for idx, self.reflect_ROI in enumerate(self.reflect_ROIs):
-            reflect_handles = self.reflect_handles_list[idx]
-            for handle_name, handle in reflect_handles.items():
-                if handle.contains(self.scene_pos):
-                    self.Resizing = True
-                    self.Resize_reflect = True
-
-                    self.current_reflect_idx = idx
-                    self.previous_mouse_pos_reflect = (self.scene_pos .x(), self.scene_pos .y())
-                    return
-
-            if self.reflect_ROI.contains(self.scene_pos):
-                self.dragging = True
-                self.dragging_reflect = True
-
-                self.current_reflect_idx = idx
-                self.previous_mouse_pos_reflect = (self.scene_pos .x(), self.scene_pos .y())
-
-        #---------------------------------------blank ------------------------------------------
-        for idx, self.blank_ROI in enumerate(self.blank_ROIs):
-            blank_handles = self.blank_handles_list[idx]
-            for handle_name, handle in blank_handles.items():
-                if handle.contains(self.scene_pos):
-                    self.Resizing = True
-                    self.Resize_blank = True
-
-                    self.current_blank_idx = idx
-                    self.previous_mouse_pos_blank = (self.scene_pos .x(), self.scene_pos .y())
-                    return
-
-            if self.blank_ROI.contains(self.scene_pos):
-                self.dragging = True
-                self.dragging_blank = True
-
-                self.current_blank_idx = idx
-                self.previous_mouse_pos_blank = (self.scene_pos .x(), self.scene_pos .y())
-
-
-
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self.dragging:
-            if self.dragging_face:
-                handle_type = "face"
-                previous_mouse_pos = self.previous_mouse_pos_face
-                self.ROI_center = self.parent.face_rect_center
-                self.ROI_width = self.rect_width
-                self.ROI_height = self.rect_height
-                frame_height_boundary =  self.parent.image_height
-                frame_width_boundary = self.parent.image_width
-
-            elif self.dragging_pupil:
-                handle_type = "pupil"
-                previous_mouse_pos = self.previous_mouse_pos_pupil
-                self.ROI_center = self.parent.oval_center
-                self.ROI_width = self.oval_width
-                self.ROI_height = self.oval_height
-                frame_height_boundary = self.parent.image_height
-                frame_width_boundary = self.parent.image_width
-
-            elif self.dragging_reflect:
-                handle_type = 'reflection'
-                previous_mouse_pos = self.previous_mouse_pos_reflect
-                self.ROI_center = self.Reflect_centers[self.current_reflect_idx]
-                self.ROI_height = self.reflect_heights[self.current_reflect_idx]
-                self.ROI_width = self.reflect_widths[self.current_reflect_idx]
-                frame_height_boundary = self.parent.sub_region.shape[0]
-                frame_width_boundary = self.parent.sub_region.shape[1]
-
-
-            elif self.dragging_blank:
-                handle_type = 'blank'
-                previous_mouse_pos = self.previous_mouse_pos_blank
-                self.ROI_center = self.blank_centers[self.current_blank_idx]
-                self.ROI_height = self.blank_heights[self.current_blank_idx]
-                self.ROI_width = self.blank_widths[self.current_blank_idx]
-                frame_height_boundary = self.parent.sub_region.shape[0]
-                frame_width_boundary = self.parent.sub_region.shape[1]
-
-            x = previous_mouse_pos[0]
-            y = previous_mouse_pos[1]
-
-            new_pos = self.mapToScene(event.pos())
-            self.x_offset = new_pos.x() - x
-            self.y_offset = new_pos.y() - y
-            # Boundary checks
-            half_width = self.ROI_width / 2
-            half_height = self.ROI_height / 2
-            center_x = self.ROI_center[0] + self.x_offset
-            center_y = self.ROI_center[1] + self.y_offset
-
-            if center_x >= frame_width_boundary - half_width:
-                center_x = frame_width_boundary - half_width
-            elif center_x <= half_width:
-                center_x = half_width
-            if center_y >= frame_height_boundary - half_height:
-                center_y = frame_height_boundary - half_height
-            elif center_y <= half_height:
-                center_y = half_height
-
-            self.updateEllipse(center_x, center_y, self.ROI_width, self.ROI_height, handle_type)
-            if self.dragging_face:
-                self.previous_mouse_pos_face = (new_pos.x(), new_pos.y())
-                self.parent.face_rect_center = (center_x, center_y)
-            elif self.dragging_pupil:
-                self.previous_mouse_pos_pupil = (new_pos.x(), new_pos.y())
-                self.parent.oval_center = (center_x, center_y)
-            elif self.dragging_reflect:
-                self.previous_mouse_pos_reflect = (new_pos.x(), new_pos.y())
-                self.Reflect_centers[self.current_reflect_idx] = (center_x, center_y)
-            elif self.dragging_blank:
-                self.previous_mouse_pos_blank = (new_pos.x(), new_pos.y())
-                self.blank_centers[self.current_blank_idx] = (center_x, center_y)
-
-
-
-        elif self.Resizing:
-            if self.Resize_face:
-                handle_type = "face"
-                previous_mouse_pos = self.previous_mouse_pos_face
-                self.ROI_center = self.parent.face_rect_center
-                self.ROI_width = self.rect_width
-                self.ROI_height = self.rect_height
-                frame_width_boundary = self.parent.image_width
-                minimum_w_h = 10
-
-            elif self.Resize_pupil:
-                handle_type = "pupil"
-                previous_mouse_pos = self.previous_mouse_pos_pupil
-                self.ROI_center = self.parent.oval_center
-                self.ROI_width = self.oval_width
-                self.ROI_height = self.oval_height
-                frame_width_boundary = self.parent.image_width
-                minimum_w_h = 10
-
-            elif self.Resize_reflect:
-                handle_type = "reflection"
-                previous_mouse_pos = self.previous_mouse_pos_reflect
-                self.ROI_center = self.Reflect_centers[self.current_reflect_idx]
-                self.ROI_width = self.reflect_widths[self.current_reflect_idx]
-                self.ROI_height = self.reflect_heights[self.current_reflect_idx]
-                frame_height_boundary = self.parent.sub_region.shape[0]
-                frame_width_boundary = self.parent.sub_region.shape[1]
-                minimum_w_h = 1
-
-            elif self.Resize_blank:
-                handle_type = "blank"
-                previous_mouse_pos = self.previous_mouse_pos_blank
-                self.ROI_center = self.blank_centers[self.current_blank_idx]
-                self.ROI_width = self.blank_widths[self.current_blank_idx]
-                self.ROI_height = self.blank_heights[self.current_blank_idx]
-                frame_height_boundary = self.parent.sub_region.shape[0]
-                frame_width_boundary = self.parent.sub_region.shape[1]
-                minimum_w_h = 1
-
-            x = previous_mouse_pos[0]
-            y = previous_mouse_pos[1]
-            new_pos = self.mapToScene(event.pos())
-            self.x_offset = new_pos.x() - x
-            self.y_offset = new_pos.y() - y
-            resized_width = self.ROI_width + 2 * (self.x_offset)
-            resized_height = self.ROI_height - 2 * (self.y_offset)
-
-            # Ensure minimum size constraints
-            if resized_width < minimum_w_h:
-                resized_width = minimum_w_h
-            if resized_height < minimum_w_h:
-                resized_height = minimum_w_h
-            if self.ROI_center[0] + resized_width / 2 >= frame_width_boundary:
-                resized_width = (frame_width_boundary - self.ROI_center[0]) * 2
-            if self.ROI_center[1] <= resized_height / 2:
-                resized_height = self.ROI_center[1] * 2
-
-            self.updateEllipse(self.ROI_center[0], self.ROI_center[1], resized_width, resized_height, handle_type)
-
-            if self.Resize_face:
-                self.previous_mouse_pos_face = (new_pos.x(), new_pos.y())
-                self.rect_width = resized_width
-                self.rect_height = resized_height
-
-            elif self.Resize_pupil:
-                self.previous_mouse_pos_pupil = (new_pos.x(), new_pos.y())
-                self.oval_width = resized_width
-                self.oval_height = resized_height
-
-            elif self.Resize_reflect:
-                self.previous_mouse_pos_reflect = (new_pos.x(), new_pos.y())
-                self.reflect_heights[self.current_reflect_idx] = resized_height
-                self.reflect_widths[self.current_reflect_idx] = resized_width
-            elif self.Resize_blank:
-                self.previous_mouse_pos_blank = (new_pos.x(), new_pos.y())
-                self.blank_heights[self.current_blank_idx] = resized_height
-                self.blank_widths[self.current_blank_idx] = resized_width
-
-        super().mouseMoveEvent(event)
-
-    def updateHandles(self, center_x, center_y, handle_type, handle_size):
-        half_width = self.ROI_width / 2
-        if handle_type == "face":
-            handles = self.face_handles
-        elif handle_type == "pupil":
-            handles = self.pupil_handles
-        elif handle_type == "reflection":
-            handles = self.reflect_handles_list[self.current_reflect_idx]
-        elif handle_type == "blank":
-            handles = self.blank_handles_list[self.current_blank_idx]
-        handles['right'].setRect(center_x + half_width - handle_size // 2, center_y - handle_size // 2,
-                                 handle_size, handle_size)
-
-
-    def mouseReleaseEvent(self, event):
-        if self.dragging:
-            if self.dragging_face:
-                self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation, save_path = None)
-                self.parent.set_frame(self.parent.Face_frame)
-            elif self.dragging_pupil:
-                self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2,"pupil",self.parent.saturation,  save_path = save_path)
-                self.parent.set_frame(self.parent.Pupil_frame)
-                self.parent.reflection_center = (
-                    (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
-                self.parent.blank_R_center = (
-                    (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
-
-
-            elif self.dragging_reflect:
-                self.reflect_ellipse = [self.Reflect_centers, self.reflect_widths , self.reflect_heights ]
-                self.parent.reflect_ellipse = self.reflect_ellipse
-            elif self.dragging_blank:
-                self.blank_ellipse = [self.blank_centers, self.blank_widths, self.blank_heights]
-                self.parent.blank_ellipse = self.blank_ellipse
-
-            self.dragging = False
-            self.dragging_face = False
-            self.dragging_pupil = False
-            self.dragging_reflect = False
-            self.dragging_blank = False
-        elif self.Resizing:
-            if self.Resize_face:
-                self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation,  save_path)
-                self.parent.set_frame(self.parent.Face_frame)
-            elif self.Resize_pupil:
-                self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2, "pupil",self.parent.saturation, save_path)
-                self.parent.set_frame(self.parent.Pupil_frame)
-                self.parent.reflection_center = (
-                    (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
-                self.parent.blank_R_center = (
-                    (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
-            elif self.Resize_reflect:
-                self.reflect_ellipse = [self.Reflect_centers, self.reflect_widths , self.reflect_heights]
-                self.parent.reflect_ellipse = self.reflect_ellipse
-            elif self.Resize_blank:
-                self.blank_ellipse = [self.blank_centers, self.blank_widths , self.blank_heights]
-                self.parent.blank_ellipse = self.blank_ellipse
-            self.Resizing = False
-            self.Resize_pupil = False
-            self.Resize_face = False
-            self.Resize_reflect = False
-            self.Resize_blank = False
-
-        super().mouseReleaseEvent(event)
-
-    def updateEllipse(self, center_x, center_y, width, height, handle_type):
-        if handle_type == "face":
-            self.face_ROI.setRect(center_x - width / 2, center_y - height / 2, width, height)
-            self.updateHandles(center_x, center_y, handle_type, 10)
-        elif handle_type == "pupil":
-            self.pupil_ROI.setRect(center_x - width / 2, center_y - height / 2, width, height)
-            self.updateHandles(center_x, center_y, handle_type, 10)
-        elif handle_type == "reflection":
-            self.reflect_ROIs[self.current_reflect_idx].setRect(center_x - width / 2, center_y - height / 2, width, height)
-            self.reflect_ROIs[self.current_reflect_idx].setBrush(QtGui.QBrush(QtGui.QColor('silver')))
-            self.updateHandles(center_x, center_y, handle_type, 3)
-        elif handle_type == "blank":
-            self.blank_ROIs[self.current_blank_idx].setRect(center_x - width / 2, center_y - height / 2, width, height)
-            self.blank_ROIs[self.current_blank_idx].setBrush(QtGui.QBrush(QtGui.QColor('white')))
-            self.updateHandles(center_x, center_y, handle_type, 3)
+from PyQt5 import QtWidgets, QtCore, QtGui
+from GUI_Intractions import  GUI_Intract
 
 class FaceMotionApp(QtWidgets.QMainWindow):
     def __init__(self):
@@ -438,6 +17,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.save_handler = SaveHandler(self)
         self.load_handler = LoadData(self)
         self.plot_handler = display_and_plots.PlotHandler(self)
+        self.Display_handler = display_and_plots.Display(self)
+
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.setWindowIcon(QtGui.QIcon(r"C:\Users\faezeh.rabbani\Downloads\logo.jpg"))
@@ -448,98 +29,78 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.Main_V_Layout = QtWidgets.QVBoxLayout(self.centralwidget)
         MainWindow.setCentralWidget(self.centralwidget)
+
         self.setup_menubar(MainWindow)
         self.setup_buttons()
         self.setup_graphics_views()
+
         self.setup_saturation()
         self.setup_Result()
         self.setup_styles()
         self.setup_connections()
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
+        self.roi_handler = ROIHandler(self)
         MainWindow.showMaximized()
         self.PupilROIButton.clicked.connect(lambda: self.execute_pupil_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
         self.FaceROIButton.clicked.connect(lambda: self.execute_face_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
         self.ReflectionButton.clicked.connect(lambda: self.execute_reflect_roi())
         self.Add_blank_button.clicked.connect(lambda: self.execute_blank_roi())
 
+    def execute_reflect_roi(self):
+        # Call `add_roi` to display a 'reflection' ROI
+        self.roi_handler.Add_ROI(
+            roi_type='reflection',
+            roi_center=self.reflection_center,
+            image=self.image,
+            height=self.reflect_height,
+            width=self.reflect_width,
+            color='gray',
+            handle_size=3
+        )
     def execute_blank_roi(self):
-        functions.Add_ROI(
-            self.scene,
-            self.scene2,
-            self.image,
-            self.graphicsView_MainFig,
-            self.graphicsView_subImage,
-            self.ROI_center, 'blank',
-            self.reflect_height,
-            self.reflect_width,
-            self.blank_height,
-            self.blank_width,
-            blank_center = self.blank_R_center,
-            Button=None,
-            Button2=None,
-            Button3=None,
-            Button4=self.Process_Button,
-            Button5=None,
-            reflection_center=self.reflection_center)
+        self.roi_handler.Add_ROI(
+            roi_type='blank',
+            roi_center=self.blank_R_center,
+            image=self.image,
+            height= self.blank_height,
+            width = self.blank_width,
+            color='black',
+            handle_size=3
+            )
 
     def execute_pupil_roi(self):
-        functions.Add_ROI(
-            self.scene,
-            self.scene2,
-            self.image,
-            self.graphicsView_MainFig,
-            self.graphicsView_subImage,
-            self.ROI_center,
-            'pupil',
-            self.reflect_height,
-            self.reflect_width,
-            self.blank_height,
-            self.blank_width,
+        self.roi_handler.Add_ROI(
+            roi_type='pupil',
+            roi_center=self.ROI_center,
+            image=self.image,
+            height= 50,
+            width = 80,
+            handle_size=10,
+            color='palevioletred',
             Button=self.ReflectionButton,
             Button2=self.Add_blank_button,
             Button3=self.PupilROIButton,
             Button4=self.Process_Button,
             Button5 = self.Add_eyecorner
         )
-        self.set_pupil_roi_pressed(True)
+        self.Pupil_ROI_exist = True
     def execute_face_roi(self):
-        functions.Add_ROI(
-            self.scene,
-            self.scene2,
-            self.image,
-            self.graphicsView_MainFig,
-            self.graphicsView_subImage,
-            self.ROI_center, 'face',
-            self.reflect_height,
-            self.reflect_width,
-            self.blank_height,
-            self.blank_width,
+        self.roi_handler.Add_ROI(
+            roi_type='face',
+            roi_center=self.ROI_center,
+            image = self.image,
+            height=50,
+            width=80,
+            handle_size=10,
+            color='coral',
             Button=None,
             Button2=None,
             Button3=self.FaceROIButton,
             Button4=self.Process_Button,
             Button5=None)
-        self.set_Face_ROI_pressed(True)
-    def execute_reflect_roi(self):
-        functions.Add_ROI(
-            self.scene,
-            self.scene2,
-            self.image,
-            self.graphicsView_MainFig,
-            self.graphicsView_subImage,
-            self.ROI_center, 'reflection',
-            self.reflect_height,
-            self.reflect_width,
-            self.blank_height,
-            self.blank_width,
-            blank_center=self.blank_R_center,
-            Button=None,
-            Button2=None,
-            Button3=None,
-            Button4=self.Process_Button,
-            Button5=None,
-            reflection_center=self.reflection_center)
+        self.Face_ROI_exist = True
+
 
     def setup_menubar(self, MainWindow):
         self.menubar = QtWidgets.QMenuBar(MainWindow)
@@ -560,10 +121,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Image_H_Layout = QtWidgets.QHBoxLayout()
         self.Image_H_Layout.addWidget(self.leftGroupBox)
         self.Image_H_Layout.addWidget(self.rightGroupBox)
-        self.graphicsView_MainFig = CustomGraphicsView(self.centralwidget)
+        self.graphicsView_MainFig = GUI_Intract(self.centralwidget)
         self.graphicsView_MainFig.parent = self
         self.Image_H_Layout.addWidget(self.graphicsView_MainFig)
-        self.graphicsView_subImage = CustomGraphicsView(self.centralwidget)
+        self.graphicsView_subImage = GUI_Intract(self.centralwidget)
         self.graphicsView_subImage.parent = self
         self.graphicsView_subImage.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.graphicsView_subImage.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
@@ -674,7 +235,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.LoadVideo.triggered.connect(self.load_handler.load_video)
         self.load_np.triggered.connect(self.load_handler.open_image_folder)
         self.saturation_Slider.valueChanged.connect(self.satur_value)
-        self.Slider_frame.valueChanged.connect(self.get_np_frame)
+        self.Slider_frame.valueChanged.connect(self.Display_handler.update_frame_view)
         self.lineEdit_frame_number.editingFinished.connect(self.update_slider)
         self.Process_Button.clicked.connect(self.process_handler.process)
         self.Add_eyecorner.clicked.connect(self.eyecorner_clicked)
@@ -724,11 +285,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def nwb_check(self):
         return self.checkBox_nwb.isChecked()
 
-    def set_pupil_roi_pressed(self, value):
-        self.Pupil_ROI_exist = value
 
-    def set_Face_ROI_pressed(self, value):
-        self.Face_ROI_exist = value
+
 
 
 
@@ -737,7 +295,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.saturation = value
         if self.sub_region is not None:
             _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.scene2,
-                                                 "pupil", self.saturation, save_path = save_path)
+                                                 "pupil", self.saturation)
         else:
             pass
 
@@ -795,8 +353,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         else:
             self.warning("Process Pupil first")
 
-
-
     def Undo_blinking(self):
         self.final_pupil_area = np.array(self.pupil_dilation)
         self.X_saccade_updated = np.array(self.X_saccade)
@@ -807,42 +363,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def eyecorner_clicked(self):
         self.eye_corner_mode = True
         print("is true", self.eye_corner_mode )
-
-
-    def get_np_frame(self, frame):
-        self.frame = frame
-        if self.NPY == True:
-            self.image = functions.load_npy_by_index(self.folder_path,
-                                                           self.frame)
-        elif self.video == True:
-            self.image = functions.load_frame_by_index(self.folder_path,
-                                                            self.frame)
-        self.lineEdit_frame_number.setText(str(self.Slider_frame.value()))
-        self.graphicsView_MainFig, self.scene = functions.display_region\
-            (self.image,self.graphicsView_MainFig, self.image_width, self.image_height, self.scene)
-
-
-
-        if self.Pupil_ROI_exist:
-            self.pupil_ROI = self.graphicsView_MainFig.pupil_ROI
-            self.sub_region, self.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.image)
-            self.pupil_ellipse_items = functions.display_sub_region(self.graphicsView_subImage, self.sub_region,
-                                                                            self.scene2,
-                                                                            "pupil", self.saturation, save_path,
-                                                                            self.blank_ellipse, self.reflect_ellipse,
-                                                                            self.pupil_ellipse_items, Detect_pupil=True)
-        else:
-            if self.Face_ROI_exist:
-                self.face_ROI = self.graphicsView_MainFig.face_ROI
-                self.sub_region, self.face_ROI = functions.show_ROI(self.face_ROI, self.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region,
-                                                         self.scene2,
-                                                         "face", self.saturation, save_path,
-                                                         self.blank_ellipse, self.reflect_ellipse,
-                                                         self.pupil_ellipse_items, Detect_pupil=False
-                                                         )
-            else:
-                pass
 
 
 

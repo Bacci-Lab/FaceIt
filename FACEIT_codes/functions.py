@@ -1,4 +1,4 @@
-from tqdm import tqdm
+import cv2
 import os.path
 import numpy as np
 from pynwb import NWBFile, NWBHDF5IO
@@ -40,142 +40,6 @@ def initialize_attributes(obj, image):
     obj.eye_corner_center = None
 
 
-
-def enable_Button(Button):
-    Button.setEnabled(True)
-def disable_Button(Button):
-    Button.setEnabled(False)
-def Add_ROI(scene,scene2,image,graphicsView_MainFig,graphicsView_subImage, ROI_center, ROI_type, reflect_height,
-            reflect_width,blank_height,blank_width, blank_center = None,
-             Button= None,Button2 = None,Button3 = None,Button4 = None, Button5=None, reflection_center=None,save_path = None):
-
-    saturation = 0
-    if ROI_type == 'pupil':
-        pupil_ROI, pupil_handles = draw_ROI(ROI_center, 'pupil', 50, 80,10, color='palevioletred')
-        scene.addItem(pupil_ROI)
-        for handle in pupil_handles.values():
-            scene.addItem(handle)
-        graphicsView_MainFig.pupil_handles = pupil_handles
-        graphicsView_MainFig.pupil_ROI = pupil_ROI
-
-        sub_region, Pupil_frame = show_ROI(pupil_ROI, image)
-        _ =display_sub_region(graphicsView_subImage, sub_region, scene2, ROI_type,saturation, save_path)
-        enable_Button(Button)
-        enable_Button(Button2)
-        enable_Button(Button4)
-        enable_Button(Button5)
-        disable_Button(Button3)
-
-
-    elif ROI_type == 'face':
-        face_ROI, face_handles = draw_ROI(ROI_center, 'face', 50, 80,10, color='palegreen')
-        scene.addItem(face_ROI)
-        for handle in face_handles.values():
-            scene.addItem(handle)
-        graphicsView_MainFig.face_handles = face_handles
-        graphicsView_MainFig.face_ROI = face_ROI
-        ####################################################
-        sub_region, Face_frame = show_ROI(face_ROI, image)
-        _ = display_sub_region(graphicsView_subImage, sub_region, scene2,ROI_type,saturation, save_path = None)
-        disable_Button(Button3)
-        enable_Button(Button4)
-
-    elif ROI_type == 'reflection':
-        reflect_ROI, reflect_handles = draw_ROI(reflection_center, 'reflection', reflect_height, reflect_width, 3 , color='gray')
-        scene2.addItem(reflect_ROI)
-        for handle in reflect_handles.values():
-            scene2.addItem(handle)
-        graphicsView_subImage.reflect_ROIs.append(reflect_ROI)
-        graphicsView_subImage.reflect_handles_list.append(reflect_handles)
-        graphicsView_subImage.Reflect_centers.append(reflection_center)
-        graphicsView_subImage.reflect_heights.append(reflect_height)
-        graphicsView_subImage.reflect_widths.append(reflect_width)
-        ########################################################
-    elif ROI_type == 'blank':
-
-        blank_ROI, blank_handles = draw_ROI(blank_center, 'blank', blank_height,
-                                                                       blank_width,3, color='black')
-        scene2.addItem(blank_ROI)
-        for handle in blank_handles.values():
-            scene2.addItem(handle)
-        graphicsView_subImage.blank_ROIs.append(blank_ROI)
-        graphicsView_subImage.blank_handles_list.append(blank_handles)
-        graphicsView_subImage.blank_centers.append(blank_center)
-        graphicsView_subImage.blank_heights.append(blank_height)
-        graphicsView_subImage.blank_widths.append(blank_width)
-        #####################################################
-    elif ROI_type == 'pupil_detection':
-        pupil_detection, _ = draw_ROI(ROI_center, 'pupil_detection', 50, 80,10, color='red')
-        scene.addItem(pupil_detection)
-        graphicsView_MainFig.pupil_detection = pupil_detection
-        ####################################################
-        sub_region, Face_frame = show_ROI(pupil_detection, image)
-        _ = display_sub_region(graphicsView_subImage, sub_region, scene2,ROI_type,saturation, save_path = None)
-
-def add_eyecorner(x_pos , y_pos, scene2, graphicsView_subImage):
-    if hasattr(graphicsView_subImage, 'eyecorner') and graphicsView_subImage.eyecorner is not None:
-        scene2.removeItem(graphicsView_subImage.eyecorner)
-    diameter = 2
-    eyecorner = QtWidgets.QGraphicsEllipseItem(x_pos-diameter/2 , y_pos-diameter/2, diameter , diameter)
-    pen = QtGui.QPen(QtGui.QColor("peru"))
-    pen.setWidth(0)
-    eyecorner.setPen(pen)
-    brush = QtGui.QBrush(QtGui.QColor("peru"))
-    eyecorner.setBrush(brush)
-    scene2.addItem(eyecorner)
-    graphicsView_subImage.eyecorner = eyecorner
-    eye_corner_center = (x_pos , y_pos)
-    return eye_corner_center
-
-def draw_ROI(oval_center, ROI_type, ROI_height,ROI_width ,handle_size, color= 'gold'):
-    if ROI_type == 'pupil':
-        color2 ='teal'
-        ROI = QtWidgets.QGraphicsEllipseItem(oval_center[0] - ROI_width / 2,
-                                                 oval_center[1] - ROI_height / 2,
-                                                 ROI_width,
-                                                 ROI_height)
-    elif ROI_type == 'face':
-        color2 = 'teal'
-        ROI = QtWidgets.QGraphicsRectItem(oval_center[0] - ROI_width / 2,
-                                                 oval_center[1] - ROI_height / 2,
-                                                 ROI_width,
-                                                 ROI_height)
-    elif ROI_type == 'reflection':
-        color2 = 'gray'
-        ROI = QtWidgets.QGraphicsEllipseItem(oval_center[0] - ROI_width / 2,
-                                                 oval_center[1] - ROI_height / 2,
-                                                 ROI_width,
-                                                 ROI_height)
-    elif ROI_type == 'blank':
-        color2 = 'blue'
-        ROI = QtWidgets.QGraphicsRectItem(oval_center[0] - ROI_width / 2,
-                                                 oval_center[1] - ROI_height / 2,
-                                                 ROI_width,
-                                                 ROI_height)
-    elif ROI_type == "pupil_detection":
-        color2 = 'red'
-        ROI = QtWidgets.QGraphicsEllipseItem(oval_center[0] - ROI_width / 2,
-                                                 oval_center[1] - ROI_height / 2,
-                                                 ROI_width,
-                                                 ROI_height)
-
-
-    pen = QtGui.QPen(QtGui.QColor(color))
-    pen.setWidth(0)
-    ROI.setPen(pen)
-
-    handle_size = handle_size
-    handles = {
-        'right': QtWidgets.QGraphicsRectItem(oval_center[0] + ROI_width // 2 - handle_size // 2, oval_center[1] - handle_size // 2,
-                           handle_size, handle_size)
-
-    }
-    handle_pen = QtGui.QPen(QtGui.QColor(color2))
-    handle_pen.setWidth(0)
-    for handle in handles.values():
-        handle.setPen(handle_pen)
-
-    return ROI, handles
 
 def show_ROI(ROI, image):
     sub_image = ROI.rect()
@@ -236,7 +100,7 @@ def detect_pupil(chosen_frame_region, blank_ellipse, reflect_ellipse):
     return pupil_ROI0, center, width, height, angle, pupil_area
 
 
-def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation, save_path, blank_ellipse = None,
+def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  blank_ellipse = None,
                        reflect_ellipse = None, pupil_ellipse_items = None, Detect_pupil = False):
     if pupil_ellipse_items is not None:
         scene2.removeItem(pupil_ellipse_items)
@@ -253,9 +117,9 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation, save_p
     # Add alpha channel to sub_region
     sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
 
-    if save_path:
-        cv2.imwrite(save_path, sub_region_rgba, [cv2.IMWRITE_PNG_COMPRESSION, 0])
-        np.save(save_path, sub_region_rgba)
+    # if save_path:
+    #     cv2.imwrite(save_path, sub_region_rgba, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+    #     np.save(save_path, sub_region_rgba)
 
     bytes_per_line = width * 4
     qimage = QtGui.QImage(sub_region_rgba.data.tobytes(), width, height, bytes_per_line, QtGui.QImage.Format_RGBA8888)
@@ -327,10 +191,6 @@ def load_npy_by_index(folder_path, index, image_height = 384):
     image_width = int(image_height * aspect_ratio)
     image = cv2.resize(image, (image_width, image_height), interpolation = cv2.INTER_AREA)
     return image
-
-
-import cv2
-
 
 def load_frame_by_index(video_path, index, image_height=384):
     cap = cv2.VideoCapture(video_path)
@@ -414,51 +274,21 @@ def set_button_style(widget, widget_type):
         }}
     """)
 
-def save_nwb():
+def add_eyecorner(x_pos , y_pos, scene2, graphicsView_subImage):
+    if hasattr(graphicsView_subImage, 'eyecorner') and graphicsView_subImage.eyecorner is not None:
+        scene2.removeItem(graphicsView_subImage.eyecorner)
+    diameter = 2
+    eyecorner = QtWidgets.QGraphicsEllipseItem(x_pos-diameter/2 , y_pos-diameter/2, diameter , diameter)
+    pen = QtGui.QPen(QtGui.QColor("peru"))
+    pen.setWidth(0)
+    eyecorner.setPen(pen)
+    brush = QtGui.QBrush(QtGui.QColor("peru"))
+    eyecorner.setBrush(brush)
+    scene2.addItem(eyecorner)
+    graphicsView_subImage.eyecorner = eyecorner
+    eye_corner_center = (x_pos , y_pos)
+    return eye_corner_center
 
 
-    # Step 1: Create an NWBFile object with the required metadata
-    nwbfile = NWBFile(
-        session_description='Pupil dilation experiment',  # Description of the experiment
-        identifier='pupil_dilation_data',  # Unique ID for this session
-        session_start_time=datetime.now(),  # Time when the session started
-        file_create_date=datetime.now(),  # Creation time of the file
-    )
-
-    # Step 2: Add pupil dilation data (as a time series)
-    # Replace this with your actual pupil dilation data
-    pupil_dilation = np.random.rand(1000)  # Dummy data for pupil dilation
-    saccade_data = np.random.rand(1000)  # Dummy data for saccade
-
-    # Time in seconds
-    time_stamps = np.arange(0, 1000, 1) * 0.001  # Example time stamps in seconds
-
-    # Create TimeSeries objects for pupil dilation and saccade
-    from pynwb.base import TimeSeries
-
-    pupil_dilation_series = TimeSeries(
-        name='Pupil Dilation',
-        data=pupil_dilation,
-        unit='arbitrary units',  # Replace with appropriate unit (e.g., 'mm' for pupil diameter)
-        timestamps=time_stamps
-    )
-
-    saccade_series = TimeSeries(
-        name='Saccade',
-        data=saccade_data,
-        unit='arbitrary units',  # Replace with appropriate unit
-        timestamps=time_stamps
-    )
-
-    # Add TimeSeries data to the NWBFile
-    nwbfile.add_acquisition(pupil_dilation_series)
-    nwbfile.add_acquisition(saccade_series)
-
-    # Step 3: Write the NWB file to disk
-    output_filename = 'pupil_dilation_data.nwb'
-    with NWBHDF5IO(output_filename, 'w') as io:
-        io.write(nwbfile)
-
-    print(f"Data successfully saved to {output_filename}")
 
 

@@ -67,3 +67,49 @@ class SaveHandler:
             logging.info(f"Data successfully saved to {save_directory}")
         except Exception as e:
             logging.error(f"Failed to save data: {e}")
+
+    # def save_nwb():
+    #
+    #     # Step 1: Create an NWBFile object with the required metadata
+    #     nwbfile = NWBFile(
+    #         session_description='Pupil dilation experiment',  # Description of the experiment
+    #         identifier='pupil_dilation_data',  # Unique ID for this session
+    #         session_start_time=datetime.now(),  # Time when the session started
+    #         file_create_date=datetime.now(),  # Creation time of the file
+    #     )
+    #
+    #     # Step 2: Add pupil dilation data (as a time series)
+    #     # Replace this with your actual pupil dilation data
+    #     pupil_dilation = np.random.rand(1000)  # Dummy data for pupil dilation
+    #     saccade_data = np.random.rand(1000)  # Dummy data for saccade
+    #
+    #     # Time in seconds
+    #     time_stamps = np.arange(0, 1000, 1) * 0.001  # Example time stamps in seconds
+    #
+    #     # Create TimeSeries objects for pupil dilation and saccade
+    #     from pynwb.base import TimeSeries
+    #
+    #     pupil_dilation_series = TimeSeries(
+    #         name='Pupil Dilation',
+    #         data=pupil_dilation,
+    #         unit='arbitrary units',  # Replace with appropriate unit (e.g., 'mm' for pupil diameter)
+    #         timestamps=time_stamps
+    #     )
+    #
+    #     saccade_series = TimeSeries(
+    #         name='Saccade',
+    #         data=saccade_data,
+    #         unit='arbitrary units',  # Replace with appropriate unit
+    #         timestamps=time_stamps
+    #     )
+    #
+    #     # Add TimeSeries data to the NWBFile
+    #     nwbfile.add_acquisition(pupil_dilation_series)
+    #     nwbfile.add_acquisition(saccade_series)
+    #
+    #     # Step 3: Write the NWB file to disk
+    #     output_filename = 'pupil_dilation_data.nwb'
+    #     with NWBHDF5IO(output_filename, 'w') as io:
+    #         io.write(nwbfile)
+    #
+    #     print(f"Data successfully saved to {output_filename}")
