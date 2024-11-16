@@ -174,6 +174,7 @@ class ProcessHandler:
 
         # Store the final pupil area as the interpolated result
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
+        return combined_blinking_ids
     def pupil_dilation_comput(self, images, saturation, blank_ellipse, reflect_ellipse):
         """
         Computes pupil dilation and related metrics from a series of images.

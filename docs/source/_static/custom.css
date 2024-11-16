@@ -5,3 +5,11 @@ body {
 h1, h2, h3, h4, h5, h6 {
     font-family: "Georgia", serif;  /* Customize heading fonts if needed */
 }
+.wy-side-nav-search, .wy-nav-side {
+    background-color: #5f6a6a;  /* Replace with your desired color (e.g., dark gray) */
+}
+
+/* Change the page background color */
+.wy-nav-content {
+    background-color: #d5dbdb;  /* Replace with your desired page background color */
+}

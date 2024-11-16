@@ -150,7 +150,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Main_V_Layout.addLayout(self.vertical_process_Layout)
 
     def change_cursor_color(self):
-        self.find_grooming_threshold = True
+        if hasattr(self, 'motion_energy'):
+            self.find_grooming_threshold = True
+        else:
+            pass
     def setup_buttons(self):
         self.mainLayout = QtWidgets.QHBoxLayout(self.centralwidget)
         self.leftGroupBox = QtWidgets.QGroupBox(self.centralwidget)
@@ -214,6 +217,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.leftGroupBoxLayout.addWidget(self.checkBox_pupil)
         self.checkBox_nwb = QtWidgets.QCheckBox("Save nwb")
         self.leftGroupBoxLayout.addWidget(self.checkBox_nwb)
+        self.save_video = QtWidgets.QCheckBox("Save Video")
+        self.leftGroupBoxLayout.addWidget(self.save_video)
 
 
     def setup_saturation(self):
@@ -324,7 +329,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):
-            self.process_handler.detect_blinking(self.pupil_dilation, self.width, self.height, self.X_saccade, self.Y_saccade)
+            self.blinking_ids = self.process_handler.detect_blinking(self.pupil_dilation, self.width, self.height, self.X_saccade, self.Y_saccade)
+            print("self.blinking_ids =", self.blinking_ids )
 
         else:
             print("self.pupil_dilation does not exist")
@@ -338,11 +344,14 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.plot_handler.plot_result(self.facemotion_without_grooming, self.graphicsView_whisker, "motion")
 
     def undo_grooming(self):
-        self.plot_handler.plot_result(self.motion_energy, self.graphicsView_whisker, "motion")
+        if hasattr(self, 'motion_energy'):
+            self.plot_handler.plot_result(self.motion_energy, self.graphicsView_whisker, "motion")
 
     def init_undo_blinking(self):
         if hasattr(self, 'pupil_dilation'):
+            self.blinking = np.full((len(self.pupil_dilation),), np.nan)
             self.Undo_blinking()
+
 
         else:
             self.warning("Process Pupil first")

@@ -8,15 +8,18 @@ FACEIT Documentation and User Guide
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Getting Started
 
    introduction
    installation
    output
+   inputs
 
-Contents:
---------
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. toctree::
+   :maxdepth: 2
+   :caption: How the Pipeline Works: Methods
+
+   FaceMotion_Computation
+   Pupil_detection
+   Saccade

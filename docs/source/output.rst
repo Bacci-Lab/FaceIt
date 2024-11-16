@@ -1,6 +1,6 @@
-========================
-Output of the FaceIt Pipeline
-========================
+========
+Outputs
+========
 
 The FaceIt pipeline generates multiple outputs that are stored in different formats, including `.npz` and `.nwb` files, as well as visualization images.
 
@@ -25,7 +25,7 @@ Outputs Overview
 
 
 2. **.nwb File (Neurodata Without Borders)**
-   - The `.nwb` file, saved as `faceit.nwb`, contains structured time-series data for advanced data handling and analysis:
+   - If you check "Save nwb" check box a `.nwb` file will be saved as `faceit.nwb`, contains structured time-series data for advanced data handling and analysis:
      - **TimeSeries Data**:
        - **`pupil_center`**, **`pupil_center_X`**, **`pupil_center_y`**
        - **`pupil_dilation_blinking_corrected`**, **`pupil_dilation`**

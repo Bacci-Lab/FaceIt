@@ -51,6 +51,11 @@ class SaveHandler:
             self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
             self.app_instance.grooming_ids = np.full((len_data,), np.nan)
             self.app_instance.grooming_thr = np.full(1, np.nan)
+        if not hasattr(self.app_instance, 'blinking_ids'):
+            self.app_instance.blinking_ids = np.full((len_data,), np.nan)
+            print("blinking doesnt exist")
+        else:
+            print("blinking exist")
 
 
         # Save data
@@ -68,7 +73,8 @@ class SaveHandler:
             motion_energy=self.app_instance.motion_energy,
             motion_energy_without_grooming = self.app_instance.facemotion_without_grooming,
             grooming_ids = self.app_instance.grooming_ids,
-            grooming_threshold = self.app_instance.grooming_thr
+            grooming_threshold = self.app_instance.grooming_thr,
+            blinking_ids = self.app_instance.blinking_ids
         )
 
     def save_data(self, **data_dict):
@@ -230,6 +236,13 @@ class SaveHandler:
                 timestamps=time_stamps
             )
 
+            blinking_ids = TimeSeries(
+                name='blinking ids',
+                data=self.app_instance.blinking_ids,
+                unit='frame',
+                timestamps=time_stamps
+            )
+
 
             processing_module = ProcessingModule(
                 name='eye facial movement',
@@ -241,6 +254,7 @@ class SaveHandler:
             # Add the TimeSeries data to the processing module
             processing_module.add_data_interface(pupil_dilation_series)
             processing_module.add_data_interface(pupil_dilation_blinking_corrected_series)
+            processing_module.add_data_interface(blinking_ids)
             processing_module.add_data_interface(pupil_center_series)
             processing_module.add_data_interface(pupil_center_y_series)
             processing_module.add_data_interface(pupil_center_X_series)
@@ -334,6 +348,8 @@ class SaveHandler:
         data (np.ndarray): The main data array for reference to calculate plot boundaries.
         """
         if saccade is not None:
+            if saccade.shape[1] == len(data):
+                saccade = saccade[:, 1:]  # Trim the first column to match the length
             data_max = np.max(data)
             range_val = np.max(data) - np.min(data)
             y_min = data_max + range_val / 10
