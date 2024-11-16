@@ -1,23 +1,12 @@
+from pynwb import NWBHDF5IO
 import numpy as np
 
-# Path to the .npz file
-file_path = r'C:\Users\faezeh.rabbani\PycharmProjects\FaceProject\test_data\test_images/faceit.npz'
-
-# Load the .npz file
-data = np.load(file_path)
-
-# List all the keys (array names) in the file
-print("Available data keys:", data.files)
-
-# Access specific data arrays
+data = np.load(r'C:\Users\faezeh.rabbani\PycharmProjects\FaceProject\test_data\test_images/faceit.npz')
 pupil_center = data['pupil_center']
-pupil_area = data['pupil_dilation']
 motion_energy = data['motion_energy']
-
-# Print or use the data as needed
-print("Pupil Center:", pupil_center)
-print("Pupil Dilation:", pupil_area)
-print("Motion Energy:", motion_energy)
-
-# Close the .npz file (optional but good practice)
-data.close()
+print(motion_energy)
+# with NWBHDF5IO(r'C:\Users\faezeh.rabbani\PycharmProjects\FaceProject\test_data\test_images/faceit.nwb', 'r') as io:
+#     nwbfile = io.read()
+#     processing = nwbfile.processing['eye facial movement']
+#     pupil_center_data = processing.data_interfaces['pupil_center'].data[:]
+#     print(pupil_center_data)
