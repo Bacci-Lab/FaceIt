@@ -59,13 +59,15 @@ class PlotHandler:
     def _plot_saccade(self, ax: plt.Axes, saccade: np.ndarray, data: np.ndarray):
         """Plots the saccade data as a colormap if provided."""
         if saccade is not None:
+            if saccade.shape[1] == len(data):
+                saccade = saccade[:, 1:]  # Trim the first column to match the length
+
             data_max = np.max(data)
             range_val = np.max(data) - np.min(data)
             y_min = data_max + range_val / 10
             y_max = data_max + range_val / 5
             x_values = np.arange(len(data))
             ax.pcolormesh(x_values, [y_min, y_max], saccade, cmap='RdYlGn', shading='flat')
-
     def _customize_plot(
             self,
             fig: plt.Figure,
@@ -169,7 +171,6 @@ class PlotHandler:
             if self.app_instance.find_grooming_threshold:
                 if event.inaxes == ax and event.ydata is not None:
                     self.app_instance.grooming_thr = event.ydata
-                    print(f"Clicked at y: {event.ydata:.2f}")
                     self.app_instance.find_grooming_threshold = False
                     self.app_instance.lineEdit_grooming_y.setText(str(int(event.ydata)))
                     self.app_instance.display_removed_grooming(self.app_instance.grooming_thr, self.app_instance.motion_energy)

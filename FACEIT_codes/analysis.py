@@ -104,8 +104,13 @@ class ProcessHandler:
 
         # Ensure the progress bar is set to complete
         self.app_instance.progressBar.setValue(total_files)
+        # Duplicate the first computed value at the beginning of the list to avoid data length change
+        if motion_energy_values:
+            first_value = motion_energy_values[0]
+            motion_energy_values.insert(0, first_value)
 
         return motion_energy_values
+
     def load_images_if_needed(self):
         """Loads images if they are not already loaded."""
         if not self.app_instance.Image_loaded:
@@ -255,7 +260,7 @@ class ProcessHandler:
             ])
         else:
             # If eye corner center is not defined, fill with NaNs
-            pupil_distance_from_corner = np.full((len(X_saccade),), np.nan)
+            pupil_distance_from_corner = np.full(len(pupil_center), np.nan)
 
         # Return all computed pupil metrics
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
@@ -273,13 +278,54 @@ class ProcessHandler:
         """
         # Compute saccade differences using numpy's vectorized operations
         saccade = np.diff(pupil_center_i).astype(float)
+        print("this is saccade ", saccade)
+
+        # Duplicate the first computed value at the beginning of the list to avoid changing dataset length
+        if saccade.size > 0:
+            first_value = saccade[0]
+            saccade = np.insert(saccade, 0, first_value)
+
 
         # Set small movements (absolute value < 2) to NaN for better filtering of significant movements
         saccade[abs(saccade) < 2] = np.nan
 
+
         # Reshape the saccade array to be 2D (1 row) for consistency
         saccade = saccade.reshape(1, -1)
 
+
+
         return saccade
+
+    def remove_grooming(self, grooming_thr, facemotion):
+        """
+        Caps the 'facemotion' data at a specified grooming threshold.
+
+        Parameters:
+        grooming_thr (float): The threshold above which 'facemotion' values are capped.
+        facemotion (array-like): The array of facial motion data to be processed.
+
+        Returns:
+        tuple: A tuple containing:
+            - facemotion_without_grooming (np.ndarray): The 'facemotion' array with values capped at the threshold.
+            - grooming_ids (np.ndarray): Indices of elements in 'facemotion' that were capped.
+            - grooming_thr (float): The grooming threshold used for capping.
+        """
+        # Ensure 'facemotion' is converted to a NumPy array for array operations.
+        facemotion = np.asarray(facemotion)
+
+        # Identify indices where 'facemotion' exceeds the grooming threshold.
+        grooming_ids = np.where(facemotion >= grooming_thr)
+
+        # Cap the 'facemotion' values at the threshold.
+        facemotion_without_grooming = np.minimum(facemotion, grooming_thr)
+
+        # Store the modified array as an attribute in the app instance.
+        self.app_instance.facemotion_without_grooming = facemotion_without_grooming
+
+        # Return the modified array, indices of capped values, and the threshold.
+        return facemotion_without_grooming, grooming_ids, grooming_thr
+
+
 
 

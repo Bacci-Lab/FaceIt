@@ -4,6 +4,7 @@ from pynwb import NWBFile, NWBHDF5IO, ProcessingModule
 from pynwb.base import TimeSeries
 import os
 import logging
+import matplotlib.pyplot as plt
 
 # Set up logging for better traceability
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,6 +24,8 @@ class SaveHandler:
         Initializes data for saving. Checks if pupil and face data exist;
         if not, it fills the arrays with NaNs.
         """
+
+        self.save_directory = self._make_dir(self.app_instance.save_path)
 
         if hasattr(self.app_instance, 'pupil_center') and self.app_instance.pupil_center is not None:
             len_data = len(self.app_instance.pupil_center)
@@ -44,6 +47,11 @@ class SaveHandler:
         if not self.app_instance.face_check():
             self.app_instance.motion_energy = np.full((len_data,), np.nan)
             self.app_instance.facemotion_without_grooming = np.full((len_data,), np.nan)
+        if not hasattr(self, 'facemotion_without_grooming') or self.facemotion_without_grooming is None:
+            self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
+            self.app_instance.grooming_ids = np.full((len_data,), np.nan)
+            self.app_instance.grooming_thr = np.full(1, np.nan)
+
 
         # Save data
         self.save_data(
@@ -58,7 +66,9 @@ class SaveHandler:
             width=self.app_instance.width,
             height=self.app_instance.height,
             motion_energy=self.app_instance.motion_energy,
-            motion_energy_without_grooming = self.app_instance.facemotion_without_grooming
+            motion_energy_without_grooming = self.app_instance.facemotion_without_grooming,
+            grooming_ids = self.app_instance.grooming_ids,
+            grooming_threshold = self.app_instance.grooming_thr
         )
 
     def save_data(self, **data_dict):
@@ -68,7 +78,7 @@ class SaveHandler:
         Parameters:
         data_dict (dict): Key-value pairs where keys are data attribute names and values are data arrays.
         """
-        save_directory = os.path.join(self.app_instance.save_path, "faceit.npz")
+        save_directory = os.path.join(self.save_directory, "faceit.npz")
 
         try:
             # Save the data dictionary as a compressed .npz file
@@ -77,10 +87,15 @@ class SaveHandler:
         except Exception as e:
             logging.error(f"Failed to save data: {e}")
         try:
-            nwb_save_path = os.path.join(self.app_instance.save_path, "faceit.nwb")
+            nwb_save_path = os.path.join(self.save_directory, "faceit.nwb")
             self.save_nwb(nwb_save_path)
         except Exception as e:
             logging.error(f"Failed to save .nwb data: {e}")
+        try:
+            self.save_fig()
+        except Exception as e:
+            logging.error(f"Failed to save image: {e}")
+
 
     def save_nwb(self, output_path):
         """
@@ -117,6 +132,8 @@ class SaveHandler:
             if not self.app_instance.face_check():
                 self.app_instance.motion_energy = np.full((len_data,), np.nan)
                 self.app_instance.facemotion_without_grooming = np.full((len_data,), np.nan)
+            if not hasattr(self, 'facemotion_without_grooming') or self.facemotion_without_grooming is None:
+                self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
 
             time_stamps = np.arange(0, len_data, 1)  #time stamps in frame
 
@@ -199,6 +216,20 @@ class SaveHandler:
                 timestamps=time_stamps
             )
 
+            grooming_id_series = TimeSeries(
+                name='grooming ids',
+                data=self.app_instance.grooming_ids,
+                unit='frame',
+                timestamps=time_stamps
+            )
+
+            grooming_threshold = TimeSeries(
+                name='grooming threshold',
+                data=self.app_instance.grooming_thr,
+                unit='frame',
+                timestamps=time_stamps
+            )
+
 
             processing_module = ProcessingModule(
                 name='eye facial movement',
@@ -220,6 +251,9 @@ class SaveHandler:
             processing_module.add_data_interface(pupil_distance_from_corner_series)
             processing_module.add_data_interface(motion_energy_series)
             processing_module.add_data_interface(motion_energy_without_grooming_series)
+            processing_module.add_data_interface(grooming_id_series)
+            processing_module.add_data_interface(grooming_threshold)
+
 
             with NWBHDF5IO(output_path, 'w') as io:
                 io.write(nwbfile)
@@ -227,3 +261,88 @@ class SaveHandler:
             print(f"Data successfully saved to {output_path}")
         else:
             print("NWB check failed; data not saved.")
+
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    def save_fig(self):
+        """
+        Saves figures for pupil dilation and motion energy data.
+
+        """
+        # Check and save pupil dilation data
+        if hasattr(self.app_instance, 'pupil_dilation') and self.app_instance.pupil_dilation is not None:
+            self._save_single_fig(
+                data=self.app_instance.pupil_dilation,
+                label='pupil_dilation',
+                color='palegreen',
+                filename="pupil_area.png",
+                saccade_data=self.app_instance.X_saccade_updated
+            )
+
+        # Check and save motion energy data
+        if hasattr(self.app_instance, 'motion_energy') and self.app_instance.motion_energy is not None:
+            self._save_single_fig(
+                data=self.app_instance.motion_energy,
+                label='motion_energy',
+                color='salmon',
+                filename="motion_energy.png"
+            )
+
+    def _save_single_fig(self, data, label, color, filename, saccade_data=None):
+        """
+        Helper function to plot data and save a figure.
+
+        Parameters:
+        data (np.ndarray): The main data to plot.
+        label (str): The label for the plot.
+        color (str): The color of the plot line.
+        filename (str): The name of the file to save the plot as.
+        saccade_data (np.ndarray, optional): Saccade data to overlay on the plot.
+        """
+        fig, ax = plt.subplots()
+        save_path = os.path.join(self.save_directory, filename)
+        self._plot_data(ax, data, label, color)
+
+        # Plot saccade data if provided
+        if saccade_data is not None:
+            self._plot_saccade(ax, saccade_data, data)
+        fig.savefig(save_path, dpi=300)
+        plt.close(fig)
+
+    def _plot_data(self, ax: plt.Axes, data: np.ndarray, label: str, color: str):
+        """
+        Plots the main data on the provided axes.
+
+        Parameters:
+        ax (plt.Axes): The axes to plot on.
+        data (np.ndarray): The data to plot.
+        label (str): The label for the plot line.
+        color (str): The color of the plot line.
+        """
+        x_values = np.arange(len(data))
+        ax.plot(x_values, data, color=color, label=label, linestyle='--')
+
+    def _plot_saccade(self, ax: plt.Axes, saccade: np.ndarray, data: np.ndarray):
+        """
+        Plots the saccade data as a colormap overlay if provided.
+
+        Parameters:
+        ax (plt.Axes): The axes to plot on.
+        saccade (np.ndarray): The saccade data to overlay.
+        data (np.ndarray): The main data array for reference to calculate plot boundaries.
+        """
+        if saccade is not None:
+            data_max = np.max(data)
+            range_val = np.max(data) - np.min(data)
+            y_min = data_max + range_val / 10
+            y_max = data_max + range_val / 5
+            x_values = np.arange(len(data))
+            ax.pcolormesh(x_values, [y_min, y_max], saccade, cmap='RdYlGn', shading='flat')
+
+    def _make_dir(self, base_path):
+        save_directory = os.path.join(base_path, "FaceIt")
+        if not os.path.exists(save_directory):
+            os.mkdir(save_directory)
+        return save_directory

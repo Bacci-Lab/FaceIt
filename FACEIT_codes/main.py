@@ -331,16 +331,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.warning("Process Pupil first")
 
 
-    def remove_grooming(self,grooming_thr, facemotion):
-        grooming_ids = np.where(facemotion>=grooming_thr)
-        facemotion = np.array(facemotion)
-        self.facemotion_without_grooming = np.copy(facemotion)
-        self.facemotion_without_grooming[grooming_ids] = grooming_thr
-        return self.facemotion_without_grooming
 
     def display_removed_grooming(self, grooming_thr, facemotion ):
-        print(" grooming_thr is ", grooming_thr )
-        self.facemotion_without_grooming = self.remove_grooming(grooming_thr, facemotion)
+        self.facemotion_without_grooming, self.grooming_ids, self.grooming_thr = self.process_handler.remove_grooming(grooming_thr, facemotion)
+        print("grooming_ids", self.grooming_ids)
         self.plot_handler.plot_result(self.facemotion_without_grooming, self.graphicsView_whisker, "motion")
 
     def undo_grooming(self):
