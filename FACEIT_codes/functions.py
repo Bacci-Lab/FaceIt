@@ -1,8 +1,6 @@
 import cv2
 import os.path
 import numpy as np
-from pynwb import NWBFile, NWBHDF5IO
-from datetime import datetime
 from FACEIT_codes import pupil_detection
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtGui import QPixmap
@@ -16,7 +14,6 @@ def initialize_attributes(obj, image):
     obj.Pupil_frame = None
     obj.sub_region = None
     obj.ROI_center = (obj.image_width // 2, obj.image_height // 2)
-    obj.reflect_ellipse = None
     obj.saturation = 0
     obj.frame = None
     obj.pupil_ROI = None
@@ -35,6 +32,7 @@ def initialize_attributes(obj, image):
     obj.eyecorner = None
     obj.eye_corner_center = None
     obj.erased_pixels = None
+    obj.reflection_pixels = None
 
 
 
@@ -71,7 +69,8 @@ def erase_pixels(erased_pixels, binary_image):
                 binary_image[y, x] = 0
     return binary_image
 
-def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse):
+
+def detect_pupil(chosen_frame_region, erased_pixels, reflection_pixels):
     sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
     _, binary_image = cv2.threshold(sub_region_2Dgray, 200, 255, cv2.THRESH_BINARY_INV)
 
@@ -79,17 +78,10 @@ def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse):
 
     binary_image = pupil_detection.find_claster(binary_image)
 
-    if reflect_ellipse is not None:
-        All_reflects = [
-            [reflect_ellipse[0][variable], (reflect_ellipse[1][variable], reflect_ellipse[2][variable]), 0]
-            for variable in
-            range(len(reflect_ellipse[1]))]
-    else:
-        All_reflects = None
 
     for i in range(4):
         pupil_ROI0, center, width, height, angle = pupil_detection.find_ellipse(binary_image)
-        binary_image_update = pupil_detection.overlap_reflect(All_reflects, pupil_ROI0, binary_image)
+        binary_image_update = pupil_detection.overlap_reflect(reflection_pixels, pupil_ROI0, binary_image)
         binary_image = binary_image_update
 
     pupil_area = np.pi * (width*height)
@@ -97,7 +89,7 @@ def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse):
 
 
 def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erased_pixels = None,
-                       reflect_ellipse = None, pupil_ellipse_items = None, Detect_pupil = False):
+                       reflection_pixels = None, pupil_ellipse_items = None, Detect_pupil = False):
     if pupil_ellipse_items is not None:
         scene2.removeItem(pupil_ellipse_items)
     for item in scene2.items():
@@ -113,10 +105,6 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erase
     # Add alpha channel to sub_region
     sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
 
-    # if save_path:
-    #     cv2.imwrite(save_path, sub_region_rgba, [cv2.IMWRITE_PNG_COMPRESSION, 0])
-    #     np.save(save_path, sub_region_rgba)
-
     bytes_per_line = width * 4
     qimage = QtGui.QImage(sub_region_rgba.data.tobytes(), width, height, bytes_per_line, QtGui.QImage.Format_RGBA8888)
     pixmap = QPixmap.fromImage(qimage)
@@ -125,7 +113,7 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erase
         item.setZValue(-1)
     scene2.addItem(item)
     if Detect_pupil == True:
-        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = detect_pupil(sub_region_rgba, erased_pixels, reflect_ellipse)
+        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = detect_pupil(sub_region_rgba, erased_pixels, reflection_pixels)
         pupil_ellipse_item = QtWidgets.QGraphicsEllipseItem(int(P_detected_center[0] - P_detected_width), int(P_detected_center[1] - P_detected_height),
                                                             P_detected_width*2, P_detected_height*2)
 

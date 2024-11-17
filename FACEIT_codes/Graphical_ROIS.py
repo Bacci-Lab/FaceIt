@@ -57,9 +57,6 @@ class ROIHandler:
                 self.app_instance.graphicsView_MainFig.pupil_detection = roi_item
                 self._process_roi_display(roi_item, image, roi_type, saturation, kwargs)
 
-        elif roi_type == 'reflection':
-            self._add_to_scene2(roi_item, handles, 'reflect', roi_center, kwargs)
-
     def _draw_roi(self, center, roi_type, height, width, handle_size, color='gold'):
         """
         Draws an ROI item based on type.

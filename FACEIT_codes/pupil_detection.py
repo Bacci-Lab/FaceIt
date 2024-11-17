@@ -34,13 +34,23 @@ def find_ellipse(binary_image):
         ellipse = (int(mean[0]), int(mean[1])), (int(width * 2), int(height * 2)), np.degrees(angle)
         return ellipse, mean, width, height, angle
 
-def overlap_reflect(reflects, pupil_ellipse, binary_image):
+def includ_reflection(reflection_pixels, binary_image):
+    mask_reflect = np.zeros(binary_image.shape, dtype=np.uint8)
+    if reflection_pixels is not None:
+        # Ensure 'erased_pixels' is a list of (x, y) tuples where (x, y) is within the image bounds
+        for x, y in reflection_pixels:
+            if 0 <= y < mask_reflect.shape[0] and 0 <= x < mask_reflect.shape[1]:  # Check within image bounds
+                mask_reflect[y, x] = 255
+    return mask_reflect
+
+def overlap_reflect(reflects, reflection_pixels, binary_image):
     if reflects != None:
         mask_pupil = np.zeros(binary_image.shape, dtype = np.uint8)
-        mask_reflect = np.zeros(binary_image.shape, dtype = np.uint8)
-        cv2.ellipse(mask_pupil, pupil_ellipse, 255, -1)
-        for i in range(len(reflects)):
-            cv2.ellipse(mask_reflect, reflects[i], 255, -1)
+        # mask_reflect = np.zeros(binary_image.shape, dtype = np.uint8)
+        # cv2.ellipse(mask_pupil, pupil_ellipse, 255, -1)
+        # for i in range(len(reflects)):
+        #     cv2.ellipse(mask_reflect, reflects[i], 255, -1)
+        mask_reflect = includ_reflection(reflection_pixels, binary_image)
         common_mask = cv2.bitwise_and(mask_pupil, mask_reflect)
         coords_common = np.column_stack(np.where(common_mask > 0))
         binary_image[coords_common[:, 0], coords_common[:, 1]] = 255

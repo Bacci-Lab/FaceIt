@@ -46,20 +46,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         MainWindow.showMaximized()
         self.PupilROIButton.clicked.connect(lambda: self.execute_pupil_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
         self.FaceROIButton.clicked.connect(lambda: self.execute_face_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
-        self.ReflectionButton.clicked.connect(lambda: self.execute_reflect_roi())
-
-
-    def execute_reflect_roi(self):
-        # Call `add_roi` to display a 'reflection' ROI
-        self.roi_handler.Add_ROI(
-            roi_type='reflection',
-            roi_center=self.reflection_center,
-            image=self.image,
-            height=self.reflect_height,
-            width=self.reflect_width,
-            color='gray',
-            handle_size=3
-        )
 
 
     def execute_pupil_roi(self):
@@ -71,7 +57,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             width = 80,
             handle_size=10,
             color='palevioletred',
-            Button=self.ReflectionButton,
+            Button=self.reflect_brush,
             Button2=self.Erase_Button,
             Button3=self.PupilROIButton,
             Button4=self.Process_Button,
@@ -163,9 +149,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.leftGroupBoxLayout.addWidget(self.PupilROIButton)
         self.FaceROIButton = QtWidgets.QPushButton("Face ROI")
         self.leftGroupBoxLayout.addWidget(self.FaceROIButton)
-        self.ReflectionButton = QtWidgets.QPushButton("Add Reflection")
-        self.leftGroupBoxLayout.addWidget(self.ReflectionButton)
-        self.ReflectionButton.setEnabled(False)
         self.Erase_Button = QtWidgets.QPushButton("Erase")
         self.leftGroupBoxLayout.addWidget(self.Erase_Button)
         self.Erase_Button.setEnabled(False)
@@ -271,13 +254,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             QtWidgets.QWidget().setLayout(old_layout)
 
 
-    def set_frame(self, face_frame=None, Pupil_frame=None, reflect_ellipse = None):
+    def set_frame(self, face_frame=None, Pupil_frame=None):
         if face_frame is not None:
             self.Face_frame = face_frame
         if Pupil_frame is not None:
             self.Pupil_frame = Pupil_frame
-        if reflect_ellipse is not None:
-            self.reflect_ellipse = reflect_ellipse
 
 
 
@@ -318,7 +299,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def start_pupil_dilation_computation(self, images):
         pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
             X_saccade, Y_saccade, pupil_distance_from_corner, width, height =\
-            self.process_handler.pupil_dilation_comput(images, self.saturation, self.erased_pixels, self.reflect_ellipse)
+            self.process_handler.pupil_dilation_comput(images, self.saturation, self.erased_pixels, self.reflection_pixels)
         self.final_pupil_area = pupil_dilation
         self.X_saccade_updated = X_saccade
         self.Y_saccade_updated = Y_saccade

@@ -175,7 +175,7 @@ class ProcessHandler:
         # Store the final pupil area as the interpolated result
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
         return combined_blinking_ids
-    def pupil_dilation_comput(self, images, saturation, erased_pixels, reflect_ellipse):
+    def pupil_dilation_comput(self, images, saturation, erased_pixels, reflection_pixels):
         """
         Computes pupil dilation and related metrics from a series of images.
 
@@ -183,7 +183,7 @@ class ProcessHandler:
             images (list): List of image arrays.
             saturation (int): Saturation level for image processing.
 
-            reflect_ellipse (tuple): Parameters for reflection ellipse adjustment.
+            reflection_pixels (List): Parameters for reflection pixel adjustment.
 
         Returns:
             tuple: Computed pupil dilation, center coordinates (X and Y),
@@ -227,7 +227,7 @@ class ProcessHandler:
 
             # Detect pupil characteristics from the processed sub-region
             _, center, width, height, _, current_area = functions.detect_pupil(
-                sub_region_rgba, erased_pixels, reflect_ellipse
+                sub_region_rgba, erased_pixels, reflection_pixels
             )
 
             # Store computed metrics for the current frame
