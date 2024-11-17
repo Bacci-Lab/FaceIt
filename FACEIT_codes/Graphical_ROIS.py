@@ -60,9 +60,6 @@ class ROIHandler:
         elif roi_type == 'reflection':
             self._add_to_scene2(roi_item, handles, 'reflect', roi_center, kwargs)
 
-        elif roi_type == 'blank':
-            self._add_to_scene2(roi_item, handles, 'blank', roi_center, kwargs)
-
     def _draw_roi(self, center, roi_type, height, width, handle_size, color='gold'):
         """
         Draws an ROI item based on type.

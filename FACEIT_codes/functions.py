@@ -16,10 +16,6 @@ def initialize_attributes(obj, image):
     obj.Pupil_frame = None
     obj.sub_region = None
     obj.ROI_center = (obj.image_width // 2, obj.image_height // 2)
-    obj.blank_R_center = (obj.image_width // 2, obj.image_height // 2)
-    obj.blank_height = 15
-    obj.blank_width = 15
-    obj.blank_ellipse = None
     obj.reflect_ellipse = None
     obj.saturation = 0
     obj.frame = None
@@ -38,6 +34,7 @@ def initialize_attributes(obj, image):
     obj.eye_corner_mode = False
     obj.eyecorner = None
     obj.eye_corner_center = None
+    obj.erased_pixels = None
 
 
 
@@ -66,20 +63,29 @@ def change_saturation(image, saturation_scale):
         bgr_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
     return bgr_image
 
+def erase_pixels(erased_pixels, binary_image):
+    if erased_pixels is not None:
+        # Ensure 'erased_pixels' is a list of (x, y) tuples where (x, y) is within the image bounds
+        for x, y in erased_pixels:
+            if 0 <= y < binary_image.shape[0] and 0 <= x < binary_image.shape[1]:  # Check within image bounds
+                binary_image[y, x] = 0
+    return binary_image
 
-def detect_pupil(chosen_frame_region, blank_ellipse, reflect_ellipse):
+def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse):
     sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
     _, binary_image = cv2.threshold(sub_region_2Dgray, 200, 255, cv2.THRESH_BINARY_INV)
     # Blank added
-    if blank_ellipse is not None:
-        for variable in range(len(blank_ellipse[1])):
-            X = blank_ellipse[0][variable][0]
-            Y = blank_ellipse[0][variable][1]
-            W =  blank_ellipse[1][variable]
-            H = blank_ellipse[2][variable]
-            Top_left = (int(X - W//2), int(Y + H//2))
-            Bottom_right = (int(X + W//2) , int(Y - H//2))
-            cv2.rectangle(binary_image,Top_left, Bottom_right, 0, -1)
+    # if blank_ellipse is not None:
+    #     for variable in range(len(blank_ellipse[1])):
+    #         X = blank_ellipse[0][variable][0]
+    #         Y = blank_ellipse[0][variable][1]
+    #         W =  blank_ellipse[1][variable]
+    #         H = blank_ellipse[2][variable]
+    #         Top_left = (int(X - W//2), int(Y + H//2))
+    #         Bottom_right = (int(X + W//2) , int(Y - H//2))
+    #         cv2.rectangle(binary_image,Top_left, Bottom_right, 0, -1)
+
+    binary_image = erase_pixels(erased_pixels, binary_image)
 
     binary_image = pupil_detection.find_claster(binary_image)
 
@@ -100,7 +106,7 @@ def detect_pupil(chosen_frame_region, blank_ellipse, reflect_ellipse):
     return pupil_ROI0, center, width, height, angle, pupil_area
 
 
-def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  blank_ellipse = None,
+def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erased_pixels = None,
                        reflect_ellipse = None, pupil_ellipse_items = None, Detect_pupil = False):
     if pupil_ellipse_items is not None:
         scene2.removeItem(pupil_ellipse_items)
@@ -129,7 +135,7 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  blank
         item.setZValue(-1)
     scene2.addItem(item)
     if Detect_pupil == True:
-        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = detect_pupil(sub_region_rgba, blank_ellipse, reflect_ellipse)
+        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = detect_pupil(sub_region_rgba, erased_pixels, reflect_ellipse)
         pupil_ellipse_item = QtWidgets.QGraphicsEllipseItem(int(P_detected_center[0] - P_detected_width), int(P_detected_center[1] - P_detected_height),
                                                             P_detected_width*2, P_detected_height*2)
 

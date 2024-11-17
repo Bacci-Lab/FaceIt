@@ -36,7 +36,7 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
         self.setScene(self.scene2)
         self.brush_active = False
         self.brush_color = QtGui.QColor('black')
-        self.brush_size = 10  # Brush size
+        self.erase_size = 10  # Brush size
 
     def toggleBrushMode(self):
         """Toggle the brush mode on or off."""
@@ -63,10 +63,10 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
     def paint(self, scene_pos):
         """Paint a circle at the given scene position."""
         brush_item = QtWidgets.QGraphicsEllipseItem(
-            scene_pos.x() - self.brush_size / 2,
-            scene_pos.y() - self.brush_size / 2,
-            self.brush_size,
-            self.brush_size
+            scene_pos.x() - self.erase_size / 2,
+            scene_pos.y() - self.erase_size / 2,
+            self.erase_size,
+            self.erase_size
         )
         brush_item.setBrush(QtGui.QBrush(self.brush_color))
         brush_item.setPen(QtGui.QPen(QtCore.Qt.NoPen))

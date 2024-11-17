@@ -22,7 +22,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.setWindowIcon(QtGui.QIcon(r"C:\Users\faezeh.rabbani\Downloads\logo.jpg"))
-        self.brush_active = False
+        self.Eraser_active = False
         self.NPY = False
         self.video = False
         self.find_grooming_threshold = False
@@ -46,7 +46,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.PupilROIButton.clicked.connect(lambda: self.execute_pupil_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
         self.FaceROIButton.clicked.connect(lambda: self.execute_face_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
         self.ReflectionButton.clicked.connect(lambda: self.execute_reflect_roi())
-        self.Add_blank_button.clicked.connect(lambda: self.execute_blank_roi())
+
 
     def execute_reflect_roi(self):
         # Call `add_roi` to display a 'reflection' ROI
@@ -59,16 +59,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             color='gray',
             handle_size=3
         )
-    def execute_blank_roi(self):
-        self.roi_handler.Add_ROI(
-            roi_type='blank',
-            roi_center=self.blank_R_center,
-            image=self.image,
-            height= self.blank_height,
-            width = self.blank_width,
-            color='black',
-            handle_size=3
-            )
+
 
     def execute_pupil_roi(self):
         self.roi_handler.Add_ROI(
@@ -80,7 +71,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             handle_size=10,
             color='palevioletred',
             Button=self.ReflectionButton,
-            Button2=self.Add_blank_button,
+            Button2=self.Erase_Button,
             Button3=self.PupilROIButton,
             Button4=self.Process_Button,
             Button5 = self.Add_eyecorner
@@ -173,16 +164,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.leftGroupBoxLayout.addWidget(self.FaceROIButton)
         self.ReflectionButton = QtWidgets.QPushButton("Add Reflection")
         self.leftGroupBoxLayout.addWidget(self.ReflectionButton)
-        self.Add_blank_button = QtWidgets.QPushButton("Add blank")
-        self.leftGroupBoxLayout.addWidget(self.Add_blank_button)
-        self.Add_blank_button.setEnabled(False)
-        self.Undo_brush_Button = QtWidgets.QPushButton("Undo Blank Brush")
-        self.leftGroupBoxLayout.addWidget(self.Undo_brush_Button)
-
-        self.Blank_brush_Button = QtWidgets.QPushButton("Blank Brush")
-        self.leftGroupBoxLayout.addWidget(self.Blank_brush_Button)
-        self.Blank_brush_Button.clicked.connect(self.Brush)
-        ####################################
+        self.Erase_Button = QtWidgets.QPushButton("Erase")
+        self.leftGroupBoxLayout.addWidget(self.Erase_Button)
+        self.Erase_Button.clicked.connect(self.init_erasing_pixel)
+        self.Undo_Erase_Button = QtWidgets.QPushButton("Undo Erase")
+        self.leftGroupBoxLayout.addWidget(self.Undo_Erase_Button)
         self.ReflectionButton.setEnabled(False)
         self.Add_eyecorner = QtWidgets.QPushButton("Add Eye corner")
         self.leftGroupBoxLayout.addWidget(self.Add_eyecorner)
@@ -253,7 +239,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Save_Button.clicked.connect(self.save_handler.init_save_data)
         self.grooming_Button.clicked.connect(self.change_cursor_color)
         self.Undo_grooming_Button.clicked.connect(self.undo_grooming)
-        self.Undo_brush_Button.clicked.connect(self.graphicsView_subImage.undoBrushStrokes)
+        self.Undo_Erase_Button.clicked.connect(self.graphicsView_subImage.undoBrushStrokes)
 
 
 
@@ -276,15 +262,14 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             QtWidgets.QWidget().setLayout(old_layout)
 
 
-    def set_frame(self, face_frame=None, Pupil_frame=None, reflect_ellipse = None, blank_ellipse = None):
+    def set_frame(self, face_frame=None, Pupil_frame=None, reflect_ellipse = None):
         if face_frame is not None:
             self.Face_frame = face_frame
         if Pupil_frame is not None:
             self.Pupil_frame = Pupil_frame
         if reflect_ellipse is not None:
             self.reflect_ellipse = reflect_ellipse
-        if blank_ellipse is not None:
-            self.blank_ellipse = blank_ellipse
+
 
 
     def pupil_check(self):
@@ -294,14 +279,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         return self.checkBox_face.isChecked()
     def nwb_check(self):
         return self.checkBox_nwb.isChecked()
-    def Brush(self):
-        self.brush_active = True
-
-    def Undo_Brush(self):
-        print("HI")
-
-
-
+    def init_erasing_pixel(self):
+        self.Eraser_active = True
 
 
 
@@ -328,7 +307,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def start_pupil_dilation_computation(self, images):
         pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
             X_saccade, Y_saccade, pupil_distance_from_corner, width, height =\
-            self.process_handler.pupil_dilation_comput(images, self.saturation,self.blank_ellipse, self.reflect_ellipse)
+            self.process_handler.pupil_dilation_comput(images, self.saturation, self.erased_pixels, self.reflect_ellipse)
         self.final_pupil_area = pupil_dilation
         self.X_saccade_updated = X_saccade
         self.Y_saccade_updated = Y_saccade
@@ -386,9 +365,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         warning_box.setText(text)
         warning_box.setStandardButtons(QMessageBox.Ok)
         warning_box.exec_()
-
-
-
 
 
     def retranslateUi(self, MainWindow):
