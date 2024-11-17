@@ -45,10 +45,12 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         self.reflect_ellipse = None
         self.pupil_ellipse_items = None
 
-        self.erase_color = QtGui.QColor('white')
         self.erase_size = 5
         self.brush_strokes = []
         self.erased_pixels = []
+        #####################
+        self.added_pixels = []
+        self.reflect_strokes = []
 
     def showContextMenu(self, pos):
         context_menu = QtWidgets.QMenu(self)
@@ -87,6 +89,9 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         if self.parent.Eraser_active and event.button() == QtCore.Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
             self.markForErasure(scene_pos)
+        elif self.parent.AddPixels_active and event.button() == QtCore.Qt.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            self.markForAddition(scene_pos)
 
         self.scene_pos = self.mapToScene(event.pos())
         if event.button() == QtCore.Qt.RightButton:
@@ -153,10 +158,18 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        print("self.parent.Eraser_active", self.parent.Eraser_active)
+        print("self.parent.AddPixels_active", self.parent.AddPixels_active)
         """Handle mouse move events for continuous painting."""
         if self.parent.Eraser_active and event.buttons() & QtCore.Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
             self.markForErasure(scene_pos)
+
+        ######################
+        if self.parent.AddPixels_active and event.buttons() & QtCore.Qt.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            self.markForAddition(scene_pos)
+        #######################################
 
         if self.dragging:
             if self.dragging_face:
@@ -420,13 +433,22 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         else:
             raise ValueError(f"Invalid handle type: {handle_type}")
 
-    def toggleBrushMode(self):
-        """Toggle the brush mode on or off."""
-        self.parent.brush_active = not self.parent.brush_active
-        if self.parent.brush_active:
-            self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
-        else:
-            self.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+    def resetModes(self):
+        """Deactivate all modes."""
+        self.parent.Eraser_active = False
+        self.parent.AddPixels_active = False
+        # Add other mode flags here as needed
+
+    def activateEraseMode(self):
+        self.resetModes()  # Reset all modes first
+        self.parent.Eraser_active = True  # Activate Erase mode
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+
+    # Method to activate Add Pixels mode
+    def activateAddPixelsMode(self):
+        self.resetModes()  # Reset all modes first
+        self.parent.AddPixels_active = True  # Activate Add Pixels mode
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
 
 
     def markForErasure(self, scene_pos):
@@ -437,7 +459,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             self.erase_size,
             self.erase_size
         )
-        brush_item.setBrush(QtGui.QBrush(self.erase_color))
+        brush_item.setBrush(QtGui.QBrush(QtGui.QColor('white')))
         brush_item.setPen(QtGui.QPen(QtCore.Qt.NoPen))
         self.parent.scene2.addItem(brush_item)
         #########
@@ -451,10 +473,41 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                     self.parent.erased_pixels = self.erased_pixels
         self.brush_strokes.append(brush_item)
 
-
     def undoBrushStrokes(self):
         """Remove all brush strokes from the scene."""
         while self.brush_strokes:
             brush_item = self.brush_strokes.pop()
             self.parent.scene2.removeItem(brush_item)
             self.parent.erased_pixels = None
+
+
+    #########################
+    def markForAddition(self, scene_pos):
+        """Paint a circle at the given scene position for added pixels."""
+        brush_item = QtWidgets.QGraphicsEllipseItem(
+            scene_pos.x() - self.erase_size / 2,
+            scene_pos.y() - self.erase_size / 2,
+            self.erase_size,
+            self.erase_size
+        )
+        brush_item.setBrush(QtGui.QBrush(QtGui.QColor('gray')))
+        brush_item.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+        self.parent.scene2.addItem(brush_item)
+
+        # Store the coordinates of the added pixels
+        for x in range(int(scene_pos.x() - self.erase_size / 2), int(scene_pos.x() + self.erase_size / 2)):
+            for y in range(int(scene_pos.y() - self.erase_size / 2), int(scene_pos.y() + self.erase_size / 2)):
+                if 0 <= x < self.parent.scene2.width() and 0 <= y < self.parent.scene2.height():
+                    self.added_pixels.append((x, y))
+                    self.parent.added_pixels = self.added_pixels  # Sync with parent
+
+        self.reflect_strokes.append(brush_item)
+
+    def undoAddedPixels(self):
+        """Remove all reflect brush  strokes from the scene."""
+        while self.reflect_strokes:
+            reflect_item = self.reflect_strokes.pop()
+            self.parent.scene2.removeItem(reflect_item)
+            self.parent.added_pixels = None
+
+

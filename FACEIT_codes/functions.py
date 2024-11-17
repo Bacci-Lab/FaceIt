@@ -74,16 +74,6 @@ def erase_pixels(erased_pixels, binary_image):
 def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse):
     sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
     _, binary_image = cv2.threshold(sub_region_2Dgray, 200, 255, cv2.THRESH_BINARY_INV)
-    # Blank added
-    # if blank_ellipse is not None:
-    #     for variable in range(len(blank_ellipse[1])):
-    #         X = blank_ellipse[0][variable][0]
-    #         Y = blank_ellipse[0][variable][1]
-    #         W =  blank_ellipse[1][variable]
-    #         H = blank_ellipse[2][variable]
-    #         Top_left = (int(X - W//2), int(Y + H//2))
-    #         Bottom_right = (int(X + W//2) , int(Y - H//2))
-    #         cv2.rectangle(binary_image,Top_left, Bottom_right, 0, -1)
 
     binary_image = erase_pixels(erased_pixels, binary_image)
 

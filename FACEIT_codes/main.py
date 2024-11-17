@@ -23,6 +23,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.setWindowIcon(QtGui.QIcon(r"C:\Users\faezeh.rabbani\Downloads\logo.jpg"))
         self.Eraser_active = False
+        self.AddPixels_active = False
         self.NPY = False
         self.video = False
         self.find_grooming_threshold = False
@@ -164,12 +165,19 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.leftGroupBoxLayout.addWidget(self.FaceROIButton)
         self.ReflectionButton = QtWidgets.QPushButton("Add Reflection")
         self.leftGroupBoxLayout.addWidget(self.ReflectionButton)
+        self.ReflectionButton.setEnabled(False)
         self.Erase_Button = QtWidgets.QPushButton("Erase")
         self.leftGroupBoxLayout.addWidget(self.Erase_Button)
-        self.Erase_Button.clicked.connect(self.init_erasing_pixel)
+        self.Erase_Button.setEnabled(False)
+        # self.Erase_Button.clicked.connect(self.init_erasing_pixel)
         self.Undo_Erase_Button = QtWidgets.QPushButton("Undo Erase")
         self.leftGroupBoxLayout.addWidget(self.Undo_Erase_Button)
-        self.ReflectionButton.setEnabled(False)
+        self.reflect_brush = QtWidgets.QPushButton("reflect brush")
+        self.leftGroupBoxLayout.addWidget(self.reflect_brush)
+        self.Undo_reflect_brush = QtWidgets.QPushButton("Undo Reflection")
+        self.leftGroupBoxLayout.addWidget(self.Undo_reflect_brush)
+
+
         self.Add_eyecorner = QtWidgets.QPushButton("Add Eye corner")
         self.leftGroupBoxLayout.addWidget(self.Add_eyecorner)
         self.Add_eyecorner.setEnabled(False)
@@ -240,8 +248,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.grooming_Button.clicked.connect(self.change_cursor_color)
         self.Undo_grooming_Button.clicked.connect(self.undo_grooming)
         self.Undo_Erase_Button.clicked.connect(self.graphicsView_subImage.undoBrushStrokes)
-
-
+        self.Erase_Button.clicked.connect(self.graphicsView_subImage.activateEraseMode)
+        self.reflect_brush.clicked.connect(self.graphicsView_subImage.activateAddPixelsMode)
+        self.Undo_reflect_brush.clicked.connect(self.graphicsView_subImage.undoAddedPixels)
 
     def setup_styles(self):
         self.centralwidget.setStyleSheet(functions.get_stylesheet())
@@ -279,9 +288,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         return self.checkBox_face.isChecked()
     def nwb_check(self):
         return self.checkBox_nwb.isChecked()
-    def init_erasing_pixel(self):
-        self.Eraser_active = True
 
+    # def activateAddPixelsMode(self):
+    #     self.graphicsView_MainFig.resetModes()  # Reset all modes first
+    #     self.parent.AddPixels_active = True  # Activate Add Pixels mode
+    #     self.graphicsView_MainFig.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
 
 
     def satur_value(self, value):
