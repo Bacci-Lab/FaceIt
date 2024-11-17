@@ -57,6 +57,11 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         self.All_blanks = None
         self.pupil_ellipse_items = None
 
+        self.brush_color = QtGui.QColor('white')
+        self.brush_size = 5
+        self.brush_strokes = []
+        self.painted_pixels = []
+
     def showContextMenu(self, pos):
         context_menu = QtWidgets.QMenu(self)
         delete_action = context_menu.addAction("Delete ROI")
@@ -101,6 +106,10 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         self.parent.eye_corner_mode = False
 
     def mousePressEvent(self, event):
+        """Handle mouse press events."""
+        if self.parent.brush_active and event.button() == QtCore.Qt.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            self.paint(scene_pos)
 
         self.scene_pos = self.mapToScene(event.pos())
         if event.button() == QtCore.Qt.RightButton:
@@ -186,6 +195,12 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+
+        """Handle mouse move events for continuous painting."""
+        if self.parent.brush_active and event.buttons() & QtCore.Qt.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            self.paint(scene_pos)
+
         if self.dragging:
             if self.dragging_face:
                 handle_type = "face"
@@ -491,3 +506,40 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             return self.blank_handles_list[self.current_blank_idx]
         else:
             raise ValueError(f"Invalid handle type: {handle_type}")
+
+    def toggleBrushMode(self):
+        """Toggle the brush mode on or off."""
+        self.parent.brush_active = not self.parent.brush_active
+        if self.parent.brush_active:
+            self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+        else:
+            self.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+
+
+    def paint(self, scene_pos):
+        """Paint a circle at the given scene position."""
+        brush_item = QtWidgets.QGraphicsEllipseItem(
+            scene_pos.x() - self.brush_size / 2,
+            scene_pos.y() - self.brush_size / 2,
+            self.brush_size,
+            self.brush_size
+        )
+        brush_item.setBrush(QtGui.QBrush(self.brush_color))
+        brush_item.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+        self.parent.scene2.addItem(brush_item)
+        #########
+
+        # Store the coordinates of the painted pixels
+        for x in range(int(scene_pos.x() - self.brush_size / 2), int(scene_pos.x() + self.brush_size / 2)):
+            for y in range(int(scene_pos.y() - self.brush_size / 2), int(scene_pos.y() + self.brush_size / 2)):
+                # Only store coordinates within the bounds of the scene
+                if 0 <= x < self.parent.scene2.width() and 0 <= y < self.parent.scene2.height():
+                    self.painted_pixels.append((x, y))
+        self.brush_strokes.append(brush_item)
+
+
+    def undoBrushStrokes(self):
+        """Remove all brush strokes from the scene."""
+        while self.brush_strokes:
+            brush_item = self.brush_strokes.pop()
+            self.parent.scene2.removeItem(brush_item)

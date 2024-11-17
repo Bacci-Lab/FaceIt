@@ -4,7 +4,7 @@ Inputs
 
 The FaceIt pipeline accepts and processes various types of input data, primarily image files and video files.
 
-Input Types Overview
+Input Overview
 --------------------
 
 1. **Image Folders (.npy Files)**

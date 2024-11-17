@@ -22,6 +22,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.setWindowIcon(QtGui.QIcon(r"C:\Users\faezeh.rabbani\Downloads\logo.jpg"))
+        self.brush_active = False
         self.NPY = False
         self.video = False
         self.find_grooming_threshold = False
@@ -166,17 +167,22 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.leftGroupBoxLayout = QtWidgets.QVBoxLayout(self.leftGroupBox)
         # Set the main layout to the central widget
         self.centralwidget.setLayout(self.mainLayout)
-        #########
-
         self.PupilROIButton = QtWidgets.QPushButton("Pupil ROI")
         self.leftGroupBoxLayout.addWidget(self.PupilROIButton)
         self.FaceROIButton = QtWidgets.QPushButton("Face ROI")
         self.leftGroupBoxLayout.addWidget(self.FaceROIButton)
+        self.ReflectionButton = QtWidgets.QPushButton("Add Reflection")
+        self.leftGroupBoxLayout.addWidget(self.ReflectionButton)
         self.Add_blank_button = QtWidgets.QPushButton("Add blank")
         self.leftGroupBoxLayout.addWidget(self.Add_blank_button)
         self.Add_blank_button.setEnabled(False)
-        self.ReflectionButton = QtWidgets.QPushButton("Add Reflection")
-        self.leftGroupBoxLayout.addWidget(self.ReflectionButton)
+        self.Undo_brush_Button = QtWidgets.QPushButton("Undo Blank Brush")
+        self.leftGroupBoxLayout.addWidget(self.Undo_brush_Button)
+
+        self.Blank_brush_Button = QtWidgets.QPushButton("Blank Brush")
+        self.leftGroupBoxLayout.addWidget(self.Blank_brush_Button)
+        self.Blank_brush_Button.clicked.connect(self.Brush)
+        ####################################
         self.ReflectionButton.setEnabled(False)
         self.Add_eyecorner = QtWidgets.QPushButton("Add Eye corner")
         self.leftGroupBoxLayout.addWidget(self.Add_eyecorner)
@@ -185,11 +191,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Process_Button.setEnabled(False)
         self.rightGroupBoxLayout.addWidget(self.Process_Button)
         self.Save_Button = QtWidgets.QPushButton("Save")
-
         self.rightGroupBoxLayout.addWidget(self.Save_Button)
         self.detect_blinking_Button = QtWidgets.QPushButton("Detect blinking")
         self.rightGroupBoxLayout.addWidget(self.detect_blinking_Button)
-        ##############
         self.Undo_blinking_Button = QtWidgets.QPushButton("Undo blinking")
         self.rightGroupBoxLayout.addWidget(self.Undo_blinking_Button)
 
@@ -249,6 +253,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Save_Button.clicked.connect(self.save_handler.init_save_data)
         self.grooming_Button.clicked.connect(self.change_cursor_color)
         self.Undo_grooming_Button.clicked.connect(self.undo_grooming)
+        self.Undo_brush_Button.clicked.connect(self.graphicsView_subImage.undoBrushStrokes)
 
 
 
@@ -289,6 +294,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         return self.checkBox_face.isChecked()
     def nwb_check(self):
         return self.checkBox_nwb.isChecked()
+    def Brush(self):
+        self.brush_active = True
+
+    def Undo_Brush(self):
+        print("HI")
 
 
 
