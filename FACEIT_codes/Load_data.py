@@ -5,7 +5,7 @@ import queue
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from PyQt5 import QtWidgets
-from FACEIT_codes import functions
+import functions
 import threading
 class LoadData:
     def __init__(self, app_instance):

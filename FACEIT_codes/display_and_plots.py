@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QSizePolicy
-from FACEIT_codes import functions
+import functions
 class PlotHandler:
     def __init__(self,app_instance):
         self.app_instance = app_instance
@@ -245,7 +245,7 @@ class Display:
         self.app_instance.pupil_ellipse_items = functions.display_sub_region(
             self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
             self.app_instance.scene2, "pupil", self.app_instance.saturation,
-            self.app_instance.erased_pixels, self.app_instance.reflection_pixels,
+            self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
             self.app_instance.pupil_ellipse_items, Detect_pupil=True
         )
 
@@ -260,6 +260,6 @@ class Display:
         functions.display_sub_region(
             self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
             self.app_instance.scene2, "face", self.app_instance.saturation,
-            self.app_instance.erased_pixels, self.app_instance.reflection_pixels,
+            self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
             self.app_instance.pupil_ellipse_items, Detect_pupil=False
         )

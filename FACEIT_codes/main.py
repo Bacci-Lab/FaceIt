@@ -1,11 +1,11 @@
 from PyQt5.QtWidgets import QMessageBox
-from FACEIT_codes import functions
+import functions
 import numpy as np
 from analysis import ProcessHandler
 from Save import SaveHandler
 from Load_data import LoadData
 from Graphical_ROIS import ROIHandler
-from FACEIT_codes import display_and_plots
+import display_and_plots
 from PyQt5 import QtWidgets, QtCore, QtGui
 from GUI_Intractions import  GUI_Intract
 
@@ -23,11 +23,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.setWindowIcon(QtGui.QIcon(r"C:\Users\faezeh.rabbani\Downloads\logo.jpg"))
         self.Eraser_active = False
-        self.AddPixels_active = False
         self.NPY = False
         self.video = False
         self.find_grooming_threshold = False
         self.len_file = 1
+        self.erase_size = 5
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.Main_V_Layout = QtWidgets.QVBoxLayout(self.centralwidget)
         MainWindow.setCentralWidget(self.centralwidget)
@@ -46,6 +46,19 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         MainWindow.showMaximized()
         self.PupilROIButton.clicked.connect(lambda: self.execute_pupil_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
         self.FaceROIButton.clicked.connect(lambda: self.execute_face_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
+        self.ReflectionButton.clicked.connect(lambda: self.execute_reflect_roi())
+
+
+    def execute_reflect_roi(self):
+        self.roi_handler.Add_ROI(
+            roi_type='reflection',
+            roi_center=self.reflection_center,
+            image=self.image,
+            height=self.reflect_height,
+            width=self.reflect_width,
+            color='gray',
+            handle_size=3
+        )
 
 
     def execute_pupil_roi(self):
@@ -57,7 +70,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             width = 80,
             handle_size=10,
             color='palevioletred',
-            Button=self.reflect_brush,
+            Button=self.ReflectionButton,
             Button2=self.Erase_Button,
             Button3=self.PupilROIButton,
             Button4=self.Process_Button,
@@ -84,6 +97,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def setup_menubar(self, MainWindow):
         self.menubar = QtWidgets.QMenuBar(MainWindow)
         self.File_menue = self.menubar.addMenu("File")
+        self.setting_menue = self.menubar.addMenu("setting")
         self.LoadVideo = QtWidgets.QAction("Load video", MainWindow)
         self.LoadVideo.setShortcut("Ctrl+v")
         self.load_np = QtWidgets.QAction("Load numpy images", MainWindow)
@@ -92,9 +106,53 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.File_menue.addAction(self.LoadVideo)
         self.File_menue.addAction(self.load_np)
         self.File_menue.addAction(self.LoadProcessedData)
+        self.open_settings_action = QtWidgets.QAction("Open Settings Window", MainWindow)
+        self.setting_menue.addAction(self.open_settings_action)
+        self.open_settings_action.triggered.connect(self.open_settings_window)
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QtWidgets.QStatusBar(MainWindow)
         MainWindow.setStatusBar(self.statusbar)
+
+    def open_settings_window(self):
+        # Store the window as an instance attribute to prevent garbage collection
+        self.settings_window = QtWidgets.QWidget()
+        self.settings_window.setWindowTitle("Settings")
+        self.settings_window.resize(400, 300)
+
+        # Create the main layout for the settings window
+        main_layout = QtWidgets.QVBoxLayout()
+
+        # Create a layout for the Brush Size slider
+        brush_size_layout = QtWidgets.QHBoxLayout()
+        brush_size_label = QtWidgets.QLabel("Brush Size:")
+        self.brush_size_edit = QtWidgets.QLineEdit("1")
+        self.brush_size_edit.setReadOnly(True)
+        self.brush_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.brush_size_slider.setMinimum(1)
+        self.brush_size_slider.setMaximum(10)
+        self.brush_size_slider.setValue(5)
+        self.brush_size_slider.valueChanged.connect(self.get_brush_size_value)
+        brush_size_layout.addWidget(brush_size_label)
+        brush_size_layout.addWidget(self.brush_size_slider)
+        brush_size_layout.addWidget(self.brush_size_edit)
+        main_layout.addLayout(brush_size_layout)
+
+        # Create a layout for the Cluster Pixel line edit
+        cluster_pixel_layout = QtWidgets.QHBoxLayout()
+        cluster_pixel_label = QtWidgets.QLabel("Cluster Pixel:")
+        cluster_pixel_edit = QtWidgets.QLineEdit()
+        cluster_pixel_layout.addWidget(cluster_pixel_label)
+        cluster_pixel_layout.addWidget(cluster_pixel_edit)
+        main_layout.addLayout(cluster_pixel_layout)
+
+        # Set the main layout for the settings window
+        self.settings_window.setLayout(main_layout)
+        self.settings_window.show()
+
+    def get_brush_size_value(self):
+        self.erase_size = self.brush_size_slider.value()
+        self.brush_size_edit.setText(str(self.erase_size))
+        return self.erase_size
 
     def setup_graphics_views(self):
         self.Image_H_Layout = QtWidgets.QHBoxLayout()
@@ -149,18 +207,14 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.leftGroupBoxLayout.addWidget(self.PupilROIButton)
         self.FaceROIButton = QtWidgets.QPushButton("Face ROI")
         self.leftGroupBoxLayout.addWidget(self.FaceROIButton)
+        self.ReflectionButton = QtWidgets.QPushButton("Add Reflection")
+        self.leftGroupBoxLayout.addWidget(self.ReflectionButton)
         self.Erase_Button = QtWidgets.QPushButton("Erase")
         self.leftGroupBoxLayout.addWidget(self.Erase_Button)
         self.Erase_Button.setEnabled(False)
-        # self.Erase_Button.clicked.connect(self.init_erasing_pixel)
         self.Undo_Erase_Button = QtWidgets.QPushButton("Undo Erase")
         self.leftGroupBoxLayout.addWidget(self.Undo_Erase_Button)
-        self.reflect_brush = QtWidgets.QPushButton("reflect brush")
-        self.leftGroupBoxLayout.addWidget(self.reflect_brush)
-        self.Undo_reflect_brush = QtWidgets.QPushButton("Undo Reflection")
-        self.leftGroupBoxLayout.addWidget(self.Undo_reflect_brush)
-
-
+        self.ReflectionButton.setEnabled(False)
         self.Add_eyecorner = QtWidgets.QPushButton("Add Eye corner")
         self.leftGroupBoxLayout.addWidget(self.Add_eyecorner)
         self.Add_eyecorner.setEnabled(False)
@@ -209,7 +263,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.saturation_Label.setStyleSheet("color: white;")
         self.sliderLayout.addWidget(self.saturation_Label)
         self.saturation_slider_layout = QtWidgets.QHBoxLayout()
-        self.saturation_Slider = functions.setup_sliders(self.centralwidget, 0, 150, 0, "horizontal")
+        self.saturation_Slider = functions.setup_sliders(self.centralwidget, 0, 100, 0, "horizontal")
         self.saturation_slider_layout.addWidget(self.saturation_Slider)
         self.lineEdit_satur_value = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit_satur_value.setFixedWidth(50)
@@ -230,10 +284,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Save_Button.clicked.connect(self.save_handler.init_save_data)
         self.grooming_Button.clicked.connect(self.change_cursor_color)
         self.Undo_grooming_Button.clicked.connect(self.undo_grooming)
-        self.Undo_Erase_Button.clicked.connect(self.graphicsView_subImage.undoBrushStrokes)
         self.Erase_Button.clicked.connect(self.graphicsView_subImage.activateEraseMode)
-        self.reflect_brush.clicked.connect(self.graphicsView_subImage.activateAddPixelsMode)
-        self.Undo_reflect_brush.clicked.connect(self.graphicsView_subImage.undoAddedPixels)
+        self.Undo_Erase_Button.clicked.connect(self.graphicsView_subImage.undoBrushStrokes)
+
+
 
     def setup_styles(self):
         self.centralwidget.setStyleSheet(functions.get_stylesheet())
@@ -254,11 +308,13 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             QtWidgets.QWidget().setLayout(old_layout)
 
 
-    def set_frame(self, face_frame=None, Pupil_frame=None):
+    def set_frame(self, face_frame=None, Pupil_frame=None, reflect_ellipse = None):
         if face_frame is not None:
             self.Face_frame = face_frame
         if Pupil_frame is not None:
             self.Pupil_frame = Pupil_frame
+        if reflect_ellipse is not None:
+            self.reflect_ellipse = reflect_ellipse
 
 
 
@@ -269,11 +325,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         return self.checkBox_face.isChecked()
     def nwb_check(self):
         return self.checkBox_nwb.isChecked()
+    def init_erasing_pixel(self):
+        self.Eraser_active = True
 
-    # def activateAddPixelsMode(self):
-    #     self.graphicsView_MainFig.resetModes()  # Reset all modes first
-    #     self.parent.AddPixels_active = True  # Activate Add Pixels mode
-    #     self.graphicsView_MainFig.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
 
 
     def satur_value(self, value):
@@ -299,7 +353,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def start_pupil_dilation_computation(self, images):
         pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
             X_saccade, Y_saccade, pupil_distance_from_corner, width, height =\
-            self.process_handler.pupil_dilation_comput(images, self.saturation, self.erased_pixels, self.reflection_pixels)
+            self.process_handler.pupil_dilation_comput(images, self.saturation, self.erased_pixels, self.reflect_ellipse)
         self.final_pupil_area = pupil_dilation
         self.X_saccade_updated = X_saccade
         self.Y_saccade_updated = Y_saccade
@@ -311,10 +365,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):
             self.blinking_ids = self.process_handler.detect_blinking(self.pupil_dilation, self.width, self.height, self.X_saccade, self.Y_saccade)
-            print("self.blinking_ids =", self.blinking_ids )
+
 
         else:
-            print("self.pupil_dilation does not exist")
+
             self.warning("Process Pupil first")
 
 
@@ -346,7 +400,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def eyecorner_clicked(self):
         self.eye_corner_mode = True
-        print("is true", self.eye_corner_mode )
+        self.Eraser_active = False
+
 
 
 

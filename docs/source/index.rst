@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 FACEIT Documentation and User Guide
-====================
+==================================
 
 .. toctree::
    :maxdepth: 2
@@ -12,8 +12,9 @@ FACEIT Documentation and User Guide
 
    introduction
    installation
-   output
    inputs
+   output
+   Using_GUI
 
 
 .. toctree::
@@ -22,4 +23,3 @@ FACEIT Documentation and User Guide
 
    FaceMotion_Computation
    Pupil_detection
-   Saccade

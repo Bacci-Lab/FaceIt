@@ -1,7 +1,7 @@
 import cv2
 import os.path
 import numpy as np
-from FACEIT_codes import pupil_detection
+import pupil_detection
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtGui import QPixmap
 
@@ -14,6 +14,7 @@ def initialize_attributes(obj, image):
     obj.Pupil_frame = None
     obj.sub_region = None
     obj.ROI_center = (obj.image_width // 2, obj.image_height // 2)
+    obj.reflect_ellipse = None
     obj.saturation = 0
     obj.frame = None
     obj.pupil_ROI = None
@@ -32,7 +33,6 @@ def initialize_attributes(obj, image):
     obj.eyecorner = None
     obj.eye_corner_center = None
     obj.erased_pixels = None
-    obj.reflection_pixels = None
 
 
 
@@ -49,47 +49,40 @@ def show_ROI(ROI, image):
 
 
 def change_saturation(image, saturation_scale):
+    """
+    Changes the saturation of an image and adjusts brightness to make dark pixels darker and bright pixels brighter.
+
+    Parameters:
+        image (numpy.ndarray): The input image in BGR format.
+        saturation_scale (float): The scale by which to adjust saturation and brightness.
+
+    Returns:
+        numpy.ndarray: The processed image with adjusted saturation and brightness.
+    """
     if saturation_scale == 0:
         return image
-    else:
-        saturation_scale = float(saturation_scale)
-        # Convert image to HSV
-        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        # Scale the saturation channel
-        hsv_image[..., 2] = np.clip(hsv_image[..., 2].astype(np.float32) + saturation_scale, 0, 255).astype(np.uint8)
-        # Convert back to BGR
-        bgr_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
+
+    # Convert image to HSV
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+
+    # Scale the saturation channel
+    hsv_image[..., 1] = np.clip(hsv_image[..., 1] * (1 + saturation_scale / 100.0), 0, 255)
+
+    # Adjust the value channel to enhance contrast
+    # Brighten brighter pixels and darken darker pixels
+    hsv_image[..., 2] = np.clip(hsv_image[..., 2] * (1 + (saturation_scale / 100.0)), 0, 255)
+
+    # Convert back to BGR format
+    hsv_image = hsv_image.astype(np.uint8)
+    bgr_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
+
     return bgr_image
 
-def erase_pixels(erased_pixels, binary_image):
-    if erased_pixels is not None:
-        # Ensure 'erased_pixels' is a list of (x, y) tuples where (x, y) is within the image bounds
-        for x, y in erased_pixels:
-            if 0 <= y < binary_image.shape[0] and 0 <= x < binary_image.shape[1]:  # Check within image bounds
-                binary_image[y, x] = 0
-    return binary_image
 
-
-def detect_pupil(chosen_frame_region, erased_pixels, reflection_pixels):
-    sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
-    _, binary_image = cv2.threshold(sub_region_2Dgray, 200, 255, cv2.THRESH_BINARY_INV)
-
-    binary_image = erase_pixels(erased_pixels, binary_image)
-
-    binary_image = pupil_detection.find_claster(binary_image)
-
-
-    for i in range(4):
-        pupil_ROI0, center, width, height, angle = pupil_detection.find_ellipse(binary_image)
-        binary_image_update = pupil_detection.overlap_reflect(reflection_pixels, pupil_ROI0, binary_image)
-        binary_image = binary_image_update
-
-    pupil_area = np.pi * (width*height)
-    return pupil_ROI0, center, width, height, angle, pupil_area
 
 
 def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erased_pixels = None,
-                       reflection_pixels = None, pupil_ellipse_items = None, Detect_pupil = False):
+                       reflect_ellipse = None, pupil_ellipse_items = None, Detect_pupil = False):
     if pupil_ellipse_items is not None:
         scene2.removeItem(pupil_ellipse_items)
     for item in scene2.items():
@@ -105,6 +98,7 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erase
     # Add alpha channel to sub_region
     sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
 
+
     bytes_per_line = width * 4
     qimage = QtGui.QImage(sub_region_rgba.data.tobytes(), width, height, bytes_per_line, QtGui.QImage.Format_RGBA8888)
     pixmap = QPixmap.fromImage(qimage)
@@ -113,7 +107,7 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erase
         item.setZValue(-1)
     scene2.addItem(item)
     if Detect_pupil == True:
-        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = detect_pupil(sub_region_rgba, erased_pixels, reflection_pixels)
+        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = pupil_detection.detect_pupil(sub_region_rgba, erased_pixels, reflect_ellipse)
         pupil_ellipse_item = QtWidgets.QGraphicsEllipseItem(int(P_detected_center[0] - P_detected_width), int(P_detected_center[1] - P_detected_height),
                                                             P_detected_width*2, P_detected_height*2)
 

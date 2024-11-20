@@ -1,9 +1,65 @@
+import matplotlib.pyplot as plt
 import numpy as np
 from PyQt5 import QtWidgets
-from FACEIT_codes import pupil_detection
-from FACEIT_codes import functions
+import pupil_detection
+import functions
 import math
 import cv2
+from multiprocessing import Pool
+import time
+
+# Example adjustment inside functions.py
+def display_show_ROI(ROI, image):
+    # Check if ROI is passed as a tuple (x, y, width, height)
+    if isinstance(ROI, tuple):
+        x, y, width, height = ROI
+        sub_image = image[int(y):int(y + height), int(x):int(x + width)]
+        return sub_image, ROI
+
+    # Original logic if ROI is a QGraphicsEllipseItem
+    sub_image = ROI.rect()  # Keep original logic as fallback if needed
+    return sub_image, ROI
+
+
+def create_roi(x, y, width, height):
+    """Creates a representation of a region of interest (ROI) based on given coordinates and size."""
+    # Return a simple dictionary or tuple with ROI properties
+    return {
+        'x': x,
+        'y': y,
+        'width': width,
+        'height': height
+    }
+
+def process_single_frame(args):
+    current_image, pupil_roi_serializable, saturation, erased_pixels, reflect_ellipse, eye_corner_center = args
+
+    # Reconstruct pupil ROI as a tuple or a simpler object (without PyQt)
+    x, y, width, height = pupil_roi_serializable
+    pupil_roi = (x, y, width, height)  # Replace this with the correct format expected by `show_ROI`
+
+    # Process the image
+    sub_region, _ = display_show_ROI(pupil_roi, current_image)  # Ensure `show_ROI` can handle this format
+
+    if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
+        sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
+
+    sub_region = functions.change_saturation(sub_region, saturation)
+    sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
+
+    _, center, width, height, _, current_area = pupil_detection.detect_pupil(
+        sub_region_rgba, erased_pixels, reflect_ellipse
+    )
+
+    pupil_distance_from_corner = (
+        math.sqrt((center[0] - eye_corner_center[0]) ** 2 + (center[1] - eye_corner_center[1]) ** 2)
+        if eye_corner_center is not None else np.nan
+    )
+
+    return current_area, center, int(center[0]), int(center[1]), width, height, pupil_distance_from_corner
+
+
+
 class ProcessHandler:
     def __init__(self, app_instance):
         # Store a reference to the app instance for accessing its attributes and methods
@@ -75,6 +131,7 @@ class ProcessHandler:
         Returns:
             list: A list of computed motion energy values.
         """
+        start_time = time.time()
         frame = self.app_instance.Face_frame
         motion_energy_values = []
 
@@ -93,6 +150,7 @@ class ProcessHandler:
 
             # Extract the region of interest (ROI) from the current frame
             current_ROI = current_array[frame[0]:frame[1], frame[2]:frame[3]].flatten()
+            print("this is current_ROI", current_ROI)
 
             # Compute motion energy if the previous ROI exists
             if previous_ROI is not None:
@@ -108,7 +166,8 @@ class ProcessHandler:
         if motion_energy_values:
             first_value = motion_energy_values[0]
             motion_energy_values.insert(0, first_value)
-
+        end_time = time.time()
+        print(f"Time taken for motion energy computation: {end_time - start_time:.2f} seconds")
         return motion_energy_values
 
     def load_images_if_needed(self):
@@ -175,111 +234,95 @@ class ProcessHandler:
         # Store the final pupil area as the interpolated result
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
         return combined_blinking_ids
-    def pupil_dilation_comput(self, images, saturation, erased_pixels, reflection_pixels):
+    def extract_data_from_QGraphics(self,pupil_roi_data ):
+        # Extract data from QGraphicsEllipseItem to make it serializable
+        # Get the bounding rectangle (position and size)
+        bounding_rect = pupil_roi_data.rect()
+        x = bounding_rect.x()
+        y = bounding_rect.y()
+        width = bounding_rect.width()
+        height = bounding_rect.height()
+
+        # Convert to a simple, serializable tuple or dictionary
+        pupil_roi_serializable = (x, y, width, height)
+        return pupil_roi_serializable
+
+
+    def pupil_dilation_comput(self, images, saturation, erased_pixels, reflect_ellipse):
         """
-        Computes pupil dilation and related metrics from a series of images.
-
-        Parameters:
-            images (list): List of image arrays.
-            saturation (int): Saturation level for image processing.
-
-            reflection_pixels (List): Parameters for reflection pixel adjustment.
-
-        Returns:
-            tuple: Computed pupil dilation, center coordinates (X and Y),
-                   pupil center, saccade data (X and Y), distance from the corner,
-                   pupil width, and height.
+        Computes pupil dilation and related metrics from a series of images using parallel processing.
         """
+        # Start timing
+        start_time = time.time()
 
-        # Retrieve the pupil region of interest (ROI)
-        pupil = self.app_instance.graphicsView_MainFig.pupil_ROI
+        # Extract only serializable data from PyQt objects before multiprocessing
+        pupil_roi_data = self.app_instance.graphicsView_MainFig.pupil_ROI
+        print("this is pupil_roi_data ", pupil_roi_data)
+        eye_corner_center = (
+            self.app_instance.eye_corner_center[0],
+            self.app_instance.eye_corner_center[1]
+        ) if self.app_instance.eye_corner_center is not None else None
 
-        # Initialize lists to store computed data
         total_files = len(images)
-        pupil_dilation = []
-        pupil_center_X = []
-        pupil_center_y = []
-        pupil_center = []
-        pupil_width = []
-        pupil_height = []
-
-        # Set progress bar maximum to the number of images
         self.app_instance.progressBar.setMaximum(total_files)
 
-        # Process each image in the list
-        for i, current_image in enumerate(images):
-            # Update progress bar and process UI events to keep the interface responsive
-            self.app_instance.progressBar.setValue(i + 1)
-            QtWidgets.QApplication.processEvents()
+        pupil_roi_serializable = self.extract_data_from_QGraphics(pupil_roi_data)
 
-            # Extract the pupil sub-region from the current image
-            sub_region, _ = functions.show_ROI(pupil, current_image)
+        # Prepare the data for multiprocessing
+        frame_args = [
+            (current_image, pupil_roi_serializable, saturation, erased_pixels, reflect_ellipse, eye_corner_center)
+            for current_image in images
+        ]
 
-            # Convert grayscale images to RGB format if necessary
-            if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
-                sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
+        # Use a multiprocessing pool to process images in parallel
+        with Pool() as pool:
+            results = pool.map(process_single_frame, frame_args)
 
-            # Apply saturation adjustment
-            sub_region = functions.change_saturation(sub_region, saturation)
+        # Aggregate the results
+        pupil_dilation, pupil_center, pupil_center_X, pupil_center_y, pupil_width, pupil_height, pupil_distance_from_corner = zip(
+            *results
+        )
 
-            # Convert to RGBA format for further processing
-            sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
+        # End timing
+        end_time = time.time()
+        elapsed_time = end_time - start_time
 
-            # Detect pupil characteristics from the processed sub-region
-            _, center, width, height, _, current_area = functions.detect_pupil(
-                sub_region_rgba, erased_pixels, reflection_pixels
-            )
+        # Print the elapsed time
+        print(f"Time taken for pupil dilation computation: {elapsed_time:.2f} seconds")
 
-            # Store computed metrics for the current frame
-            pupil_width.append(width)
-            pupil_height.append(height)
-            pupil_dilation.append(current_area)
-            pupil_center.append(center)
-            pupil_center_X.append(int(center[0]))
-            pupil_center_y.append(int(center[1]))
-
-        # Set progress bar to complete after processing all images
+        # Update progress bar to complete
         self.app_instance.progressBar.setValue(total_files)
 
         # Convert lists to numpy arrays for consistency and efficient computation
         pupil_dilation = np.array(pupil_dilation)
+        pupil_center = np.array(pupil_center)
         pupil_center_X = np.array(pupil_center_X)
         pupil_center_y = np.array(pupil_center_y)
-        pupil_center = np.array(pupil_center)
         pupil_width = np.array(pupil_width)
         pupil_height = np.array(pupil_height)
+        pupil_distance_from_corner = np.array(pupil_distance_from_corner)
 
         # Compute saccades for X and Y coordinates
         X_saccade = self.Saccade(pupil_center_X)
         Y_saccade = self.Saccade(pupil_center_y)
 
-        # Calculate the distance from the pupil center to the eye corner, if defined
-        if self.app_instance.eye_corner_center is not None:
-            pupil_distance_from_corner = np.array([
-                math.sqrt((x - self.app_instance.eye_corner_center[0]) ** 2 + (y - self.app_instance.eye_corner_center[1]) ** 2)
-                for x, y in pupil_center
-            ])
-        else:
-            # If eye corner center is not defined, fill with NaNs
-            pupil_distance_from_corner = np.full(len(pupil_center), np.nan)
-
         # Return all computed pupil metrics
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
                 X_saccade, Y_saccade, pupil_distance_from_corner, pupil_width, pupil_height)
+
 
     def Saccade(self, pupil_center_i):
         """
         Computes the saccade movements based on changes in the pupil center coordinates.
 
         Parameters:
-            pupil_center_i (array-like): The center coordinates of the pupil for each frame.
+            pupil_center_i (array-like): The center coordinates of the pupil for each frame in the i axis.
 
         Returns:
             np.ndarray: A 2D array with saccade values, where small changes (<2) are replaced with NaN.
         """
         # Compute saccade differences using numpy's vectorized operations
         saccade = np.diff(pupil_center_i).astype(float)
-        print("this is saccade ", saccade)
 
         # Duplicate the first computed value at the beginning of the list to avoid changing dataset length
         if saccade.size > 0:

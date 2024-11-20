@@ -1,4 +1,5 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
+import numpy as np
 import functions
 class GUI_Intract(QtWidgets.QGraphicsView):
     def __init__(self, parent=None, *args, **kwargs):
@@ -12,6 +13,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         self.dragging = False
         self.dragging_face = False
         self.dragging_pupil = False
+        self.dragging_reflect = False
 
         self.eye_corner_mode = False
         self.Resizing = False
@@ -33,14 +35,21 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         self.Face_frame = None
         self.Pupil_frame = None
         self.current_ROI = None
+        #----------------------------------- initiate reflection-----------------------------------
+        self.Resize_reflect = False
+        self.reflect_ROI = None
+        self.reflect_ROIs = []
+        self.reflect_handles_list = []
+        self.reflect_widths = []
+        self.reflect_heights = []
+        self.reflect_centers = []
+        self.reflect_ellipse = None
         self.pupil_ellipse_items = None
 
-        self.erase_size = 5
+        self.erase_color = QtGui.QColor('white')
+
         self.brush_strokes = []
         self.erased_pixels = []
-        #####################
-        self.added_pixels = []
-        self.reflect_strokes = []
 
     def showContextMenu(self, pos):
         context_menu = QtWidgets.QMenu(self)
@@ -50,6 +59,21 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             self.scene_pos = self.mapToScene(pos)
             self.delete(self.scene_pos)
 
+
+
+    def delete(self, scene_pos):
+
+        for idx, reflect_ROI in enumerate(self.reflect_ROIs):
+            reflect_handle = self.reflect_handles_list[idx]
+            if reflect_ROI.contains(scene_pos):
+                self.scene().removeItem(reflect_ROI)
+                self.scene().removeItem(reflect_handle['right'])
+                del self.reflect_ROIs[idx]
+                del self.reflect_handles_list[idx]
+                del self.reflect_centers[idx]
+                del self.reflect_widths[idx]
+                del self.reflect_heights[idx]
+                break
 
     def _handle_eye_corner_mode(self):
         """Handle eye corner mode for adding an eye corner."""
@@ -64,9 +88,6 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         if self.parent.Eraser_active and event.button() == QtCore.Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
             self.markForErasure(scene_pos)
-        elif self.parent.AddPixels_active and event.button() == QtCore.Qt.LeftButton:
-            scene_pos = self.mapToScene(event.pos())
-            self.markForAddition(scene_pos)
 
         self.scene_pos = self.mapToScene(event.pos())
         if event.button() == QtCore.Qt.RightButton:
@@ -110,23 +131,33 @@ class GUI_Intract(QtWidgets.QGraphicsView):
 
                 return
 
+        for idx, self.reflect_ROI in enumerate(self.reflect_ROIs):
+            reflect_handles = self.reflect_handles_list[idx]
+            for handle_name, handle in reflect_handles.items():
+                if handle.contains(self.scene_pos):
+                    self.Resizing = True
+                    self.Resize_reflect = True
+
+                    self.current_reflect_idx = idx
+                    self.previous_mouse_pos_reflect = (self.scene_pos .x(), self.scene_pos .y())
+                    return
+
+            if self.reflect_ROI.contains(self.scene_pos):
+                self.dragging = True
+                self.dragging_reflect = True
+
+                self.current_reflect_idx = idx
+                self.previous_mouse_pos_reflect = (self.scene_pos .x(), self.scene_pos .y())
+
 
 
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        print("self.parent.Eraser_active", self.parent.Eraser_active)
-        print("self.parent.AddPixels_active", self.parent.AddPixels_active)
         """Handle mouse move events for continuous painting."""
         if self.parent.Eraser_active and event.buttons() & QtCore.Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
             self.markForErasure(scene_pos)
-
-        ######################
-        if self.parent.AddPixels_active and event.buttons() & QtCore.Qt.LeftButton:
-            scene_pos = self.mapToScene(event.pos())
-            self.markForAddition(scene_pos)
-        #######################################
 
         if self.dragging:
             if self.dragging_face:
@@ -147,6 +178,14 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 frame_height_boundary = self.parent.image_height
                 frame_width_boundary = self.parent.image_width
 
+            elif self.dragging_reflect:
+                handle_type = 'reflection'
+                previous_mouse_pos = self.previous_mouse_pos_reflect
+                self.ROI_center = self.reflect_centers[self.current_reflect_idx]
+                self.ROI_height = self.reflect_heights[self.current_reflect_idx]
+                self.ROI_width = self.reflect_widths[self.current_reflect_idx]
+                frame_height_boundary = self.parent.sub_region.shape[0]
+                frame_width_boundary = self.parent.sub_region.shape[1]
 
 
             x = previous_mouse_pos[0]
@@ -177,6 +216,10 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             elif self.dragging_pupil:
                 self.previous_mouse_pos_pupil = (new_pos.x(), new_pos.y())
                 self.parent.oval_center = (center_x, center_y)
+            elif self.dragging_reflect:
+                self.previous_mouse_pos_reflect = (new_pos.x(), new_pos.y())
+                self.reflect_centers[self.current_reflect_idx] = (center_x, center_y)
+
 
         elif self.Resizing:
             if self.Resize_face:
@@ -197,6 +240,15 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 frame_width_boundary = self.parent.image_width
                 minimum_w_h = 10
 
+            elif self.Resize_reflect:
+                handle_type = "reflection"
+                previous_mouse_pos = self.previous_mouse_pos_reflect
+                self.ROI_center = self.reflect_centers[self.current_reflect_idx]
+                self.ROI_width = self.reflect_widths[self.current_reflect_idx]
+                self.ROI_height = self.reflect_heights[self.current_reflect_idx]
+                frame_height_boundary = self.parent.sub_region.shape[0]
+                frame_width_boundary = self.parent.sub_region.shape[1]
+                minimum_w_h = 1
 
 
             x = previous_mouse_pos[0]
@@ -229,20 +281,32 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 self.oval_width = resized_width
                 self.oval_height = resized_height
 
+            elif self.Resize_reflect:
+                self.previous_mouse_pos_reflect = (new_pos.x(), new_pos.y())
+                self.reflect_heights[self.current_reflect_idx] = resized_height
+                self.reflect_widths[self.current_reflect_idx] = resized_width
+
         super().mouseMoveEvent(event)
 
 
 
     def mouseReleaseEvent(self, event):
+        self.resetModes()
         if self.dragging:
             if self.dragging_face:
                 self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
                 _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation)
                 self.parent.set_frame(self.parent.Face_frame)
+                print("frame is ",self.parent.Face_frame )
             elif self.dragging_pupil:
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
                 _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2,"pupil",self.parent.saturation)
                 self.parent.set_frame(self.parent.Pupil_frame)
+                self.parent.reflection_center = (
+                    (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
+            elif self.dragging_reflect:
+                self.reflect_ellipse = [self.reflect_centers, self.reflect_widths , self.reflect_heights ]
+                self.parent.reflect_ellipse = self.reflect_ellipse
 
         elif self.Resizing:
             if self.Resize_face:
@@ -253,6 +317,11 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
                 _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2, "pupil",self.parent.saturation)
                 self.parent.set_frame(self.parent.Pupil_frame)
+                self.parent.reflection_center = (
+                    (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
+            elif self.Resize_reflect:
+                self.reflect_ellipse = [self.reflect_centers, self.reflect_widths , self.reflect_heights]
+                self.parent.reflect_ellipse = self.reflect_ellipse
         if self.dragging or self.Resizing:
             self._reset_flags()
 
@@ -263,9 +332,12 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         self.dragging = False
         self.dragging_face = False
         self.dragging_pupil = False
+        self.dragging_reflect = False
         self.Resizing = False
         self.Resize_face = False
         self.Resize_pupil = False
+        self.Resize_reflect = False
+
 
     def updateEllipse(self, center_x, center_y, width, height, handle_type):
         """
@@ -276,7 +348,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             center_y (float): The y-coordinate of the ellipse center.
             width (float): The width of the ellipse.
             height (float): The height of the ellipse.
-            handle_type (str): The type of ROI being updated ('face', 'pupil').
+            handle_type (str): The type of ROI being updated ('face', 'pupil', 'reflection').
         """
         # Calculate the rectangle's top-left corner for the given center and size.
         rect_x = center_x - width / 2
@@ -287,6 +359,10 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             self._update_ROI(self.face_ROI, rect_x, rect_y, width, height, "face", handle_size=10)
         elif handle_type == "pupil":
             self._update_ROI(self.pupil_ROI, rect_x, rect_y, width, height, "pupil", handle_size=10)
+        elif handle_type == "reflection":
+            current_reflect_ROI = self.reflect_ROIs[self.current_reflect_idx]
+            self._update_ROI(current_reflect_ROI, rect_x, rect_y, width, height, "reflection", handle_size=3)
+            current_reflect_ROI.setBrush(QtGui.QBrush(QtGui.QColor('silver')))
 
     def _update_ROI(self, roi, rect_x, rect_y, width, height, handle_type, handle_size):
         """
@@ -311,7 +387,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         Args:
             center_x (float): The x-coordinate of the center of the ROI.
             center_y (float): The y-coordinate of the center of the ROI.
-            handle_type (str): The type of ROI ('face', 'pupil').
+            handle_type (str): The type of ROI ('face', 'pupil', 'reflection').
             handle_size (int): The size of the handle rectangle.
         """
         # Calculate half the width of the ROI for positioning handles.
@@ -334,7 +410,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         Retrieve the appropriate handle dictionary based on the handle type.
 
         Args:
-            handle_type (str): The type of ROI ('face', 'pupil').
+            handle_type (str): The type of ROI ('face', 'pupil', 'reflection').
 
         Returns:
             dict: A dictionary of handles for the specified ROI type.
@@ -343,34 +419,22 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             return self.face_handles
         elif handle_type == "pupil":
             return self.pupil_handles
+        elif handle_type == "reflection":
+            return self.reflect_handles_list[self.current_reflect_idx]
         else:
             raise ValueError(f"Invalid handle type: {handle_type}")
 
-    def resetModes(self):
-        """Deactivate all modes."""
-        self.parent.Eraser_active = False
-        self.parent.AddPixels_active = False
-        # Add other mode flags here as needed
-
     def activateEraseMode(self):
-        self.resetModes()  # Reset all modes first
         self.parent.Eraser_active = True  # Activate Erase mode
         self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
-
-    # Method to activate Add Pixels mode
-    def activateAddPixelsMode(self):
-        self.resetModes()  # Reset all modes first
-        self.parent.AddPixels_active = True  # Activate Add Pixels mode
-        self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
-
 
     def markForErasure(self, scene_pos):
         """Paint a circle at the given scene position."""
         brush_item = QtWidgets.QGraphicsEllipseItem(
-            scene_pos.x() - self.erase_size / 2,
-            scene_pos.y() - self.erase_size / 2,
-            self.erase_size,
-            self.erase_size
+            scene_pos.x() - self.parent.erase_size / 2,
+            scene_pos.y() - self.parent.erase_size / 2,
+            self.parent.erase_size,
+            self.parent.erase_size
         )
         brush_item.setBrush(QtGui.QBrush(QtGui.QColor('white')))
         brush_item.setPen(QtGui.QPen(QtCore.Qt.NoPen))
@@ -378,8 +442,8 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         #########
 
         # Store the coordinates of the painted pixels
-        for x in range(int(scene_pos.x() - self.erase_size / 2), int(scene_pos.x() + self.erase_size / 2)):
-            for y in range(int(scene_pos.y() - self.erase_size / 2), int(scene_pos.y() + self.erase_size / 2)):
+        for x in range(int(scene_pos.x() - self.parent.erase_size / 2), int(scene_pos.x() + self.parent.erase_size / 2)):
+            for y in range(int(scene_pos.y() - self.parent.erase_size / 2), int(scene_pos.y() + self.parent.erase_size / 2)):
                 # Only store coordinates within the bounds of the scene
                 if 0 <= x < self.parent.scene2.width() and 0 <= y < self.parent.scene2.height():
                     self.erased_pixels.append((x, y))
@@ -392,35 +456,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             brush_item = self.brush_strokes.pop()
             self.parent.scene2.removeItem(brush_item)
             self.parent.erased_pixels = None
-
-
-    #########################
-    def markForAddition(self, scene_pos):
-        """Paint a circle at the given scene position for added pixels."""
-        brush_item = QtWidgets.QGraphicsEllipseItem(
-            scene_pos.x() - self.erase_size / 2,
-            scene_pos.y() - self.erase_size / 2,
-            self.erase_size,
-            self.erase_size
-        )
-        brush_item.setBrush(QtGui.QBrush(QtGui.QColor('gray')))
-        brush_item.setPen(QtGui.QPen(QtCore.Qt.NoPen))
-        self.parent.scene2.addItem(brush_item)
-
-        # Store the coordinates of the added pixels
-        for x in range(int(scene_pos.x() - self.erase_size / 2), int(scene_pos.x() + self.erase_size / 2)):
-            for y in range(int(scene_pos.y() - self.erase_size / 2), int(scene_pos.y() + self.erase_size / 2)):
-                if 0 <= x < self.parent.scene2.width() and 0 <= y < self.parent.scene2.height():
-                    self.added_pixels.append((x, y))
-                    self.parent.added_pixels = self.added_pixels  # Sync with parent
-
-        self.reflect_strokes.append(brush_item)
-
-    def undoAddedPixels(self):
-        """Remove all reflect brush  strokes from the scene."""
-        while self.reflect_strokes:
-            reflect_item = self.reflect_strokes.pop()
-            self.parent.scene2.removeItem(reflect_item)
-            self.parent.added_pixels = None
-
-
+    def resetModes(self):
+        """Deactivate all modes."""
+        self.parent.Eraser_active = False
+        self.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
