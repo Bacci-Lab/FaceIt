@@ -49,9 +49,33 @@ Process Overview:
 
 - **Ellipse Fitting Details:**
      In the next step FaceIt identifies non-zero pixel coordinates in the binary image to outline the area for ellipse fitting. It calculates the mean center of these coordinates and recenters them for accurate alignment. A covariance matrix is computed to evaluate the distribution of the coordinates, which defines the axes of the pupil ellipse.
+     The equation below shows how the covariance between two variables,x and y, is calculated. The covariance measures the relationship between the x and y positions of the points:
+
+    .. math::
+
+        \text{Cov}(x, y) = \frac{1}{n - 1} \sum_{i=1}^n (x_i - \bar{x})(y_i - \bar{y})
+
+    Where:
+
+        - :math:`x_i` and :math:`y_i`: Individual data points for the :math:`x` and :math:`y` coordinates.
+        - :math:`\bar{x}` and :math:`\bar{y}`: Mean values of :math:`x` and :math:`y`, respectively.
+        - :math:`n`: Number of data points.
+
+
 
   - **Eigenvalue and Eigenvector Analysis:**
      The eigenvalues and eigenvectors of the covariance matrix are extracted to determine the ellipse's orientation and dimensions. The primary eigenvector indicates the major axis (width), while the secondary, perpendicular eigenvector represents the minor axis (height).
+
+    .. math::
+
+        \Sigma \mathbf{v}_i = \lambda_i \mathbf{v}_i
+
+    Where:
+
+        - :math:`\Sigma`: Covariance matrix.
+        - :math:`\lambda_i`: Eigenvalue (scalar), where :math:`i = 1, 2`.
+        - :math:`\mathbf{v}_i`: Eigenvector (unit vector corresponding to :math:`\lambda_i`).
+
 
     .. raw:: html
 

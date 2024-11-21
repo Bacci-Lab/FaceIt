@@ -310,6 +310,33 @@ class ProcessHandler:
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
                 X_saccade, Y_saccade, pupil_distance_from_corner, pupil_width, pupil_height)
 
+    def plot_saccade(self, pupil_center_i, saccade):
+        """
+        Plots the saccades based on pupil center changes.
+
+        Parameters:
+            pupil_center_i (array-like): The center coordinates of the pupil for each frame in the i-axis.
+            saccade (array-like): Computed saccade values (differences with filtering).
+        """
+        # Frame indices for plotting
+        frames = np.arange(len(pupil_center_i))
+
+        # Plotting pupil center movement
+        plt.figure(figsize=(10, 5))
+        plt.plot(frames, pupil_center_i, label='Pupil Center (i-axis)', color='blue', marker='o', alpha=0.6)
+
+        # Plotting saccades (filter out NaN values)
+        plt.plot(frames, np.nan_to_num(saccade[0]), label='Saccade Movement', color='red', linestyle='--', alpha=0.7)
+
+        # Adding labels, legend, and title
+        plt.xlabel('Frame Index')
+        plt.ylabel('Movement Value')
+        plt.title('Saccade Movements Over Frames')
+        plt.axhline(0, color='gray', linestyle='--', linewidth=0.8)  # Reference line at y=0
+        plt.legend()
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        plt.show()
 
     def Saccade(self, pupil_center_i):
         """
@@ -336,6 +363,8 @@ class ProcessHandler:
 
         # Reshape the saccade array to be 2D (1 row) for consistency
         saccade = saccade.reshape(1, -1)
+
+        self.plot_saccade(pupil_center_i, saccade)
 
 
 

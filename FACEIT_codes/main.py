@@ -154,19 +154,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.brush_size_edit.setText(str(self.erase_size))
         return self.erase_size
 
-    def setup_graphics_views(self):
-        self.Image_H_Layout = QtWidgets.QHBoxLayout()
-        self.Image_H_Layout.addWidget(self.leftGroupBox)
-        self.Image_H_Layout.addWidget(self.rightGroupBox)
-        self.graphicsView_MainFig = GUI_Intract(self.centralwidget)
-        self.graphicsView_MainFig.parent = self
-        self.Image_H_Layout.addWidget(self.graphicsView_MainFig)
-        self.graphicsView_subImage = GUI_Intract(self.centralwidget)
-        self.graphicsView_subImage.parent = self
-        self.graphicsView_subImage.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.graphicsView_subImage.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.Image_H_Layout.addWidget(self.graphicsView_subImage)
-        self.Main_V_Layout.addLayout(self.Image_H_Layout)
     def setup_Result(self):
         self.vertical_process_Layout = QtWidgets.QVBoxLayout()
         self.graphicsView_whisker = QtWidgets.QGraphicsView(self.centralwidget)
@@ -191,70 +178,116 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.find_grooming_threshold = True
         else:
             pass
+
+    def setup_graphics_views(self):
+        self.Image_H_Layout = QtWidgets.QHBoxLayout()
+        self.Image_H_Layout.addWidget(self.groupBox)
+        self.graphicsView_MainFig = GUI_Intract(self.centralwidget)
+        self.graphicsView_MainFig.parent = self
+        self.Image_H_Layout.addWidget(self.graphicsView_MainFig)
+        self.graphicsView_subImage = GUI_Intract(self.centralwidget)
+        self.graphicsView_subImage.parent = self
+        self.graphicsView_subImage.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.graphicsView_subImage.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.Image_H_Layout.addWidget(self.graphicsView_subImage)
+        self.Main_V_Layout.addLayout(self.Image_H_Layout)
+
     def setup_buttons(self):
-        self.mainLayout = QtWidgets.QHBoxLayout(self.centralwidget)
-        self.leftGroupBox = QtWidgets.QGroupBox(self.centralwidget)
-        self.rightGroupBox = QtWidgets.QGroupBox(self.centralwidget)
+        # Create a group box to hold all the widgets
+        self.groupBox = QtWidgets.QGroupBox()
+        self.groupBoxLayout = QtWidgets.QVBoxLayout(self.groupBox)  # Layout for the group box
 
-        self.mainLayout.addWidget(self.leftGroupBox)
-        self.mainLayout.addWidget(self.rightGroupBox)
+        # Main Layout
+        self.mainLayout = QtWidgets.QVBoxLayout(self.centralwidget)
 
-        self.rightGroupBoxLayout = QtWidgets.QVBoxLayout(self.rightGroupBox)
-        self.leftGroupBoxLayout = QtWidgets.QVBoxLayout(self.leftGroupBox)
-        # Set the main layout to the central widget
-        self.centralwidget.setLayout(self.mainLayout)
+        # === ROI Tools ===
+        self.roiLayout = QtWidgets.QGridLayout()
+        self.groupBoxLayout.addWidget(QtWidgets.QLabel("ROI Tools"))
+        self.groupBoxLayout.addLayout(self.roiLayout)
+
         self.PupilROIButton = QtWidgets.QPushButton("Pupil ROI")
-        self.leftGroupBoxLayout.addWidget(self.PupilROIButton)
+        self.roiLayout.addWidget(self.PupilROIButton, 0, 0)
+
         self.FaceROIButton = QtWidgets.QPushButton("Face ROI")
-        self.leftGroupBoxLayout.addWidget(self.FaceROIButton)
-        self.ReflectionButton = QtWidgets.QPushButton("Add Reflection")
-        self.leftGroupBoxLayout.addWidget(self.ReflectionButton)
-        self.Erase_Button = QtWidgets.QPushButton("Erase")
-        self.leftGroupBoxLayout.addWidget(self.Erase_Button)
-        self.Erase_Button.setEnabled(False)
-        self.Undo_Erase_Button = QtWidgets.QPushButton("Undo Erase")
-        self.leftGroupBoxLayout.addWidget(self.Undo_Erase_Button)
-        self.ReflectionButton.setEnabled(False)
-        self.Add_eyecorner = QtWidgets.QPushButton("Add Eye corner")
-        self.leftGroupBoxLayout.addWidget(self.Add_eyecorner)
+        self.roiLayout.addWidget(self.FaceROIButton, 0, 1)
+
+        self.Add_eyecorner = QtWidgets.QPushButton("Add Eye Corner")
         self.Add_eyecorner.setEnabled(False)
-        self.Process_Button = QtWidgets.QPushButton("Process")
-        self.Process_Button.setEnabled(False)
-        self.rightGroupBoxLayout.addWidget(self.Process_Button)
-        self.Save_Button = QtWidgets.QPushButton("Save")
-        self.rightGroupBoxLayout.addWidget(self.Save_Button)
-        self.detect_blinking_Button = QtWidgets.QPushButton("Detect blinking")
-        self.rightGroupBoxLayout.addWidget(self.detect_blinking_Button)
-        self.Undo_blinking_Button = QtWidgets.QPushButton("Undo blinking")
-        self.rightGroupBoxLayout.addWidget(self.Undo_blinking_Button)
+        self.roiLayout.addWidget(self.Add_eyecorner, 0, 2)
+
+        self.ReflectionButton = QtWidgets.QPushButton("Add Reflection")
+        self.ReflectionButton.setEnabled(False)
+        self.roiLayout.addWidget(self.ReflectionButton, 1, 0)
+
+        self.Erase_Button = QtWidgets.QPushButton("Erase")
+        self.Erase_Button.setEnabled(False)
+        self.roiLayout.addWidget(self.Erase_Button, 1, 1)
+
+        self.Undo_Erase_Button = QtWidgets.QPushButton("Undo Erase")
+        self.roiLayout.addWidget(self.Undo_Erase_Button, 1, 2)
+
+        # === Detection Tools ===
+        self.detectionLayout = QtWidgets.QGridLayout()
+        self.groupBoxLayout.addWidget(QtWidgets.QLabel("Post processing"))
+        self.groupBoxLayout.addLayout(self.detectionLayout)
+
+        self.detect_blinking_Button = QtWidgets.QPushButton("Detect Blinking")
+        self.detectionLayout.addWidget(self.detect_blinking_Button, 0, 0)
+
+        self.Undo_blinking_Button = QtWidgets.QPushButton("Undo Blinking")
+        self.detectionLayout.addWidget(self.Undo_blinking_Button, 0, 1)
 
         self.grooming_Button = QtWidgets.QPushButton("Detect Grooming")
-        # self.grooming_Button.setEnabled(False)
-        self.rightGroupBoxLayout.addWidget(self.grooming_Button)
+        self.detectionLayout.addWidget(self.grooming_Button, 1, 0)
 
         self.Undo_grooming_Button = QtWidgets.QPushButton("Undo Grooming")
-        self.rightGroupBoxLayout.addWidget(self.Undo_grooming_Button)
-        ##################
-        self.exclude_blinking_Button = QtWidgets.QPushButton("exclude blinking")
-        self.rightGroupBoxLayout.addWidget(self.exclude_blinking_Button)
-        #################################
-        self.grooming_limit_Label = QtWidgets.QLabel("grooming threshold")
-        self.grooming_limit_Label.setFixedSize(100, 20)
-        self.grooming_limit_Label.setStyleSheet("color: white;")
-        self.rightGroupBoxLayout.addWidget(self.grooming_limit_Label)
-        #########################
-        self.lineEdit_grooming_y = QtWidgets.QLineEdit(self.centralwidget)
-        self.lineEdit_grooming_y.setFixedWidth(50)
-        self.rightGroupBoxLayout.addWidget(self.lineEdit_grooming_y)
-        self.checkBox_face = QtWidgets.QCheckBox("Whisker Pad")
-        self.leftGroupBoxLayout.addWidget(self.checkBox_face)
-        self.checkBox_pupil = QtWidgets.QCheckBox("Pupil")
-        self.leftGroupBoxLayout.addWidget(self.checkBox_pupil)
-        self.checkBox_nwb = QtWidgets.QCheckBox("Save nwb")
-        self.leftGroupBoxLayout.addWidget(self.checkBox_nwb)
-        self.save_video = QtWidgets.QCheckBox("Save Video")
-        self.leftGroupBoxLayout.addWidget(self.save_video)
+        self.detectionLayout.addWidget(self.Undo_grooming_Button, 1, 1)
 
+        # self.exclude_blinking_Button = QtWidgets.QPushButton("Exclude Blinking")
+        # self.detectionLayout.addWidget(self.exclude_blinking_Button, 1, 2)
+
+        # === File Operations ===
+        self.fileOpsLayout = QtWidgets.QVBoxLayout()
+        self.groupBoxLayout.addWidget(QtWidgets.QLabel("File Operations"))
+        self.groupBoxLayout.addLayout(self.fileOpsLayout)
+
+        self.Process_Button = QtWidgets.QPushButton("Process")
+        self.Process_Button.setEnabled(False)
+        self.fileOpsLayout.addWidget(self.Process_Button)
+
+        self.Save_Button = QtWidgets.QPushButton("Save")
+        self.fileOpsLayout.addWidget(self.Save_Button)
+
+        # === Options and Threshold ===
+        self.optionsLayout = QtWidgets.QVBoxLayout()
+        self.groupBoxLayout.addWidget(QtWidgets.QLabel("Options & Threshold"))
+        self.groupBoxLayout.addLayout(self.optionsLayout)
+
+        self.grooming_limit_Label = QtWidgets.QLabel("Grooming Threshold:")
+        self.grooming_limit_Label.setStyleSheet("color: white;")
+        self.optionsLayout.addWidget(self.grooming_limit_Label)
+
+        self.lineEdit_grooming_y = QtWidgets.QLineEdit()
+        self.lineEdit_grooming_y.setFixedWidth(50)
+        self.optionsLayout.addWidget(self.lineEdit_grooming_y)
+
+        self.checkBox_face = QtWidgets.QCheckBox("Whisker Pad")
+        self.optionsLayout.addWidget(self.checkBox_face)
+
+        self.checkBox_pupil = QtWidgets.QCheckBox("Pupil")
+        self.optionsLayout.addWidget(self.checkBox_pupil)
+
+        self.checkBox_nwb = QtWidgets.QCheckBox("Save nwb")
+        self.optionsLayout.addWidget(self.checkBox_nwb)
+
+        self.save_video = QtWidgets.QCheckBox("Save Video")
+        self.optionsLayout.addWidget(self.save_video)
+
+        # Add the group box to the main layout
+        self.mainLayout.addWidget(self.groupBox)
+
+        # Set the main layout to the central widget
+        self.centralwidget.setLayout(self.mainLayout)
 
     def setup_saturation(self):
         self.sliderLayout = QtWidgets.QVBoxLayout()
