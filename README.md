@@ -6,16 +6,16 @@ This pipeline is designed to detect and analyze facial movements, including eye-
 
 ## Installation
 1. Among [Python](https://www.python.org/downloads/) versions search for 3.9.16 and install it on your operating system.
-2. Open your command prompt and navigate to the directory where you want to clone the pipeline. You can use this comment `cd path\to\your\project` to navigate to your preferable directory
-4. Creat a new virtual Environment "venv" with:
+
+2. Create a new virtual Environment "venv" with:
 ```
 python -m venv FaceIt
 ```
-5. Activate venv using this code:
+3. Activate venv using this code:
 ```
 .\FaceIt\Scripts\activate
 ```
-6. Install FACEIT using this commend:
+4. Install FACEIT using this commend:
 ```
 pip install git+https://github.com/faezehrabbani97/FaceIt.git
 ```
