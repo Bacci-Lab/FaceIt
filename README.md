@@ -32,7 +32,7 @@ python -m venv FaceIt
 ```
 ### 3. Create a Virtual Environment
 Activate the environment to install and run the pipeline without conflicts:
-# .Windows
+#### .Windows
 
 ```bash
 .\FaceIt\Scripts\activate
@@ -48,9 +48,26 @@ pip install git+https://github.com/faezehrabbani97/FaceIt.git
 
 experimental procedures followed French and European guidelines for animal experimentation and in compliance with the institutional animal welfare guidelines of the Paris Brain Institute
 
-### Contributing
+## Contributing
+
 Contributions to FACEIT are welcome! Feel free to:
 
-*Report issues
-*Submit pull requests.
-*Suggest new features.
+- Report issues.
+- Submit pull requests.
+- Suggest new features.
+
+For guidelines, refer to the [contributing section](https://faceit.readthedocs.io/contributing) in the documentation.
+
+---
+
+## License
+
+FACEIT is licensed under the [MIT License](https://opensource.org/licenses/MIT).
+
+---
+
+## Support
+
+If you encounter issues or have questions, please contact **Faezeh Rabbani** at:
+📧 **[faezeh.rabbani97@gmail.com](mailto:faezeh.rabbani97@gmail.com)**
+
