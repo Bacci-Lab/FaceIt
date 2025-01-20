@@ -69,3 +69,7 @@ FACEIT is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 If you encounter issues or have questions, please contact **Faezeh Rabbani** at:
 📧 **[faezeh.rabbani97@gmail.com](mailto:faezeh.rabbani97@gmail.com)**
 
+## Acknowledgments
+
+This pipeline was developed in the **Bacci Lab** at the **Paris Brain Institute**.
+For more information about the Bacci Lab, visit [the official website](https://baccilab.org).
