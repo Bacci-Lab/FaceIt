@@ -34,3 +34,5 @@ threadpoolctl==3.5.0
 tqdm==4.66.5
 tzdata==2024.2
 zipp==3.20.2
+sphinx_rtd_theme==1.2.0
+
