@@ -22,7 +22,7 @@
 Follow these steps to set up FACEIT on your system:
 
 ### 1. Install Python
-Ensure you have **Python 3.9.16** installed. You can download it from the [official Python website](https://www.python.org/downloads/).
+Ensure you have **Python 3.9** installed. You can download it from the [official Python website](https://www.python.org/downloads/).
 
 ### 2. Create a Virtual Environment
 Create an isolated Python environment to manage dependencies:
