@@ -1,4 +1,7 @@
-![FACEIT Logo](figures/Logo_FaceIT.jpg)
+<p align="center">
+  <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="200"/>
+</p>
+
 # FACEIT
 
 ## Facial Movement Detection and Analysis Pipeline
