@@ -13,8 +13,6 @@
 </table>
 
 
-# FACEIT
-
 ## Facial Movement Detection and Analysis Pipeline
 
 **FACEIT** is a comprehensive pipeline for detecting and analyzing facial movements in head-fixed mice, including eye-tracking and muzzle movements. It leverages advanced image processing techniques to capture, track, and analyze facial dynamics, providing valuable insights for various research and experimental applications.
