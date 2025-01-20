@@ -32,7 +32,7 @@ python -m venv FaceIt
 ```
 ### 3. Create a Virtual Environment
 Activate the environment to install and run the pipeline without conflicts:
-#### .Windows
+Windows:
 
 ```bash
 .\FaceIt\Scripts\activate
@@ -55,8 +55,6 @@ Contributions to FACEIT are welcome! Feel free to:
 - Report issues.
 - Submit pull requests.
 - Suggest new features.
-
-For guidelines, refer to the [contributing section](https://faceit.readthedocs.io/contributing) in the documentation.
 
 ---
 
