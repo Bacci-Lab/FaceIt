@@ -1,4 +1,4 @@
-<div style="text-align: right;">
+<div style="text-align: left;">
   <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="200"/>
 </div>
 
