@@ -1,24 +1,34 @@
 # FACEIT
+
 ## Facial Movement Detection and Analysis Pipeline
-This pipeline is designed to detect and analyze facial movements, including eye-tracking and mouse muzzle movement. It utilizes image processing techniques to capture, track, and analyze facial dynamics for various applications.
-Please read [Documentation](https://faceit.readthedocs.io/)
 
+**FACEIT** is a comprehensive pipeline designed to detect and analyze facial movements, including eye-tracking and mouse muzzle movements. It leverages advanced image processing techniques to capture, track, and analyze facial dynamics, providing valuable insights for various research and experimental applications.
 
+📖 **Explore the full [Documentation](https://faceit.readthedocs.io/)** for detailed instructions, usage examples, and insights into the pipeline.
+
+---
+
+## Features
+
+- **Eye-Tracking Analysis**: Capture and analyze eye movements with precision.
+- **Mouse Muzzle Tracking**: Detect and monitor muzzle dynamics in real time.
+- **Flexible and Modular**: Designed for easy integration and customization.
+- **User-Friendly**: Streamlined setup and usage with Python.
+
+---
 
 ## Installation
-1. Among [Python](https://www.python.org/downloads/) versions search for 3.9.16 and install it on your operating system.
 
-2. Create a new virtual Environment "venv" with:
-```
+Follow these steps to set up FACEIT on your system:
+
+### 1. Install Python
+Ensure you have **Python 3.9.16** installed. You can download it from the [official Python website](https://www.python.org/downloads/).
+
+### 2. Create a Virtual Environment
+Create an isolated Python environment to manage dependencies:
+
+```bash
 python -m venv FaceIt
 ```
-3. Activate venv using this code:
-```
-.\FaceIt\Scripts\activate
-```
-4. Install FACEIT using this commend:
-```
-pip install git+https://github.com/faezehrabbani97/FaceIt.git
-```
-
-experimental procedures followed French and European guidelines for animal experimentation and in compliance with the institutional animal welfare guidelines of the Paris Brain Institute
+### 2. Create a Virtual Environment
+Activate the environment to install and run the pipeline without conflicts:
