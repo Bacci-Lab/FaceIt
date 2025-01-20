@@ -1,5 +1,5 @@
 <div style="text-align: right;">
-  <img src="figures/logo.png" alt="FACEIT Logo" width="200"/>
+  <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="200"/>
 </div>
 
 
