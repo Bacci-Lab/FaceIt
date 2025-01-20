@@ -1,6 +1,7 @@
-<p align="right">
-  <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="200"/>
-</p>
+<div style="text-align: right;">
+  <img src="figures/logo.png" alt="FACEIT Logo" width="200"/>
+</div>
+
 
 # FACEIT
 
