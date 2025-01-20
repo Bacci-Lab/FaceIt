@@ -1,4 +1,4 @@
-<p align="center">
+<p align="right">
   <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="200"/>
 </p>
 
