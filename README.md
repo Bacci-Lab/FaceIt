@@ -50,7 +50,7 @@ Create an isolated Python environment to manage dependencies:
 ```bash
 python -m venv FaceIt
 ```
-### 3. Create a Virtual Environment
+### 3. Activate the Virtual Environment
 Activate the environment to install and run the pipeline without conflicts:
 Windows:
 
