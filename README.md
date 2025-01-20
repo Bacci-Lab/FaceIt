@@ -13,7 +13,7 @@
 - **Eye-Tracking Analysis**: Capture and analyze eye movements with precision.
 - **Mouse Muzzle Tracking**: Detect and monitor muzzle dynamics in real time.
 - **Flexible and Modular**: Designed for easy integration and customization.
-- **User-Friendly**: Streamlined setup and usage with Python.
+- **User-Friendly**: Intuitive and interactive GUI for streamlined user interaction and visualization.
 
 ---
 
