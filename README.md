@@ -7,7 +7,7 @@
       </p>
     </td>
     <td>
-      <img src="figures/logo_FaceIT.png" alt="FACEIT Logo" width="200" style="margin-left: 20px;"/>
+      <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="200" style="margin-left: 20px;"/>
     </td>
   </tr>
 </table>
