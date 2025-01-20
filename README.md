@@ -1,21 +1,28 @@
-<table>
-  <tr>
-    <td>
-      <h1>FACEIT</h1>
-      <p>
-        ## Facial Movement Detection and Analysis Pipeline
-        <strong>FACEIT</strong> is a comprehensive pipeline for detecting and analyzing facial movements in head-fixed mice, including eye-tracking and muzzle movements. It leverages advanced image processing techniques to capture, track, and analyze facial dynamics, providing valuable insights for various research and experimental applications.
-      </p>
-    </td>
-    <td>
-      <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="450" style="margin-left: 30px;"/>
-    </td>
-  </tr>
-</table>
+<div style="border: 2px solid #ccc; padding: 20px; border-radius: 10px;">
 
+  <table style="width: 100%;">
+    <tr>
+      <td>
+        <h1>FACEIT</h1>
+        <p>
+          <strong>Facial Movement Detection and Analysis Pipeline</strong>
+        </p>
+        <p>
+          <strong>FACEIT</strong> is a comprehensive pipeline for detecting and analyzing facial movements in head-fixed mice, including eye-tracking and muzzle movements. It leverages advanced image processing techniques to capture, track, and analyze facial dynamics, providing valuable insights for various research and experimental applications.
+        </p>
+      </td>
+      <td>
+        <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="450" style="margin-left: 30px;"/>
+      </td>
+    </tr>
+  </table>
 
+  <p>
+    📖 <strong>Explore the full <a href="https://faceit.readthedocs.io/">Documentation</a></strong> for detailed instructions, usage examples, and insights into the pipeline.
+  </p>
 
-📖 **Explore the full [Documentation](https://faceit.readthedocs.io/)** for detailed instructions, usage examples, and insights into the pipeline.
+</div>
+
 
 ---
 
