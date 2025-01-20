@@ -52,6 +52,7 @@ python -m venv FaceIt
 ```
 ### 3. Activate the Virtual Environment
 Activate the environment to install and run the pipeline without conflicts:
+
 Windows:
 
 ```bash
