@@ -64,7 +64,6 @@ def overlap_reflect(reflections, pupil_ellipse, binary_image):
     Returns:
     np.ndarray: The modified binary image with overlapping regions highlighted.
     """
-    print("reflection", reflections)
     # Proceed only if reflections are provided
     if reflections is not None:
         # Create black masks for the pupil and reflections

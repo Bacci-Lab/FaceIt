@@ -244,7 +244,7 @@ class Display:
         )
         self.app_instance.pupil_ellipse_items = functions.display_sub_region(
             self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
-            self.app_instance.scene2, "pupil", self.app_instance.saturation,
+            self.app_instance.scene2, "pupil area", self.app_instance.saturation,
             self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
             self.app_instance.pupil_ellipse_items, Detect_pupil=True
         )

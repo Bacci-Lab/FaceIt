@@ -35,7 +35,7 @@ class LoadData:
     def load_video(self):
         """Load video and prepare for processing."""
         self.app_instance.folder_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self.app_instance, "Load Video", "", "Video Files (*.avi)"
+            self.app_instance, "Load Video", "", "Video Files (*.avi *.wmv)"
         )
         if self.app_instance.folder_path:
             directory_path = os.path.dirname(self.app_instance.folder_path)

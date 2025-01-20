@@ -7,7 +7,8 @@ from Load_data import LoadData
 from Graphical_ROIS import ROIHandler
 import display_and_plots
 from PyQt5 import QtWidgets, QtCore, QtGui
-from GUI_Intractions import  GUI_Intract
+from GUI_Intractions import GUI_Intract
+import os
 
 class FaceMotionApp(QtWidgets.QMainWindow):
     def __init__(self):
@@ -21,7 +22,20 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.setWindowIcon(QtGui.QIcon(r"C:\Users\faezeh.rabbani\Downloads\logo.jpg"))
+
+        # Determine the project root
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+        # Construct the path to the logo within the repository
+        logo_path = os.path.join(project_root, "figures", "Logo_FaceIT.jpg")
+
+        # Check if the file exists
+        if os.path.exists(logo_path):
+            # Set the window icon using the logo from the repository
+            MainWindow.setWindowIcon(QtGui.QIcon(logo_path))
+        else:
+            print(f"Logo not found at {logo_path}")
+
         self.Eraser_active = False
         self.NPY = False
         self.video = False
@@ -31,11 +45,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.Main_V_Layout = QtWidgets.QVBoxLayout(self.centralwidget)
         MainWindow.setCentralWidget(self.centralwidget)
-
         self.setup_menubar(MainWindow)
         self.setup_buttons()
         self.setup_graphics_views()
-
         self.setup_saturation()
         self.setup_Result()
         self.setup_styles()
@@ -219,7 +231,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.ReflectionButton.setEnabled(False)
         self.roiLayout.addWidget(self.ReflectionButton, 1, 0)
 
-        self.Erase_Button = QtWidgets.QPushButton("Erase")
+        self.Erase_Button = QtWidgets.QPushButton("Eraser")
         self.Erase_Button.setEnabled(False)
         self.roiLayout.addWidget(self.Erase_Button, 1, 1)
 
@@ -237,7 +249,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Undo_blinking_Button = QtWidgets.QPushButton("Undo Blinking")
         self.detectionLayout.addWidget(self.Undo_blinking_Button, 0, 1)
 
-        self.grooming_Button = QtWidgets.QPushButton("Detect Grooming")
+        self.grooming_Button = QtWidgets.QPushButton("Define Grooming threshold")
         self.detectionLayout.addWidget(self.grooming_Button, 1, 0)
 
         self.Undo_grooming_Button = QtWidgets.QPushButton("Undo Grooming")

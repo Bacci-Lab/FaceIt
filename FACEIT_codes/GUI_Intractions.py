@@ -8,46 +8,43 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         self.setMouseTracking(True)
         self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.showContextMenu)
+        # Initialize variables for various modes and states
         self.sub_region = None
-
         self.dragging = False
         self.dragging_face = False
         self.dragging_pupil = False
         self.dragging_reflect = False
-
         self.eye_corner_mode = False
         self.Resizing = False
         self.Resize_face = False
         self.Resize_pupil = False
-        self.face_ROI = None
-        self.eyecorner = None
-        self.pupil_ROI = None
-        self.eye_corner_center = None
-        self.oval_width = 100
-        self.rect_width = 100
-        self.ROI_width = 100
-        self.oval_height = 50
-        self.ROI_height = 50
-        self.rect_height = 50
-        self.offset = QtCore.QPoint()
-        self.scene_pos = None
-        self.previous_mouse_pos = None
-        self.Face_frame = None
-        self.Pupil_frame = None
-        self.current_ROI = None
-        #----------------------------------- initiate reflection-----------------------------------
         self.Resize_reflect = False
+
+        # Region of Interest (ROI) variables
+        self.face_ROI = None
+        self.pupil_ROI = None
         self.reflect_ROI = None
         self.reflect_ROIs = []
         self.reflect_handles_list = []
         self.reflect_widths = []
         self.reflect_heights = []
         self.reflect_centers = []
-        self.reflect_ellipse = None
-        self.pupil_ellipse_items = None
 
+        # Default ROI sizes
+        self.oval_width = 100
+        self.rect_width = 100
+        self.ROI_width = 100
+        self.oval_height = 50
+        self.ROI_height = 50
+        self.rect_height = 50
+
+        # Other properties
+        self.offset = QtCore.QPoint()
+        self.scene_pos = None
+        self.previous_mouse_pos = None
         self.erase_color = QtGui.QColor('white')
 
+        # Eraser mode variables
         self.brush_strokes = []
         self.erased_pixels = []
 
@@ -62,7 +59,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
 
 
     def delete(self, scene_pos):
-
+        """Delete the ROI at the specified scene position."""
         for idx, reflect_ROI in enumerate(self.reflect_ROIs):
             reflect_handle = self.reflect_handles_list[idx]
             if reflect_ROI.contains(scene_pos):

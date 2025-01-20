@@ -17,7 +17,7 @@ def display_show_ROI(ROI, image):
         return sub_image, ROI
 
     # Original logic if ROI is a QGraphicsEllipseItem
-    sub_image = ROI.rect()  # Keep original logic as fallback if needed
+    sub_image = ROI.rect()
     return sub_image, ROI
 
 
@@ -150,7 +150,6 @@ class ProcessHandler:
 
             # Extract the region of interest (ROI) from the current frame
             current_ROI = current_array[frame[0]:frame[1], frame[2]:frame[3]].flatten()
-            print("this is current_ROI", current_ROI)
 
             # Compute motion energy if the previous ROI exists
             if previous_ROI is not None:
@@ -301,6 +300,12 @@ class ProcessHandler:
         pupil_width = np.array(pupil_width)
         pupil_height = np.array(pupil_height)
         pupil_distance_from_corner = np.array(pupil_distance_from_corner)
+        #############test for saccade###################
+
+        print("this pupil center", pupil_center)
+        timestamps = np.arange(len(pupil_center))
+        fixations_test, saccades_test = self.calculate_saccades_test(pupil_center,timestamps, 1)
+        print("this is saccade test", saccades_test)
 
         # Compute saccades for X and Y coordinates
         X_saccade = self.Saccade(pupil_center_X)
@@ -338,6 +343,79 @@ class ProcessHandler:
         plt.tight_layout()
         plt.show()
 
+    def calculate_saccades_test(self,positions, timestamps, velocity_threshold):
+        """
+        Detect saccades using the I-VT algorithm.
+
+        Parameters:
+        - positions: List of (x, y) pupil center positions [(x1, y1), (x2, y2), ...].
+        - timestamps: List of timestamps corresponding to each position [t1, t2, ...].
+        - velocity_threshold: Velocity threshold to classify fixations and saccades.
+
+        Returns:
+        - fixations: List of detected fixations, each as a dictionary with:
+            {"x": centroid_x, "y": centroid_y, "start_time": t_start, "duration": duration}.
+        - saccades: List of indices classified as saccades.
+        """
+
+        # Step 1: Calculate point-to-point velocities
+        velocities = []
+        for i in range(1, len(positions)):
+            dx = positions[i][0] - positions[i - 1][0]
+            dy = positions[i][1] - positions[i - 1][1]
+            velocity = np.sqrt(dx ** 2 + dy ** 2)
+            velocities.append(velocity)
+
+        # Step 2: Classify points as fixations or saccades
+        classifications = [0]  # Start with the first point classified as fixation
+        for v in velocities:
+            if v < velocity_threshold:
+                classifications.append(0)  # Fixation
+            else:
+                classifications.append(1)  # Saccade
+
+        # Step 3: Collapse consecutive fixation points
+        fixations = []
+        saccades = []
+        start_idx = None
+        for i, cls in enumerate(classifications):
+            if cls == 0:  # Fixation
+                if start_idx is None:  # Start a new fixation group
+                    start_idx = i
+            else:  # Saccade
+                if start_idx is not None:  # End the fixation group
+                    fixation_points = positions[start_idx:i]
+                    fixation_timestamps = timestamps[start_idx:i]
+                    centroid_x = np.mean([p[0] for p in fixation_points])
+                    centroid_y = np.mean([p[1] for p in fixation_points])
+                    duration = fixation_timestamps[-1] - fixation_timestamps[0]
+                    fixations.append({
+                        "x": centroid_x,
+                        "y": centroid_y,
+                        "start_time": fixation_timestamps[0],
+                        "duration": duration
+                    })
+                    start_idx = None  # Reset fixation group
+
+        # Handle any remaining fixation group at the end
+        if start_idx is not None:
+            fixation_points = positions[start_idx:]
+            fixation_timestamps = timestamps[start_idx:]
+            centroid_x = np.mean([p[0] for p in fixation_points])
+            centroid_y = np.mean([p[1] for p in fixation_points])
+            duration = fixation_timestamps[-1] - fixation_timestamps[0]
+            fixations.append({
+                "x": centroid_x,
+                "y": centroid_y,
+                "start_time": fixation_timestamps[0],
+                "duration": duration
+            })
+
+        # Identify saccade indices for completeness
+        saccades = [i for i, cls in enumerate(classifications) if cls == 1]
+
+        return fixations, saccades
+
     def Saccade(self, pupil_center_i):
         """
         Computes the saccade movements based on changes in the pupil center coordinates.
@@ -364,7 +442,7 @@ class ProcessHandler:
         # Reshape the saccade array to be 2D (1 row) for consistency
         saccade = saccade.reshape(1, -1)
 
-        self.plot_saccade(pupil_center_i, saccade)
+        #self.plot_saccade(pupil_center_i, saccade)
 
 
 
