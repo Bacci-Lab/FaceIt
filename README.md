@@ -1,6 +1,16 @@
-<div style="text-align: left;">
-  <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="200"/>
-</div>
+<table>
+  <tr>
+    <td>
+      <h1>FACEIT</h1>
+      <p>
+        **FACEIT** is a comprehensive pipeline for detecting and analyzing facial movements in head-fixed mice, including eye-tracking and muzzle movements. It leverages advanced image processing techniques to capture, track, and analyze facial dynamics, providing valuable insights for various research and experimental applications.
+      </p>
+    </td>
+    <td>
+      <img src="figures/logo_FaceIT.png" alt="FACEIT Logo" width="200" style="margin-left: 20px;"/>
+    </td>
+  </tr>
+</table>
 
 
 # FACEIT
