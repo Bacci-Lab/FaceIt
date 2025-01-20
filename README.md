@@ -30,5 +30,27 @@ Create an isolated Python environment to manage dependencies:
 ```bash
 python -m venv FaceIt
 ```
-### 2. Create a Virtual Environment
+### 3. Create a Virtual Environment
 Activate the environment to install and run the pipeline without conflicts:
+# .Windows
+
+```bash
+.\FaceIt\Scripts\activate
+```
+
+### 4. Install FACEIT
+Use pip to install the pipeline directly from the GitHub repository:
+
+```bash
+pip install git+https://github.com/faezehrabbani97/FaceIt.git
+```
+
+
+experimental procedures followed French and European guidelines for animal experimentation and in compliance with the institutional animal welfare guidelines of the Paris Brain Institute
+
+### Contributing
+Contributions to FACEIT are welcome! Feel free to:
+
+*Report issues
+*Submit pull requests.
+*Suggest new features.
