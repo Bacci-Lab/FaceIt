@@ -1,18 +1,13 @@
+# .readthedocs.yaml
 version: 2
 
-# Specify the build environment
-build:
-  os: ubuntu-20.04
-  tools:
-    python: "3.9"
-
-# Configure Sphinx
+# Build documentation in the 'docs/' directory
 sphinx:
-  configuration: docs/source/conf.py  # Path to your Sphinx configuration file
+  configuration: docs/source/conf.py
 
-# Install Python dependencies
+# Python configuration
 python:
+  version: 3.9
   install:
     - method: pip
-      path: .
-    - requirements: requirements.txt
+      requirements: requirements.txt
