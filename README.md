@@ -1,4 +1,4 @@
-![FACEIT Logo](figures/logo.png)
+![FACEIT Logo](figures/Logo_FaceIT.jpg)
 # FACEIT
 
 ## Facial Movement Detection and Analysis Pipeline
