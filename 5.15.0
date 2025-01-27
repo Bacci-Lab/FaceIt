@@ -1,0 +1,26 @@
+Using version ^5.15.16 for pyqt5-qt5
+
+Updating dependencies
+Resolving dependencies...
+
+Package operations: 0 installs, 1 update, 0 removals
+
+  - Updating pyqt5-qt5 (5.15.2 -> 5.15.16)
+
+  RuntimeError
+
+  Unable to find installation candidates for pyqt5-qt5 (5.15.16)
+
+  at c:\users\faezeh.rabbani\pycharmprojects\faceproject\faceit\lib\site-packages\poetry\installation\chooser.py:86 in choose_for
+       82│ 
+       83│             links.append(link)
+       84│ 
+       85│         if not links:
+    →  86│             raise RuntimeError(f"Unable to find installation candidates for {package}")
+       87│ 
+       88│         # Get the best link
+       89│         chosen = max(links, key=lambda link: self._sort_key(package, link))
+       90│ 
+
+Cannot install pyqt5-qt5.
+
