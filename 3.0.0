@@ -1,8 +1,8 @@
-Using version ^3.21.0 for zipp
+The following packages are already present in the pyproject.toml and will be skipped:
 
-Updating dependencies
-Resolving dependencies...
+  - zipp
 
-No dependencies to install or update
+If you want to update it to the latest compatible version, you can use `poetry update package`.
+If you prefer to upgrade it to the latest available version, you can use `poetry add package@latest`.
 
-Writing lock file
+Nothing to add.

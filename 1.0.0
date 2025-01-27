@@ -1,16 +1,8 @@
-Using version ^3.0.2 for sphinx-rtd-theme
+The following packages are already present in the pyproject.toml and will be skipped:
 
-Updating dependencies
-Resolving dependencies...
+  - sphinx_rtd_theme
 
-Package operations: 0 installs, 7 updates, 0 removals
+If you want to update it to the latest compatible version, you can use `poetry update package`.
+If you prefer to upgrade it to the latest available version, you can use `poetry add package@latest`.
 
-  - Updating certifi (2024.8.30 -> 2024.12.14)
-  - Updating charset-normalizer (3.4.0 -> 3.4.1)
-  - Updating urllib3 (2.2.3 -> 2.3.0)
-  - Updating importlib-metadata (8.5.0 -> 8.6.1)
-  - Updating jinja2 (3.1.4 -> 3.1.5)
-  - Updating pygments (2.18.0 -> 2.19.1)
-  - Updating tomli (2.1.0 -> 2.2.1)
-
-Writing lock file
+Nothing to add.
