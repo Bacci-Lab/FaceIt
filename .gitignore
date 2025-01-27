@@ -25,7 +25,9 @@ poetry.lock
 *.tar.gz
 .cache/
 poetry.toml
-[0-9]*/   # Ignore numeric directories or files like 0.10.0
+# Ignore files or directories with numeric names
+[0-9]*/  # Ignore directories
+[0-9]*   # Ignore files
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
