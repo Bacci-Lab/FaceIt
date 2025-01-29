@@ -5,7 +5,7 @@ description = "FACEIT is a pipeline to analyze facial movements, such as eye mov
 authors = [
     {name = "faezeh.rabbani", email = "faezeh.rabbani97@gmail.com"}
 ]
-license = {text = "\"MIT\""}
+license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.9,<3.10"
 dependencies = [
