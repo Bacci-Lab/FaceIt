@@ -19,7 +19,7 @@ setup(
         "opencv-python>=4.9.0.80",
         "pandas>=2.0.0",
         "PyQt5>=5.15.9",
-        "scikit-learn>=1.2.2",
+        "scikit-learn==1.2.2",
         "matplotlib>=3.8.4",
         "numpy>=1.24.4",
         "scipy>=1.9.1"
