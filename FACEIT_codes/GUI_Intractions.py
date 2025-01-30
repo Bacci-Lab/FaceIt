@@ -1,6 +1,5 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
-import numpy as np
-import functions
+from FACEIT_codes import functions
 class GUI_Intract(QtWidgets.QGraphicsView):
     def __init__(self, parent=None, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1,5 +1,5 @@
 from PyQt5 import QtWidgets, QtGui
-import functions
+from FACEIT_codes import functions
 
 class ROIHandler:
     def __init__(self, app_instance):

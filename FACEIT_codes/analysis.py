@@ -1,12 +1,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from PyQt5 import QtWidgets
-import pupil_detection
-import functions
+from FACEIT_codes import pupil_detection, functions
 import math
 import cv2
 from multiprocessing import Pool
 import time
+
 
 # Example adjustment inside functions.py
 def display_show_ROI(ROI, image):

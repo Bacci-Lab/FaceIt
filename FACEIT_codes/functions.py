@@ -1,7 +1,7 @@
 import cv2
 import os.path
 import numpy as np
-import pupil_detection
+from FACEIT_codes import pupil_detection
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtGui import QPixmap
 

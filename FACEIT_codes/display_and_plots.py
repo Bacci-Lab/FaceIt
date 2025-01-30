@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QSizePolicy
-import functions
+from FACEIT_codes import functions
 class PlotHandler:
     def __init__(self,app_instance):
         self.app_instance = app_instance
