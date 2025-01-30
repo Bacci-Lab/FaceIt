@@ -1,19 +1,20 @@
-from PyQt5.QtWidgets import QMessageBox
-import functions
-import numpy as np
-from analysis import ProcessHandler
-from Save import SaveHandler
-from Load_data import LoadData
-from Graphical_ROIS import ROIHandler
-import display_and_plots
-from PyQt5 import QtWidgets, QtCore, QtGui
-from GUI_Intractions import GUI_Intract
+import sys
 import os
+import numpy as np
+from PyQt5 import QtWidgets, QtCore, QtGui
+from PyQt5.QtWidgets import QMessageBox
 
+# Import modules from the project
+from FACEIT_codes.analysis import ProcessHandler
+from FACEIT_codes.Save import SaveHandler
+from FACEIT_codes.Load_data import LoadData
+from FACEIT_codes.Graphical_ROIS import ROIHandler
+from FACEIT_codes import functions, display_and_plots
+from FACEIT_codes.GUI_Intractions import GUI_Intract
 class FaceMotionApp(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        # Create an instance of the class that has the `process` function
+        # Create an instance of the class that has the process function
         self.process_handler = ProcessHandler(self)
         self.save_handler = SaveHandler(self)
         self.load_handler = LoadData(self)
@@ -56,8 +57,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
         self.roi_handler = ROIHandler(self)
         MainWindow.showMaximized()
-        self.PupilROIButton.clicked.connect(lambda: self.execute_pupil_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
-        self.FaceROIButton.clicked.connect(lambda: self.execute_face_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
+        self.PupilROIButton.clicked.connect(
+            lambda: self.execute_pupil_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
+        self.FaceROIButton.clicked.connect(
+            lambda: self.execute_face_roi() if self.NPY or self.video else self.warning("Load data to analyse"))
+
         self.ReflectionButton.clicked.connect(lambda: self.execute_reflect_roi())
 
 
@@ -373,16 +377,24 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def init_erasing_pixel(self):
         self.Eraser_active = True
 
-
-
     def satur_value(self, value):
-        self.lineEdit_satur_value.setText(str(self.saturation_Slider.value()))
+        """Update saturation value and apply changes to the displayed sub-region."""
+
+        # Update the text box with the new saturation value
+        self.lineEdit_satur_value.setText(str(value))
+
+        # Store the saturation value
         self.saturation = value
-        if self.sub_region is not None:
-            _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.scene2,
-                                                 "pupil", self.saturation)
-        else:
-            pass
+
+        # Ensure `sub_region` and `scene2` exist before trying to update the display
+        if hasattr(self, 'sub_region') and self.sub_region is not None:
+            if not hasattr(self, 'scene2') or self.scene2 is None:
+                self.scene2 = QtWidgets.QGraphicsScene()  # Initialize if missing
+
+            # Update the display with the new saturation
+            functions.display_sub_region(
+                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation
+            )
 
     def update_slider(self):
         try:
@@ -437,7 +449,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.warning("Process Pupil first")
 
     def Undo_blinking(self):
-        self.final_pupil_area = np.array(self.pupil_dilation)
+        if hasattr(self, 'pupil_dilation') and self.pupil_dilation is not None:
+            self.final_pupil_area = np.array(self.pupil_dilation)
+        else:
+            self.warning("Process Pupil first")
+
         self.X_saccade_updated = np.array(self.X_saccade)
         self.Y_saccade_updated = np.array(self.Y_saccade)
         self.plot_handler.plot_result(self.pupil_dilation, self.graphicsView_pupil, "pupil", color="palegreen",
@@ -474,9 +490,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui = FaceMotionApp()
         self.ui.setupUi(self)
 
-if __name__ == "__main__":
-    import sys
+def main():
+    """Entry point for the FACEIT command-line execution."""
     app = QtWidgets.QApplication(sys.argv)
-    Window = MainWindow()
-    Window.show()
-    app.exec_()
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
