@@ -46,6 +46,9 @@ dependencies = [
     "scipy (>=1.9.1,<2.0.0)"
 ]
 
+[tool.poetry]
+packages = [{ include = "FACEIT_codes" }]
+
 [tool.poetry.extras]
 tests = ["pytest", "pytest-cov"]
 docs = ["sphinx", "sphinx-rtd-theme"]
