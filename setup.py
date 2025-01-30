@@ -22,7 +22,8 @@ setup(
         "scikit-learn==1.2.2",
         "matplotlib>=3.8.4",
         "numpy>=1.24.4",
-        "scipy>=1.9.1"
+        "scipy>=1.9.1",
+        "bottleneck>=1.3.7,<2.0.0"
     ],
     extras_require={
         "gui": ["PyQt5", "pyqtgraph"],
