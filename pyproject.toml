@@ -20,7 +20,7 @@ dependencies = [
     "bottleneck>=1.3.7,<2.0.0",
     "pynwb>=2.0.0",
     "tqdm>=4.0.0",
-    "scikit-learn>=1.2.2,<1.3.0; platform_system != 'Windows'" 
+    "scikit-learn>=1.2.2,<1.3.0",
 ]
 
 
