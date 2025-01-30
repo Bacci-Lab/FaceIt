@@ -23,7 +23,8 @@ setup(
         "matplotlib>=3.8.4",
         "numpy>=1.24.4",
         "scipy>=1.9.1",
-        "bottleneck>=1.3.7,<2.0.0"
+        "bottleneck>=1.3.7,<2.0.0",
+        "pynwb>=2.0.0"
     ],
     extras_require={
         "gui": ["PyQt5", "pyqtgraph"],
