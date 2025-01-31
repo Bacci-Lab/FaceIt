@@ -24,15 +24,15 @@
 </div>
 
 
-## ✨ Features
+## Features
 
-- 🎯 **Eye-Tracking Analysis** – Capture and analyze eye movements with precision.
-- 🐭 **Mouse Muzzle Tracking** – Monitors muzzle dynamics with precision.
-- 🛠️ **Flexible & Modular** – Designed for easy integration and customization.
-- 🖥️ **User-Friendly Interface** – Intuitive and interactive GUI for streamlined user interaction and visualization.
-- 📊 **Multi-Input Support** – Accepts various input formats, including NumPy arrays and video files, ensuring compatibility with diverse workflows.
-- ⚡ **High-Speed Performance** – Optimized for fast data processing.
--  **Pupil Analysis Enhancements**: Offers advanced features like blinking detection and saccades analysis to enrich pupil-tracking studies.
+- **Eye-Tracking Analysis**: Capture and analyze eye movements with precision.
+- **Mouse Muzzle Tracking**: Detect and monitor muzzle dynamics.
+- **Flexible and Modular**: Designed for easy integration and customization.
+- **User-Friendly**: Intuitive and interactive GUI for streamlined user interaction and visualization.
+- **Multi-Input Support**: Accepts various input formats, including NumPy arrays and video files, ensuring compatibility with diverse workflows.
+- **Pupil Analysis Enhancements**: Offers advanced features like blinking detection and saccades analysis to enrich pupil-tracking studies.
+- **High-Speed Performance**: Optimized for fast data processing, enabling efficient analysis.
 ---
 
 # FaceIt - Installation Guide
