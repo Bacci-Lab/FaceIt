@@ -55,7 +55,7 @@ Before proceeding with the installation, ensure that **Python 3.9** is installed
 ### 🔹 Step 1: Clone the Repository
 We recomend you to use git to clone into your local computer. If you have git open CMD terminal and run:
 ```bash
-git clone https://github.com/faezehrabbani/FaceIt.git
+git clone https://github.com/Bacci-Lab/FaceIt.git
 ```
 If Git is not installed on your system, you can download and install it from the link below:
 🔗 [Download Git](https://git-scm.com/downloads)
