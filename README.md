@@ -63,7 +63,8 @@ cd FaceIt
 
 ## 🔹 Step 3: Create a Virtual Environment (Using Python 3.9)
 
-Since Python 3.9 is installed separately, use the full path to create the virtual environment:
+
+If Python 3.9 is not your system's default version, you need to specify its full installation path to create the virtual environment. Use the following command, replacing "C:\path\to\python3.9\python.exe" with the actual location of your Python 3.9 installation:
 
 ```bash
 "C:\your path to python 3.9\Python39\python.exe" -m venv FaceIt
