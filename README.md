@@ -82,8 +82,6 @@ With the virtual environment activated, install the package:
 pip install .
 ```
 
-### ✅ Running FaceIt
-
 Once installed, you can start the application by running:
 
 ```bash
