@@ -37,12 +37,19 @@
 
 # FaceIt - Installation Guide
 
-This guide explains how to install **FaceIt**, ensuring a clean setup with **Python 3.9** in a separate directory.
+This guide explains how to install **FaceIt**, ensuring a clean setup with **Python 3.9** 
 
-### 📌 Prerequisites
-Before installing, make sure you have:
-- **Python 3.9** installed separately from your system Python:  
-  🔗 [Download Python 3.9](https://www.python.org/downloads/release/python-390/)
+## 📌 Prerequisites
+
+Before proceeding with the installation, ensure that **Python 3.9** is installed on your system. If it's not available, download and install **Python 3.9** separately from your system's default Python using the link below:  
+
+🔗 [Download Python 3.9](https://www.python.org/downloads/release/python-390/)  
+
+### ⚠️ Important Notes:
+- **Do not check** the option **"Add python.exe to PATH"** during installation to avoid conflicts with your system's default Python.
+- If you prefer an isolated setup, select **"Customize Installation"** and **specify a dedicated directory** for Python 3.9.
+- **Remember the installation path**, as you'll need it later to configure the environment.
+
 - **Git** installed:  
   🔗 [Download Git](https://git-scm.com/downloads)
 
