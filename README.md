@@ -37,34 +37,60 @@
 
 ---
 
-## Installation
+# FaceIt - Installation Guide
 
-Follow these steps to set up FACEIT on your system:
+This guide explains how to install **FaceIt**, ensuring a clean setup with **Python 3.9** in a separate directory.
 
-### 1. Install Python
-Ensure you have **Python 3.9** installed. You can download it from the [official Python website](https://www.python.org/downloads/).
+## 📌 Prerequisites
+Before installing, make sure you have:
+- **Python 3.9** installed separately from your system Python:  
+  🔗 [Download Python 3.9](https://www.python.org/downloads/release/python-390/)
+- **Git** installed:  
+  🔗 [Download Git](https://git-scm.com/downloads)
 
-### 2. Create a Virtual Environment
-Create an isolated Python environment to manage dependencies:
+---
+
+## 🔹 Step 1: Clone the Repository
+Open CMD terminal and run:
+```bash
+git clone https://github.com/faezehrabbani/FaceIt.git
+```
+## 🔹 Step 2: Navigate to the Project Directory
+```bash
+cd FaceIt
+```
+
+
+## 🔹 Step 3: Create a Virtual Environment (Using Python 3.9)
+
+Since Python 3.9 is installed separately, use the full path to create the virtual environment:
 
 ```bash
-python -m venv FaceIt
+"C:\your path to python 3.9\Python39\python.exe" -m venv FaceIt
+
 ```
-### 3. Activate the Virtual Environment
+## 🔹 Step 4: Activate the Virtual Environment
 Activate the environment to install and run the pipeline without conflicts:
 
-Windows:
-
 ```bash
-.\FaceIt\Scripts\activate
+FaceIt\Scripts\activate
 ```
 
-### 4. Install FACEIT
-Use pip to install the pipeline directly from the GitHub repository:
+## 🔹 Step 5: Install FACEIT
+With the virtual environment activated, install the package:
 
 ```bash
-pip install git+https://github.com/faezehrabbani97/FaceIt.git
+pip install .
 ```
+
+## ✅ Running FaceIt
+
+Once installed, you can start the application by running:
+
+```bash
+faceit
+```
+
 
 
 experimental procedures followed French and European guidelines for animal experimentation and in compliance with the institutional animal welfare guidelines of the Paris Brain Institute
