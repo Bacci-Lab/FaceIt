@@ -24,24 +24,22 @@
 </div>
 
 
+## ✨ Features
 
-## Features
-
-- **Eye-Tracking Analysis**: Capture and analyze eye movements with precision.
-- **Mouse Muzzle Tracking**: Detect and monitor muzzle dynamics.
-- **Flexible and Modular**: Designed for easy integration and customization.
-- **User-Friendly**: Intuitive and interactive GUI for streamlined user interaction and visualization.
-- **Multi-Input Support**: Accepts various input formats, including NumPy arrays and video files, ensuring compatibility with diverse workflows.
-- **Pupil Analysis Enhancements**: Offers advanced features like blinking detection and saccades analysis to enrich pupil-tracking studies.
-- **High-Speed Performance**: Optimized for fast data processing, enabling efficient analysis.
-
+- 🎯 **Eye-Tracking Analysis** – Capture and analyze eye movements with precision.
+- 🐭 **Mouse Muzzle Tracking** – Monitors muzzle dynamics with precision.
+- 🛠️ **Flexible & Modular** – Designed for easy integration and customization.
+- 🖥️ **User-Friendly Interface** – Intuitive and interactive GUI for streamlined user interaction and visualization.
+- 📊 **Multi-Input Support** – Accepts various input formats, including NumPy arrays and video files, ensuring compatibility with diverse workflows.
+- ⚡ **High-Speed Performance** – Optimized for fast data processing.
+-  **Pupil Analysis Enhancements**: Offers advanced features like blinking detection and saccades analysis to enrich pupil-tracking studies.
 ---
 
 # FaceIt - Installation Guide
 
 This guide explains how to install **FaceIt**, ensuring a clean setup with **Python 3.9** in a separate directory.
 
-## 📌 Prerequisites
+### 📌 Prerequisites
 Before installing, make sure you have:
 - **Python 3.9** installed separately from your system Python:  
   🔗 [Download Python 3.9](https://www.python.org/downloads/release/python-390/)
@@ -50,18 +48,18 @@ Before installing, make sure you have:
 
 ---
 
-## 🔹 Step 1: Clone the Repository
+### 🔹 Step 1: Clone the Repository
 Open CMD terminal and run:
 ```bash
 git clone https://github.com/faezehrabbani/FaceIt.git
 ```
-## 🔹 Step 2: Navigate to the Project Directory
+### 🔹 Step 2: Navigate to the Project Directory
 ```bash
 cd FaceIt
 ```
 
 
-## 🔹 Step 3: Create a Virtual Environment (Using Python 3.9)
+### 🔹 Step 3: Create a Virtual Environment (Using Python 3.9)
 
 
 If Python 3.9 is not your system's default version, you need to specify its full installation path to create the virtual environment. Use the following command, replacing "C:\path\to\python3.9\python.exe" with the actual location of your Python 3.9 installation:
@@ -70,29 +68,58 @@ If Python 3.9 is not your system's default version, you need to specify its full
 "C:\your path to python 3.9\Python39\python.exe" -m venv FaceIt
 
 ```
-## 🔹 Step 4: Activate the Virtual Environment
+### 🔹 Step 4: Activate the Virtual Environment
 Activate the environment to install and run the pipeline without conflicts:
 
 ```bash
 FaceIt\Scripts\activate
 ```
 
-## 🔹 Step 5: Install FACEIT
+### 🔹 Step 5: Install FACEIT
 With the virtual environment activated, install the package:
 
 ```bash
 pip install .
 ```
 
-## ✅ Running FaceIt
+### ✅ Running FaceIt
 
 Once installed, you can start the application by running:
 
 ```bash
 faceit
 ```
+If the faceit command is not recognized, try:
+
+```bash
+python -m FACEIT_codes.main
+```
 
 
+
+
+## 🔄 FaceIt: Daily Workflow
+
+Follow these steps whenever you want to use FaceIt for analysis.
+
+### 🔹 Step 1: Navigate to the FaceIt Directory
+Before running the application, open the terminal (CMD or PowerShell) and move to the FaceIt project folder:
+
+```bash
+cd FaceIt
+```
+### 🔹 Step 2: Activate the Virtual Environment
+Since FaceIt runs inside a virtual environment, it must be activated before use.
+
+```bash
+FaceIT\Scripts\activate
+```
+### 🔹 Step 3: Run FaceIt
+Once the environment is active, start the application by typing:
+
+```bash
+faceit
+```
 
 experimental procedures followed French and European guidelines for animal experimentation and in compliance with the institutional animal welfare guidelines of the Paris Brain Institute
 
