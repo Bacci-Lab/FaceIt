@@ -76,7 +76,7 @@ Move the FaceIt folder outside of FaceIt-main.
 Now, your directory structure should look like this:
 
 ```bash
-C:\your_preferred_directory\FaceItt
+C:\your_preferred_directory\FaceIt
 ```
 
 ### 🔹 Step 2: Navigate to the Project Directory
