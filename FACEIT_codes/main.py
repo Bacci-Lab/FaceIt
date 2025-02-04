@@ -3,7 +3,6 @@ import os
 import numpy as np
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QMessageBox
-
 # Import modules from the project
 from FACEIT_codes.analysis import ProcessHandler
 from FACEIT_codes.Save import SaveHandler
@@ -374,6 +373,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         return self.checkBox_face.isChecked()
     def nwb_check(self):
         return self.checkBox_nwb.isChecked()
+    def save_video_chack(self):
+        return self.save_video.isChecked()
     def init_erasing_pixel(self):
         self.Eraser_active = True
 

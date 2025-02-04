@@ -357,3 +357,31 @@
 # ############################## second fitting #########################
 #
 # pupil_ellipse, mean, width, height, angle = find_ellipse(detected_cluster)
+
+import numpy as np
+
+# Path to the NPZ file
+npz_file_path = r"C:/Users/faezeh.rabbani/PycharmProjects/FaceProject/test_data/test_images/FaceIt/faceit.npz"
+
+# Load the NPZ file
+data = np.load(npz_file_path, allow_pickle=True)
+
+# List all saved variables
+print("Keys in NPZ file:", list(data.keys()))
+
+# If video is stored as a NumPy array
+if "video_frames" in data:
+    video_frames = data["video_frames"]  # Shape: (frames, height, width, channels)
+    print(f"Video shape: {video_frames.shape}")  # Check video shape
+
+# If video is stored as binary
+if "video_file" in data:
+    video_bytes = data["video_file"].item()  # Extract binary video
+    video_output_path = "restored_video.mp4"
+
+    # Save binary video to a file
+    with open(video_output_path, "wb") as f:
+        f.write(video_bytes)
+
+    print(f"Video restored and saved as {video_output_path}")
+

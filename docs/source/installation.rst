@@ -1,7 +1,7 @@
 Instalation
 ============
 
-This guide explains how to install **FaceIt**, ensuring a clean setup with **Python 3.9** in a separate directory.
+This guide explains how to install **FaceIt**, ensuring a clean setup with **Python 3.9**
 
 Prerequisites
 -------------
@@ -38,13 +38,7 @@ Step 3: Create a Virtual Environment (Using Python 3.9)
 
 If Python 3.9 is not your system's default version, you need to specify its full installation path to create the virtual environment.
 
-🔍 **Find your Python 3.9 installation path** by running:
-
-.. code-block:: bash
-
-    where python
-
-Then, replace `"C:\path\to\python3.9\python.exe"` with the actual location of **Python 3.9**:
+replace `"C:\path\to\python3.9\python.exe"` with the actual location of **Python 3.9**:
 
 .. code-block:: bash
 
@@ -55,17 +49,12 @@ Step 4: Activate the Virtual Environment
 
 Activate the environment to install and run the pipeline without conflicts.
 
-**On Windows (CMD/PowerShell):**
+**On Windows (CMD):**
 
 .. code-block:: bash
 
     FaceIt_env\Scripts\activate
 
-**On macOS/Linux:**
-
-.. code-block:: bash
-
-    source FaceIt_env/bin/activate
 
 Step 5: Install FaceIt
 ----------------------
