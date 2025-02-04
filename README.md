@@ -37,22 +37,48 @@
 
 # FaceIt - Installation Guide
 
-This guide explains how to install **FaceIt**, ensuring a clean setup with **Python 3.9** in a separate directory.
+This guide explains how to install **FaceIt**, ensuring a clean setup with **Python 3.9** 
 
-### 📌 Prerequisites
-Before installing, make sure you have:
-- **Python 3.9** installed separately from your system Python:  
-  🔗 [Download Python 3.9](https://www.python.org/downloads/release/python-390/)
-- **Git** installed:  
-  🔗 [Download Git](https://git-scm.com/downloads)
+## 📌 Prerequisites
+
+Before proceeding with the installation, ensure that **Python 3.9** is installed on your system. If it's not available, download and install **Python 3.9** separately from your system's default Python using the link below:  
+
+🔗 [Download Python 3.9](https://www.python.org/downloads/release/python-390/)  
+
+### ⚠️ Important Notes:
+- **Do not check** the option **"Add python.exe to PATH"** during installation to avoid conflicts with your system's default Python.
+- If you prefer an isolated setup, select **"Customize Installation"** and **specify a dedicated directory** for Python 3.9.
+- **Remember the installation path**, as you'll need it later to configure the environment.
 
 ---
 
 ### 🔹 Step 1: Clone the Repository
-Open CMD terminal and run:
+We recomend you to use git to clone into your local computer. If you have git open CMD terminal and run:
 ```bash
 git clone https://github.com/faezehrabbani/FaceIt.git
 ```
+If Git is not installed on your system, you can download and install it from the link below:
+🔗 [Download Git](https://git-scm.com/downloads)
+
+### 🔹 Alternative: Download the Repository Manually
+
+If you don’t have **Git** installed, you can manually download the repository by following these steps:
+
+1. In the FaceIt Github click on the **"Code"** button (green button).
+
+2. Select **"Download ZIP"**.
+
+3. Extract the ZIP file to your preferred location.
+
+4. Inside the extracted directory, you will find a folder named "FaceIt-main".
+Open it and rename the "FaceIt-main" folder inside it to "FaceIt".
+Move the FaceIt folder outside of FaceIt-main.
+Now, your directory structure should look like this:
+
+```bash
+C:\your_preferred_directory\FaceIt
+```
+
 ### 🔹 Step 2: Navigate to the Project Directory
 ```bash
 cd FaceIt
