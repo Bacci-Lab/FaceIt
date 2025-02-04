@@ -91,7 +91,6 @@ class ROIHandler:
         handle_pen.setWidth(0)
         for handle in handles.values():
             handle.setPen(handle_pen)
-        print("ROI IS  ", ROI)
 
         return ROI, handles
 
@@ -135,7 +134,6 @@ class ROIHandler:
         attr_centers = getattr(self.app_instance.graphicsView_subImage, f"{roi_list_attr}_centers", [])
         attr_heights = getattr(self.app_instance.graphicsView_subImage, f"{roi_list_attr}_heights", [])
         attr_widths = getattr(self.app_instance.graphicsView_subImage, f"{roi_list_attr}_widths", [])
-
         attr_list.append(roi)
         attr_handles_list.append(handles)
         attr_centers.append(center)

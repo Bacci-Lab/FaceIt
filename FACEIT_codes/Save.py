@@ -5,7 +5,7 @@ from pynwb.base import TimeSeries
 import os
 import logging
 import matplotlib.pyplot as plt
-
+from pynwb.image import ImageSeries
 # Set up logging for better traceability
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -24,6 +24,9 @@ class SaveHandler:
         Initializes data for saving. Checks if pupil and face data exist;
         if not, it fills the arrays with NaNs.
         """
+
+        if self.app_instance.save_video_chack():
+            print("is checked")
 
         self.save_directory = self._make_dir(self.app_instance.save_path)
 
@@ -79,16 +82,24 @@ class SaveHandler:
 
     def save_data(self, **data_dict):
         """
-        Saves data to a .npz and nwb file
-
-        Parameters:
-        data_dict (dict): Key-value pairs where keys are data attribute names and values are data arrays.
+        Saves data to a .npz file and includes a video file as binary data if 'save_video' is checked.
         """
         save_directory = os.path.join(self.save_directory, "faceit.npz")
 
+        # Check if "save_video" is checked
+        if self.app_instance.save_video_chack():
+            print("Saving video data...")
+            video_path = r"C:\Users\faezeh.rabbani\Desktop\2024_09_03\16-00-59\FaceCamera.wmv"
+
+            if os.path.exists(video_path):
+                with open(video_path, "rb") as video_file:
+                    video_bytes = video_file.read()  # Read video as binary
+                    data_dict["video_file"] = np.array([video_bytes], dtype=object)
+            else:
+                print(f"Video file not found at {video_path}")
+
         try:
-            # Save the data dictionary as a compressed .npz file
-            np.savez(save_directory, **data_dict)
+            np.savez_compressed(save_directory, **data_dict)
             logging.info(f"Data successfully saved to {save_directory}")
         except Exception as e:
             logging.error(f"Failed to save data: {e}")
@@ -131,6 +142,7 @@ class SaveHandler:
                 attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
                               'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner',
                               'width', 'height']
+
                 for attr in attributes:
                     initialize_data(attr)
 
@@ -162,15 +174,12 @@ class SaveHandler:
                 unit='arbitrary units',
                 timestamps=time_stamps
             )
-
-
             pupil_dilation_blinking_corrected_series = TimeSeries(
                 name='pupil_dilation_blinking_corrected',
                 data=self.app_instance.final_pupil_area,
                 unit='arbitrary units',
                 timestamps=time_stamps
             )
-
             pupil_dilation_series = TimeSeries(
                 name='pupil_dilation',
                 data=self.app_instance.pupil_dilation,
@@ -251,6 +260,7 @@ class SaveHandler:
 
             nwbfile.add_processing_module(processing_module)
 
+
             # Add the TimeSeries data to the processing module
             processing_module.add_data_interface(pupil_dilation_series)
             processing_module.add_data_interface(pupil_dilation_blinking_corrected_series)
@@ -276,10 +286,6 @@ class SaveHandler:
         else:
             print("NWB check failed; data not saved.")
 
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-
     def save_fig(self):
         """
         Saves figures for pupil dilation and motion energy data.
@@ -304,7 +310,7 @@ class SaveHandler:
                 filename="motion_energy.png"
             )
 
-    def _save_single_fig(self, data, label, color, filename, saccade_data=None):
+    def _save_single_fig(self, data, label, color, filename, saccade_data = None):
         """
         Helper function to plot data and save a figure.
 
