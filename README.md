@@ -10,6 +10,7 @@
         <p>
           <strong>FACEIT</strong> is a comprehensive pipeline for detecting and analyzing facial movements in head-fixed mice, including eye-tracking and muzzle movements. It leverages advanced image processing techniques to capture, track, and analyze facial dynamics, providing valuable insights for various research and experimental applications.
         </p>
+        <p><strong>Developed by:</strong> Faezeh Rabbani</p>
       </td>
       <td>
         <img src="figures/Logo_FaceIT.jpg" alt="FACEIT Logo" width="450" style="margin-left: 30px;"/>
