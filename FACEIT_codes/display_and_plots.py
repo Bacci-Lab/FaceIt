@@ -36,6 +36,7 @@ class PlotHandler:
         """
         if data is None or len(data) == 0:
             raise ValueError("Data for plotting cannot be None or empty.")
+        self.app_instance.Save_Button.setEnabled(True)
 
         # Clear the graphics view and set up the canvas
         self._clear_graphics_view(graphics_view)
@@ -211,6 +212,7 @@ class Display:
         Parameters:
         - frame (int): The frame index to be displayed.
         """
+
         self.app_instance.frame = frame
 
         # Load the image based on the data type (NPY or video)
@@ -243,9 +245,10 @@ class Display:
         self.app_instance.sub_region, self.app_instance.Pupil_frame = functions.show_ROI(
             self.app_instance.pupil_ROI, self.app_instance.image
         )
+
         self.app_instance.pupil_ellipse_items = functions.display_sub_region(
             self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
-            self.app_instance.scene2, "pupil", self.app_instance.saturation,
+            self.app_instance.scene2, "pupil", self.app_instance.saturation,self.app_instance.mnd,
             self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
             self.app_instance.pupil_ellipse_items, Detect_pupil=True
         )
@@ -260,7 +263,7 @@ class Display:
         )
         functions.display_sub_region(
             self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
-            self.app_instance.scene2, "face", self.app_instance.saturation,
+            self.app_instance.scene2, "face", self.app_instance.saturation,self.app_instance.mnd,
             self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
             self.app_instance.pupil_ellipse_items, Detect_pupil=False
         )

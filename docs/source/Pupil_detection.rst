@@ -185,12 +185,15 @@ And
 
 in the FACEIT_codes.analysis directory.
 
-Process Overview:
+Method Overview:
 ~~~~~~~~~~~~~~~~~
 
 The blinking detection method utilizes two distinct strategies:
 
    - The first strategy focuses on variations in the pupil area.
+   An efficient way to detect the blinking period is by observing the rapid decrease in pupil size, as the eyelid covers the pupil, making it difficult to measure its actual size accurately.
+   To address this, we utilized these sudden changes in the measured pupil area to identify blinking events.
+
    - The second strategy examines changes in the pupil's width-to-height ratio.
 
 Both strategies involve computing the moving variance of the input data (either the pupil area or the width-to-height ratio) with a specified window size. This process emphasizes fluctuations in pupil size over successive data points. The method then calculates a threshold based on the range of the moving variance (the difference between its maximum and minimum values), divided by a defined threshold factor. Indices where the moving variance exceeds this threshold are identified as potential blinking events. This process is applied separately to both the pupil area and the width-to-height ratio, and the final blinking indices are obtained by combining the indices detected in both strategies.

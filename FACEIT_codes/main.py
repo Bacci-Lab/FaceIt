@@ -3,7 +3,6 @@ import os
 import numpy as np
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QMessageBox
-# Import modules from the project
 from FACEIT_codes.analysis import ProcessHandler
 from FACEIT_codes.Save import SaveHandler
 from FACEIT_codes.Load_data import LoadData
@@ -41,7 +40,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.video = False
         self.find_grooming_threshold = False
         self.len_file = 1
-        self.erase_size = 5
+        self.erase_size = 20
+        self.ratio = 2
+        self.mnd = 10
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.Main_V_Layout = QtWidgets.QVBoxLayout(self.centralwidget)
         MainWindow.setCentralWidget(self.centralwidget)
@@ -52,6 +53,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.setup_Result()
         self.setup_styles()
         self.setup_connections()
+
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
         self.roi_handler = ROIHandler(self)
@@ -72,7 +74,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             height=self.reflect_height,
             width=self.reflect_width,
             color='gray',
-            handle_size=3
+            handle_size=10
         )
 
 
@@ -140,27 +142,32 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         # Create a layout for the Brush Size slider
         brush_size_layout = QtWidgets.QHBoxLayout()
         brush_size_label = QtWidgets.QLabel("Brush Size:")
-        self.brush_size_edit = QtWidgets.QLineEdit("1")
+        self.brush_size_edit = QtWidgets.QLineEdit(str(self.erase_size))
         self.brush_size_edit.setReadOnly(True)
         self.brush_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.brush_size_slider.setMinimum(1)
-        self.brush_size_slider.setMaximum(10)
-        self.brush_size_slider.setValue(5)
+        self.brush_size_slider.setMaximum(40)
+        self.brush_size_slider.setValue(20)
         self.brush_size_slider.valueChanged.connect(self.get_brush_size_value)
         brush_size_layout.addWidget(brush_size_label)
         brush_size_layout.addWidget(self.brush_size_slider)
         brush_size_layout.addWidget(self.brush_size_edit)
         main_layout.addLayout(brush_size_layout)
-
-        # Create a layout for the Cluster Pixel line edit
+        ############################
         cluster_pixel_layout = QtWidgets.QHBoxLayout()
-        cluster_pixel_label = QtWidgets.QLabel("Cluster Pixel:")
-        cluster_pixel_edit = QtWidgets.QLineEdit()
+        cluster_pixel_label = QtWidgets.QLabel("MND:")
+        self.mnd_edit = QtWidgets.QLineEdit(str(self.mnd))
+        self.mnd_edit.setReadOnly(True)
+        self.mnd_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.mnd_slider.setMinimum(1)
+        self.mnd_slider.setMaximum(30)
+        self.mnd_slider.setValue(10)
+        self.mnd_slider.valueChanged.connect(self.get_cluster_pixel_value)
         cluster_pixel_layout.addWidget(cluster_pixel_label)
-        cluster_pixel_layout.addWidget(cluster_pixel_edit)
+        cluster_pixel_layout.addWidget(self.mnd_slider)
+        cluster_pixel_layout.addWidget(self.mnd_edit)
         main_layout.addLayout(cluster_pixel_layout)
 
-        # Set the main layout for the settings window
         self.settings_window.setLayout(main_layout)
         self.settings_window.show()
 
@@ -169,6 +176,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.brush_size_edit.setText(str(self.erase_size))
         return self.erase_size
 
+    def get_cluster_pixel_value(self):
+        self.mnd = self.mnd_slider.value()
+        self.mnd_edit.setText((str(self.mnd)))
+        return self.mnd
     def setup_Result(self):
         self.vertical_process_Layout = QtWidgets.QVBoxLayout()
         self.graphicsView_whisker = QtWidgets.QGraphicsView(self.centralwidget)
@@ -177,6 +188,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.vertical_process_Layout.addWidget(self.graphicsView_pupil)
         self.slider_layout = QtWidgets.QHBoxLayout()
         self.Slider_frame = functions.setup_sliders(self.centralwidget, 0, self.len_file, 0, "horizontal")
+        self.Slider_frame.setEnabled(False)
         self.slider_layout.addWidget(self.Slider_frame)
         self.lineEdit_frame_number = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit_frame_number.setFixedWidth(50)
@@ -258,9 +270,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Undo_grooming_Button = QtWidgets.QPushButton("Undo Grooming")
         self.detectionLayout.addWidget(self.Undo_grooming_Button, 1, 1)
 
-        # self.exclude_blinking_Button = QtWidgets.QPushButton("Exclude Blinking")
-        # self.detectionLayout.addWidget(self.exclude_blinking_Button, 1, 2)
-
         # === File Operations ===
         self.fileOpsLayout = QtWidgets.QVBoxLayout()
         self.groupBoxLayout.addWidget(QtWidgets.QLabel("File Operations"))
@@ -271,6 +280,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.fileOpsLayout.addWidget(self.Process_Button)
 
         self.Save_Button = QtWidgets.QPushButton("Save")
+        self.Save_Button.setEnabled(False)
         self.fileOpsLayout.addWidget(self.Save_Button)
 
         # === Options and Threshold ===
@@ -311,13 +321,14 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.saturation_Label.setStyleSheet("color: white;")
         self.sliderLayout.addWidget(self.saturation_Label)
         self.saturation_slider_layout = QtWidgets.QHBoxLayout()
-        self.saturation_Slider = functions.setup_sliders(self.centralwidget, 0, 100, 0, "horizontal")
+        self.saturation_Slider = functions.setup_sliders(self.centralwidget, 0, 500, 0, "horizontal")
         self.saturation_slider_layout.addWidget(self.saturation_Slider)
         self.lineEdit_satur_value = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit_satur_value.setFixedWidth(50)
         self.saturation_slider_layout.addWidget(self.lineEdit_satur_value)
         self.sliderLayout.addLayout(self.saturation_slider_layout)
         self.Main_V_Layout.addLayout(self.sliderLayout)
+
 
     def setup_connections(self):
         self.LoadVideo.triggered.connect(self.load_handler.load_video)
@@ -366,6 +377,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
 
 
+
     def pupil_check(self):
         return self.checkBox_pupil.isChecked()
 
@@ -394,7 +406,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
             # Update the display with the new saturation
             functions.display_sub_region(
-                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation
+                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation, self.mnd
             )
 
     def update_slider(self):
@@ -411,22 +423,17 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def start_pupil_dilation_computation(self, images):
         pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
             X_saccade, Y_saccade, pupil_distance_from_corner, width, height =\
-            self.process_handler.pupil_dilation_comput(images, self.saturation, self.erased_pixels, self.reflect_ellipse)
+            self.process_handler.pupil_dilation_comput(images, self.saturation, self.erased_pixels, self.reflect_ellipse, self.mnd)
         self.final_pupil_area = pupil_dilation
         self.X_saccade_updated = X_saccade
         self.Y_saccade_updated = Y_saccade
         return pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
             X_saccade, Y_saccade, pupil_distance_from_corner,width, height
 
-
-
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):
             self.blinking_ids = self.process_handler.detect_blinking(self.pupil_dilation, self.width, self.height, self.X_saccade, self.Y_saccade)
-
-
         else:
-
             self.warning("Process Pupil first")
 
 
@@ -444,8 +451,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         if hasattr(self, 'pupil_dilation'):
             self.blinking = np.full((len(self.pupil_dilation),), np.nan)
             self.Undo_blinking()
-
-
         else:
             self.warning("Process Pupil first")
 
@@ -465,8 +470,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Eraser_active = False
 
 
-
-
     def warning(self, text):
         warning_box = QMessageBox()
         warning_box.setIcon(QMessageBox.Warning)
@@ -476,13 +479,12 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         warning_box.exec_()
 
 
+
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "FaceIt"))
         self.lineEdit_satur_value.setText(_translate("MainWindow", "0"))
         self.lineEdit_grooming_y.setText(_translate("MainWindow", "0"))
-
-
 
 
 class MainWindow(QtWidgets.QMainWindow):

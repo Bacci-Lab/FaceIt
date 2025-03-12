@@ -4,16 +4,18 @@ import numpy as np
 from FACEIT_codes import pupil_detection
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtGui import QPixmap
+import math
 
 def initialize_attributes(obj, image):
     obj.image_height, obj.image_width =  image.shape
-    obj.reflection_center = (obj.image_width // 2, obj.image_height // 2)
-    obj.reflect_height = 15
-    obj.reflect_width = 15
+    obj.ratio = 2
+    obj.reflection_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
+    obj.reflect_height = 30
+    obj.reflect_width = 30
     obj.Face_frame = None
     obj.Pupil_frame = None
     obj.sub_region = None
-    obj.ROI_center = (obj.image_width // 2, obj.image_height // 2)
+    obj.ROI_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
     obj.reflect_ellipse = None
     obj.saturation = 0
     obj.frame = None
@@ -23,9 +25,9 @@ def initialize_attributes(obj, image):
     obj.pupil_ellipse_items = None
     obj.current_ROI = None
     obj.ROI_exist = False
-    obj.oval_center = (obj.image_width // 2, obj.image_height // 2)
-    obj.face_rect_center = (obj.image_width // 2, obj.image_height // 2)
-    obj.ROI_center = (obj.image_width // 2, obj.image_height // 2)
+    obj.oval_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
+    obj.face_rect_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
+    obj.ROI_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
     obj.Image_loaded = False
     obj.Pupil_ROI_exist = False
     obj.Face_ROI_exist = False
@@ -33,15 +35,16 @@ def initialize_attributes(obj, image):
     obj.eyecorner = None
     obj.eye_corner_center = None
     obj.erased_pixels = None
+    obj.mnd = 10
 
 
 
 def show_ROI(ROI, image):
     sub_image = ROI.rect()
-    top = int(sub_image.top())
-    bottom = int(sub_image.bottom())
-    left = int(sub_image.left())
-    right = int(sub_image.right())
+    top = int(sub_image.top())*2
+    bottom = int(sub_image.bottom())*2
+    left = int(sub_image.left())*2
+    right = int(sub_image.right())*2
     sub_region = image[top:bottom, left:right]
     frame = [top,bottom, left,right]
     return sub_region, frame
@@ -79,9 +82,7 @@ def change_saturation(image, saturation_scale):
     return bgr_image
 
 
-
-
-def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erased_pixels = None,
+def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,mnd,  erased_pixels = None,
                        reflect_ellipse = None, pupil_ellipse_items = None, Detect_pupil = False):
     if pupil_ellipse_items is not None:
         scene2.removeItem(pupil_ellipse_items)
@@ -89,7 +90,6 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erase
         if isinstance(item, QtWidgets.QGraphicsPixmapItem):
             scene2.removeItem(item)
             del item
-
     height, width = sub_region.shape[:2]
 
     if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
@@ -102,39 +102,57 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,  erase
     bytes_per_line = width * 4
     qimage = QtGui.QImage(sub_region_rgba.data.tobytes(), width, height, bytes_per_line, QtGui.QImage.Format_RGBA8888)
     pixmap = QPixmap.fromImage(qimage)
-    item = QtWidgets.QGraphicsPixmapItem(pixmap)
+    ############
+    scaled_pixmap = pixmap.scaled(width, height, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+
+    item = QtWidgets.QGraphicsPixmapItem(scaled_pixmap)
     if ROI == "pupil":
         item.setZValue(-1)
     scene2.addItem(item)
+    scene2.setSceneRect(0, 0, scaled_pixmap.width(), scaled_pixmap.height())
+
     if Detect_pupil == True:
-        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = pupil_detection.detect_pupil(sub_region_rgba, erased_pixels, reflect_ellipse)
+        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = pupil_detection.detect_pupil(sub_region_rgba, erased_pixels, reflect_ellipse, mnd)
         pupil_ellipse_item = QtWidgets.QGraphicsEllipseItem(int(P_detected_center[0] - P_detected_width), int(P_detected_center[1] - P_detected_height),
                                                             P_detected_width*2, P_detected_height*2)
 
         pupil_ellipse_item.setTransformOriginPoint(int(P_detected_center[0]),
                                                    int(P_detected_center[1]))  # Set the origin point for rotation
+
+
+        # rect_x, rect_y, rect_width, rect_height = get_bounding_rect(P_detected_center, P_detected_width,
+        #                                                             P_detected_height, angle)
+        # pupil_ellipse_item = QtWidgets.QGraphicsEllipseItem(rect_x, rect_y, rect_width*2, rect_height*2)
+
+        # Apply rotation around the ellipse's center
+        #pupil_ellipse_item.setTransformOriginPoint(P_detected_center[0], P_detected_center[1])
+        pupil_ellipse_item.setTransformOriginPoint(int(P_detected_center[0]),
+                                                   int(P_detected_center[1]))
         pupil_ellipse_item.setRotation(np.degrees(angle))
-        pen = QtGui.QPen(QtGui.QColor(89, 141, 81))
+
+        pen = QtGui.QPen(QtGui.QColor("purple"))
         pen.setWidth(1)
-        pen.setStyle(QtCore.Qt.DashLine)
+        # pen.setStyle(QtCore.Qt.DashLine)
         pupil_ellipse_item.setPen(pen)
         scene2.addItem(pupil_ellipse_item)
         pupil_ellipse_items = pupil_ellipse_item
 
-    scene2.setSceneRect(0, 0, width, height)
+
     if graphicsView:
         graphicsView.setScene(scene2)
-        graphicsView.fitInView(scene2.sceneRect(), QtCore.Qt.KeepAspectRatio)
+        graphicsView.setFixedSize(scaled_pixmap.width(), scaled_pixmap.height())
+        # graphicsView.fitInView(scene2.sceneRect(), QtCore.Qt.KeepAspectRatio)
     return pupil_ellipse_items
 
 def second_region(graphicsView_subImage,graphicsView_MainFig,  image_width, image_height):
     scene2 = QtWidgets.QGraphicsScene(graphicsView_subImage)
     graphicsView_subImage.setScene(scene2)
-    graphicsView_subImage.setFixedSize(image_width, image_height)
+    # graphicsView_subImage.setFixedSize(image_width, image_height)
     graphicsView_MainFig.graphicsView_subImage = graphicsView_subImage
     return scene2
 
-def display_region(image,graphicsView_MainFig, image_width, image_height, scene = None):
+
+def display_region(image, graphicsView_MainFig, image_width, image_height, scene=None):
     if scene is None:
         scene = QtWidgets.QGraphicsScene(graphicsView_MainFig)
     else:
@@ -143,22 +161,54 @@ def display_region(image,graphicsView_MainFig, image_width, image_height, scene 
                 scene.removeItem(item)
                 del item
 
-
     qimage = QtGui.QImage(image.data, image_width, image_height, QtGui.QImage.Format_Grayscale8)
     pixmap = QtGui.QPixmap.fromImage(qimage)
 
-    item = QtWidgets.QGraphicsPixmapItem(pixmap)
+    # Scale the pixmap to fit inside the window
+    scaled_pixmap = pixmap.scaled(640, 512, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+
+    item = QtWidgets.QGraphicsPixmapItem(scaled_pixmap)
     item.setZValue(-1)
     scene.addItem(item)
+
     graphicsView_MainFig.setScene(scene)
-    scene.setSceneRect(0, 0, image_width, image_height)
+    scene.setSceneRect(0, 0, scaled_pixmap.width(), scaled_pixmap.height())
+
+    # Resize the view
+    graphicsView_MainFig.setFixedSize(scaled_pixmap.width(), scaled_pixmap.height())
+    graphicsView_MainFig.fitInView(scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
+
     graphicsView_MainFig.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
     graphicsView_MainFig.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-    graphicsView_MainFig.setFixedSize(image_width, image_height)
+
     return graphicsView_MainFig, scene
 
 
-def load_npy_by_index(folder_path, index, image_height = 384):
+# def display_region(image,graphicsView_MainFig, image_width, image_height, scene = None):
+#     if scene is None:
+#         scene = QtWidgets.QGraphicsScene(graphicsView_MainFig)
+#     else:
+#         for item in scene.items():
+#             if isinstance(item, QtWidgets.QGraphicsPixmapItem):
+#                 scene.removeItem(item)
+#                 del item
+#
+#
+#     qimage = QtGui.QImage(image.data, image_width, image_height, QtGui.QImage.Format_Grayscale8)
+#     pixmap = QtGui.QPixmap.fromImage(qimage)
+#
+#     item = QtWidgets.QGraphicsPixmapItem(pixmap)
+#     item.setZValue(-1)
+#     scene.addItem(item)
+#     graphicsView_MainFig.setScene(scene)
+#     scene.setSceneRect(0, 0, image_width, image_height)
+#     graphicsView_MainFig.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+#     graphicsView_MainFig.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+#     graphicsView_MainFig.setFixedSize(image_width, image_height)
+#     return graphicsView_MainFig, scene
+
+
+def load_npy_by_index(folder_path, index, image_height = 1024):
     npy_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.npy')])
     if index < 0 or index >= len(npy_files):
         raise IndexError("Index out of range")
@@ -170,7 +220,7 @@ def load_npy_by_index(folder_path, index, image_height = 384):
     image = cv2.resize(image, (image_width, image_height), interpolation = cv2.INTER_AREA)
     return image
 
-def load_frame_by_index(video_path, index, image_height=384):
+def load_frame_by_index(video_path, index, image_height=1024):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError(f"Error: Cannot open video file {video_path}.")
@@ -191,6 +241,7 @@ def load_frame_by_index(video_path, index, image_height=384):
     resized_frame = cv2.resize(frame, (image_width, image_height), interpolation=cv2.INTER_AREA)
     cap.release()
     return resized_frame
+    #return frame
 
 def setup_sliders(parent,min,max,set_value, orientation):
     Slider = QtWidgets.QSlider(parent)

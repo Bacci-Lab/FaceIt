@@ -6,11 +6,10 @@ import math
 import cv2
 from multiprocessing import Pool
 import time
+import matplotlib.patches as patches
 
-
-# Example adjustment inside functions.py
 def display_show_ROI(ROI, image):
-    # Check if ROI is passed as a tuple (x, y, width, height)
+
     if isinstance(ROI, tuple):
         x, y, width, height = ROI
         sub_image = image[int(y):int(y + height), int(x):int(x + width)]
@@ -31,24 +30,19 @@ def create_roi(x, y, width, height):
         'height': height
     }
 
+
 def process_single_frame(args):
-    current_image, pupil_roi_serializable, saturation, erased_pixels, reflect_ellipse, eye_corner_center = args
-
-    # Reconstruct pupil ROI as a tuple or a simpler object (without PyQt)
-    x, y, width, height = pupil_roi_serializable
-    pupil_roi = (x, y, width, height)  # Replace this with the correct format expected by `show_ROI`
-
-    # Process the image
-    sub_region, _ = display_show_ROI(pupil_roi, current_image)  # Ensure `show_ROI` can handle this format
+    current_image, frame, saturation, erased_pixels, reflect_ellipse, eye_corner_center, mnd = args
+    sub_region = current_image[frame[0]:frame[1], frame[2]:frame[3]]
 
     if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
         sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
 
-    sub_region = functions.change_saturation(sub_region, saturation)
     sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
 
+    # Pupil detection
     _, center, width, height, _, current_area = pupil_detection.detect_pupil(
-        sub_region_rgba, erased_pixels, reflect_ellipse
+        sub_region_rgba, erased_pixels, reflect_ellipse, mnd
     )
 
     pupil_distance_from_corner = (
@@ -56,7 +50,11 @@ def process_single_frame(args):
         if eye_corner_center is not None else np.nan
     )
 
-    return current_area, center, int(center[0]), int(center[1]), width, height, pupil_distance_from_corner
+    # Convert center to integer for drawing
+    center = (int(center[0]), int(center[1]))
+    width, height = int(width), int(height)
+
+    return current_area, center, center[0], center[1], width, height, pupil_distance_from_corner
 
 
 
@@ -233,30 +231,14 @@ class ProcessHandler:
         # Store the final pupil area as the interpolated result
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
         return combined_blinking_ids
-    def extract_data_from_QGraphics(self,pupil_roi_data ):
-        # Extract data from QGraphicsEllipseItem to make it serializable
-        # Get the bounding rectangle (position and size)
-        bounding_rect = pupil_roi_data.rect()
-        x = bounding_rect.x()
-        y = bounding_rect.y()
-        width = bounding_rect.width()
-        height = bounding_rect.height()
 
-        # Convert to a simple, serializable tuple or dictionary
-        pupil_roi_serializable = (x, y, width, height)
-        return pupil_roi_serializable
-
-
-    def pupil_dilation_comput(self, images, saturation, erased_pixels, reflect_ellipse):
+    def pupil_dilation_comput(self, images, saturation, erased_pixels, reflect_ellipse, mnd):
         """
         Computes pupil dilation and related metrics from a series of images using parallel processing.
         """
         # Start timing
         start_time = time.time()
 
-        # Extract only serializable data from PyQt objects before multiprocessing
-        pupil_roi_data = self.app_instance.graphicsView_MainFig.pupil_ROI
-        print("this is pupil_roi_data ", pupil_roi_data)
         eye_corner_center = (
             self.app_instance.eye_corner_center[0],
             self.app_instance.eye_corner_center[1]
@@ -265,13 +247,21 @@ class ProcessHandler:
         total_files = len(images)
         self.app_instance.progressBar.setMaximum(total_files)
 
-        pupil_roi_serializable = self.extract_data_from_QGraphics(pupil_roi_data)
-
+        ####################################################################
+        pupil_ROI = self.app_instance.pupil_ROI
+        sub_image = pupil_ROI.rect()
+        top = int(sub_image.top())*2
+        bottom = int(sub_image.bottom())*2
+        left = int(sub_image.left())*2
+        right = int(sub_image.right())*2
+        frame = (top,bottom, left,right)
+        ####################################################################
         # Prepare the data for multiprocessing
         frame_args = [
-            (current_image, pupil_roi_serializable, saturation, erased_pixels, reflect_ellipse, eye_corner_center)
+            (current_image, frame, saturation, erased_pixels, reflect_ellipse, eye_corner_center, mnd)
             for current_image in images
         ]
+
 
         # Use a multiprocessing pool to process images in parallel
         with Pool() as pool:
@@ -300,12 +290,9 @@ class ProcessHandler:
         pupil_width = np.array(pupil_width)
         pupil_height = np.array(pupil_height)
         pupil_distance_from_corner = np.array(pupil_distance_from_corner)
-        #############test for saccade###################
-
-        print("this pupil center", pupil_center)
+        #########################test for saccade###################
         timestamps = np.arange(len(pupil_center))
         fixations_test, saccades_test = self.calculate_saccades_test(pupil_center,timestamps, 1)
-        print("this is saccade test", saccades_test)
 
         # Compute saccades for X and Y coordinates
         X_saccade = self.Saccade(pupil_center_X)
@@ -441,6 +428,7 @@ class ProcessHandler:
 
         # Reshape the saccade array to be 2D (1 row) for consistency
         saccade = saccade.reshape(1, -1)
+
 
         #self.plot_saccade(pupil_center_i, saccade)
 

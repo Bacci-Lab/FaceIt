@@ -16,7 +16,6 @@ class LoadData:
         """Open a folder dialog to select a directory containing images."""
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         default_path = os.path.join(project_root, "test_data", "test_images")
-        print("Default path:", default_path)
 
         self.app_instance.folder_path = QtWidgets.QFileDialog.getExistingDirectory(
             self.app_instance, "Select Folder", default_path
@@ -31,6 +30,7 @@ class LoadData:
             self.display_graphics(self.app_instance.folder_path)
             self.app_instance.FaceROIButton.setEnabled(True)
             self.app_instance.PupilROIButton.setEnabled(True)
+            self.app_instance.Slider_frame.setEnabled(True)
 
     def load_video(self):
         """Load video and prepare for processing."""
@@ -51,24 +51,28 @@ class LoadData:
             self.app_instance.FaceROIButton.setEnabled(True)
             self.app_instance.PupilROIButton.setEnabled(True)
 
-    def load_image(self, filepath, image_height=384):
+    def load_image(self, filepath, image_height=1024):
         """Load and resize a single image from the given file path."""
+
         try:
             current_image = np.load(filepath, allow_pickle=True)
+            height, width = current_image.shape[:2]
             original_height, original_width = current_image.shape
             aspect_ratio = original_width / original_height
             image_width = int(image_height * aspect_ratio)
             resized_image = cv2.resize(current_image, (image_width, image_height), interpolation=cv2.INTER_AREA)
+            #return current_image
             return resized_image
         except Exception as e:
             print(f"Error loading image {filepath}: {e}")
             return None
 
-    def load_images_from_directory(self, directory, image_height=384, max_workers=8):
+    def load_images_from_directory(self, directory, image_height=1024, max_workers=8):
         """Load images from a directory using multithreading."""
         file_list = sorted([os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')])
         self.app_instance.progressBar.setMaximum(len(file_list))
         images = []
+
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(self.load_image, file, image_height): file for file in file_list}
@@ -82,7 +86,7 @@ class LoadData:
         self.app_instance.progressBar.setValue(len(file_list))
         return images
 
-    def load_frames_from_video(self, video_path, max_workers=8, buffer_size=32, image_height=384):
+    def load_frames_from_video(self, video_path, max_workers=8, buffer_size=32, image_height=1024):
         """Load frames from a video file using multithreading."""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -105,6 +109,7 @@ class LoadData:
             original_height, original_width, _ = frame.shape if len(frame.shape) == 3 else (frame.shape[0], frame.shape[1])
             aspect_ratio = original_width / original_height
             image_width = int(image_height * aspect_ratio)
+            #return frame
             return cv2.resize(frame, (image_width, image_height), interpolation=cv2.INTER_AREA)
 
         def consumer():

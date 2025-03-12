@@ -23,7 +23,7 @@ class ROIHandler:
         Adds a Region of Interest (ROI) to the appropriate scene based on the type.
 
         Parameters:
-        - roi_type (str): The type of ROI to add ('pupil', 'face', 'reflection', 'blank', 'pupil_detection').
+        - roi_type (str): The type of ROI to add ('pupil', 'face', 'reflection',  'pupil_detection').
         - roi_center (tuple): The center coordinates for the ROI.
         - image (ndarray): The image being processed.
         - kwargs: Additional arguments for customization (e.g., dimensions, buttons, etc.).
@@ -39,7 +39,8 @@ class ROIHandler:
             if roi_type == 'pupil':
                 self.app_instance.graphicsView_MainFig.pupil_handles = handles
                 self.app_instance.graphicsView_MainFig.pupil_ROI = roi_item
-                self._process_roi_display(roi_item, image, roi_type, saturation, kwargs)
+
+                self._process_roi_display(roi_item, image, roi_type, saturation)
                 self.enable_button(kwargs.get('Button'))
                 self.enable_button(kwargs.get('Button2'))
                 self.enable_button(kwargs.get('Button4'))
@@ -49,13 +50,13 @@ class ROIHandler:
             elif roi_type == 'face':
                 self.app_instance.graphicsView_MainFig.face_handles = handles
                 self.app_instance.graphicsView_MainFig.face_ROI = roi_item
-                self._process_roi_display(roi_item, image, roi_type, saturation, kwargs)
+                self._process_roi_display(roi_item, image, roi_type, saturation)
                 self.enable_button(kwargs.get('Button4'))
                 self.disable_button(kwargs.get('Button3'))
 
             elif roi_type == 'pupil_detection':
                 self.app_instance.graphicsView_MainFig.pupil_detection = roi_item
-                self._process_roi_display(roi_item, image, roi_type, saturation, kwargs)
+                self._process_roi_display(roi_item, image, roi_type, saturation)
 
         elif roi_type == 'reflection':
             self._add_to_scene2(roi_item, handles, 'reflect', roi_center, kwargs)
@@ -76,7 +77,7 @@ class ROIHandler:
         - QtWidgets.QGraphicsItem: The ROI item.
         - dict: A dictionary containing handles for the ROI.
         """
-        color2 = 'teal' if roi_type in ['pupil', 'face'] else 'gray' if roi_type == 'reflection' else 'blue' if roi_type == 'blank' else 'red'
+        color2 = 'teal' if roi_type in ['pupil', 'face'] else 'gray'
         ROI = (QtWidgets.QGraphicsEllipseItem if roi_type in ['pupil', 'reflection', 'pupil_detection'] else QtWidgets.QGraphicsRectItem)(
             center[0] - width / 2, center[1] - height / 2, width, height
         )
@@ -94,7 +95,7 @@ class ROIHandler:
 
         return ROI, handles
 
-    def _process_roi_display(self, roi, image, roi_type, saturation, kwargs):
+    def _process_roi_display(self, roi, image, roi_type, saturation):
         """
         Processes and displays a sub-region from the ROI.
 
@@ -111,7 +112,8 @@ class ROIHandler:
             sub_region,
             self.app_instance.scene2,
             roi_type,
-            saturation
+            saturation,
+            self.app_instance.mnd
         )
 
     def _add_to_scene2(self, roi, handles, roi_list_attr, center, kwargs):

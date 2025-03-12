@@ -145,8 +145,6 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 self.current_reflect_idx = idx
                 self.previous_mouse_pos_reflect = (self.scene_pos .x(), self.scene_pos .y())
 
-
-
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -180,6 +178,10 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 self.ROI_center = self.reflect_centers[self.current_reflect_idx]
                 self.ROI_height = self.reflect_heights[self.current_reflect_idx]
                 self.ROI_width = self.reflect_widths[self.current_reflect_idx]
+                ########################
+                # self.ROI_width = self.ROI_width * self.parent.ratio
+                # self.ROI_height = self.ROI_width * self.parent.ratio
+                ############################
                 frame_height_boundary = self.parent.sub_region.shape[0]
                 frame_width_boundary = self.parent.sub_region.shape[1]
 
@@ -187,14 +189,15 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             x = previous_mouse_pos[0]
             y = previous_mouse_pos[1]
 
-            new_pos = self.mapToScene(event.pos())
+            new_pos = (self.mapToScene(event.pos()))
             self.x_offset = new_pos.x() - x
             self.y_offset = new_pos.y() - y
+
             # Boundary checks
-            half_width = self.ROI_width / 2
-            half_height = self.ROI_height / 2
-            center_x = self.ROI_center[0] + self.x_offset
-            center_y = self.ROI_center[1] + self.y_offset
+            half_width = (self.ROI_width / 2)
+            half_height = (self.ROI_height / 2)
+            center_x = (self.ROI_center[0] + self.x_offset)
+            center_y = (self.ROI_center[1] + self.y_offset)
 
             if center_x >= frame_width_boundary - half_width:
                 center_x = frame_width_boundary - half_width
@@ -291,27 +294,28 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         if self.dragging:
             if self.dragging_face:
                 self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation, self.parent.mnd)
                 self.parent.set_frame(self.parent.Face_frame)
-                print("frame is ",self.parent.Face_frame )
             elif self.dragging_pupil:
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2,"pupil",self.parent.saturation)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2,"pupil",self.parent.saturation, self.parent.mnd)
                 self.parent.set_frame(self.parent.Pupil_frame)
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
+
             elif self.dragging_reflect:
                 self.reflect_ellipse = [self.reflect_centers, self.reflect_widths , self.reflect_heights ]
                 self.parent.reflect_ellipse = self.reflect_ellipse
 
+
         elif self.Resizing:
             if self.Resize_face:
                 self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation, self.parent.mnd)
                 self.parent.set_frame(self.parent.Face_frame)
             elif self.Resize_pupil:
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2, "pupil",self.parent.saturation)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2, "pupil",self.parent.saturation, self.parent.mnd)
                 self.parent.set_frame(self.parent.Pupil_frame)
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
@@ -357,7 +361,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             self._update_ROI(self.pupil_ROI, rect_x, rect_y, width, height, "pupil", handle_size=10)
         elif handle_type == "reflection":
             current_reflect_ROI = self.reflect_ROIs[self.current_reflect_idx]
-            self._update_ROI(current_reflect_ROI, rect_x, rect_y, width, height, "reflection", handle_size=3)
+            self._update_ROI(current_reflect_ROI, rect_x, rect_y, width, height, "reflection", handle_size=10)
             current_reflect_ROI.setBrush(QtGui.QBrush(QtGui.QColor('silver')))
 
     def _update_ROI(self, roi, rect_x, rect_y, width, height, handle_type, handle_size):

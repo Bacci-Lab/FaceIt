@@ -47,6 +47,7 @@ def find_ellipse(binary_image):
     width = 2 * np.sqrt(eigenvalues[0])
     height = 2 * np.sqrt(eigenvalues[1])
 
+
     # Create the ellipse representation
     ellipse = (int(mean[0]), int(mean[1])), (int(width * 2), int(height * 2)), np.degrees(angle)
     return ellipse, (float(mean[0]), float(mean[1])), width, height, angle
@@ -77,7 +78,7 @@ def overlap_reflect(reflections, pupil_ellipse, binary_image):
         for reflection in reflections:
             cv2.ellipse(reflection_mask, reflection, color=255, thickness=-1)
 
-        # Identify overlapping regions between the pupil and reflection masks
+
         overlap_mask = cv2.bitwise_and(pupil_mask, reflection_mask)
 
         # Find the coordinates of the overlapping pixels
@@ -90,13 +91,15 @@ def overlap_reflect(reflections, pupil_ellipse, binary_image):
     return binary_image
 
 
-def find_cluster(binary_image):
+def find_cluster(binary_image, mnd):
     """
     Detects the largest cluster of non-zero pixels in a binary image and returns an image
     highlighting the detected cluster.
 
     Parameters:
     binary_image (np.ndarray): A binary image with non-zero pixels representing objects.
+
+    mnd (Maximum neighbor distance): maximum distance to consider two points as neighbors in clustering
 
     Returns:
     np.ndarray: A binary image of the same size as the input, with the largest cluster highlighted(pupil).
@@ -109,7 +112,8 @@ def find_cluster(binary_image):
         return np.zeros_like(binary_image, dtype=np.uint8)
 
     # Apply the DBSCAN clustering algorithm to the coordinates
-    clustering = DBSCAN(eps=6, min_samples=1).fit(non_zero_coords)
+    clustering = DBSCAN(eps=mnd, min_samples=1).fit(non_zero_coords)
+
 
     # Extract cluster labels from the clustering result
     labels = clustering.labels_
@@ -195,10 +199,10 @@ def Image_binarization(chosen_frame_region):
     _, binary_image = cv2.threshold(sub_region_2Dgray, 200, 255, cv2.THRESH_BINARY_INV)
     return binary_image
 
-def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse):
+def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd):
     binary_image = Image_binarization(chosen_frame_region)
     binary_image = erase_pixels(erased_pixels, binary_image)
-    binary_image = find_cluster(binary_image)
+    binary_image = find_cluster(binary_image, mnd)
 
     if reflect_ellipse is not None:
         All_reflects = [
