@@ -11,26 +11,56 @@ class LoadData:
     def __init__(self, app_instance):
         # Store a reference to the main app instance
         self.app_instance = app_instance
-
     def open_image_folder(self):
-        """Open a folder dialog to select a directory containing images."""
+        """Open a folder dialog to select a directory containing .npy image files."""
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         default_path = os.path.join(project_root, "test_data", "test_images")
 
-        self.app_instance.folder_path = QtWidgets.QFileDialog.getExistingDirectory(
-            self.app_instance, "Select Folder", default_path
-        )
-        if self.app_instance.folder_path:
-            self.app_instance.save_path = self.app_instance.folder_path
-            npy_files = [f for f in os.listdir(self.app_instance.folder_path) if f.endswith('.npy')]
-            self.app_instance.len_file = len(npy_files)
-            self.app_instance.Slider_frame.setMaximum(self.app_instance.len_file - 1)
-            self.app_instance.NPY = True
-            self.app_instance.video = False
-            self.display_graphics(self.app_instance.folder_path)
-            self.app_instance.FaceROIButton.setEnabled(True)
-            self.app_instance.PupilROIButton.setEnabled(True)
-            self.app_instance.Slider_frame.setEnabled(True)
+        # Open folder selection dialog
+        folder_path = QtWidgets.QFileDialog.getExistingDirectory(self.app_instance, "Select Folder", default_path)
+
+        if not folder_path:
+            return  # User canceled the selection
+
+        self.app_instance.folder_path = folder_path
+        self.app_instance.save_path = folder_path
+
+        # Get all .npy files in the folder
+        npy_files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
+
+        # if not npy_files:
+        #     self.app_instance.warning("⚠️ No .npy files found in the selected directory.")
+        #     return
+        #
+        # # Check if all .npy files are 2D arrays
+        # all_are_2D = True
+        # for f in npy_files:
+        #     file_path = os.path.join(folder_path, f)
+        #     try:
+        #         array = np.load(file_path, allow_pickle=False)
+        #         if array.ndim != 2:
+        #             all_are_2D = False
+        #     except Exception as e:
+        #         print(f"⚠️ Error loading '{f}': {e}")
+        #         all_are_2D = False
+        #
+        # if all_are_2D == False:
+        #     self.app_instance.warning("❌ Some .npy files are not 2D.")
+        #     return
+        # else:
+        #     pass
+
+        # Configure application settings if valid .npy files are found
+        self.app_instance.len_file = len(npy_files)
+        self.app_instance.Slider_frame.setMaximum(self.app_instance.len_file - 1)
+        self.app_instance.NPY = True
+        self.app_instance.video = False
+        self.display_graphics(folder_path)
+
+        # Enable buttons after successful file check
+        self.app_instance.FaceROIButton.setEnabled(True)
+        self.app_instance.PupilROIButton.setEnabled(True)
+        self.app_instance.Slider_frame.setEnabled(True)
 
     def load_video(self):
         """Load video and prepare for processing."""
@@ -50,8 +80,9 @@ class LoadData:
             self.display_graphics(self.app_instance.folder_path)
             self.app_instance.FaceROIButton.setEnabled(True)
             self.app_instance.PupilROIButton.setEnabled(True)
+            self.app_instance.Slider_frame.setEnabled(True)
 
-    def load_image(self, filepath, image_height=1024):
+    def load_image(self, filepath, image_height):
         """Load and resize a single image from the given file path."""
 
         try:
@@ -67,7 +98,7 @@ class LoadData:
             print(f"Error loading image {filepath}: {e}")
             return None
 
-    def load_images_from_directory(self, directory, image_height=1024, max_workers=8):
+    def load_images_from_directory(self, directory, image_height, max_workers=8):
         """Load images from a directory using multithreading."""
         file_list = sorted([os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')])
         self.app_instance.progressBar.setMaximum(len(file_list))
@@ -86,7 +117,7 @@ class LoadData:
         self.app_instance.progressBar.setValue(len(file_list))
         return images
 
-    def load_frames_from_video(self, video_path, max_workers=8, buffer_size=32, image_height=1024):
+    def load_frames_from_video(self, video_path,image_height, max_workers=8, buffer_size=32):
         """Load frames from a video file using multithreading."""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():

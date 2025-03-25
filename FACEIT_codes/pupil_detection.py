@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 import bottleneck as bn
@@ -113,8 +114,6 @@ def find_cluster(binary_image, mnd):
 
     # Apply the DBSCAN clustering algorithm to the coordinates
     clustering = DBSCAN(eps=mnd, min_samples=1).fit(non_zero_coords)
-
-
     # Extract cluster labels from the clustering result
     labels = clustering.labels_
 
@@ -125,8 +124,7 @@ def find_cluster(binary_image, mnd):
     largest_cluster_label = unique_labels[np.argmax(counts)]
 
     # Create a mask for the points that belong to the largest cluster
-    largest_cluster_mask = (labels == largest_cluster_label)
-    largest_cluster_coords = non_zero_coords[largest_cluster_mask]
+    largest_cluster_coords = non_zero_coords[labels == largest_cluster_label]
 
     # Create an output image with the largest cluster drawn on it
     detected_cluster = np.zeros_like(binary_image, dtype=np.uint8)
@@ -134,7 +132,25 @@ def find_cluster(binary_image, mnd):
         cv2.circle(detected_cluster, (point[1], point[0]), 1, (255,), -1)
 
     # Return the image with the largest cluster highlighted
-    return detected_cluster
+    ######################
+    binary_image = detected_cluster
+
+    # Find all contours
+    contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Merge all contour points into a single array
+    all_points = np.vstack(contours)  # Stack all contour points together
+
+    # Compute the convex hull
+    hull = cv2.convexHull(all_points)
+
+    # Create a blank image to draw the convex hull
+    hull_image = np.zeros_like(binary_image)
+
+    # Draw and fill the convex hull
+    cv2.drawContours(hull_image, [hull], -1, 255, -1)  # -1 fills the hull with white
+
+    return hull_image
 
 def detect_blinking_ids(pupil_data, threshold_factor, window_size=8):
     """
@@ -161,7 +177,6 @@ def detect_blinking_ids(pupil_data, threshold_factor, window_size=8):
     expanded_blink_indices = detected_blink_indices.union(
         {index + offset for index in detected_blink_indices for offset in range(-1, 2)}
     )
-
     # Return a sorted list of unique blink indices
     return sorted(expanded_blink_indices)
 
@@ -194,35 +209,35 @@ def interpolate(blink_indices, data_series):
     # Return the fully interpolated data series
     return interpolated_data_series
 
-def Image_binarization(chosen_frame_region):
+def Image_binarization(chosen_frame_region, binary_threshold = 220):
     sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
-    _, binary_image = cv2.threshold(sub_region_2Dgray, 200, 255, cv2.THRESH_BINARY_INV)
+    _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
     return binary_image
 
-def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd):
-    binary_image = Image_binarization(chosen_frame_region)
+def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd, binary_threshold):
+    binary_image = Image_binarization(chosen_frame_region,binary_threshold)
     binary_image = erase_pixels(erased_pixels, binary_image)
     binary_image = find_cluster(binary_image, mnd)
 
-    if reflect_ellipse is not None:
+    if reflect_ellipse is None or reflect_ellipse == [[], [], []]:
+        pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
+    else:
+        print("take into account reflection")
         All_reflects = [
             [reflect_ellipse[0][variable], (reflect_ellipse[1][variable], reflect_ellipse[2][variable]), 0]
             for variable in
             range(len(reflect_ellipse[1]))]
-    else:
-        All_reflects = None
+        for i in range(3):
+            pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
+            binary_image_update = overlap_reflect(All_reflects, pupil_ROI0, binary_image)
+            binary_image = binary_image_update
 
-    for i in range(3):
-        pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
-        binary_image_update = overlap_reflect(All_reflects, pupil_ROI0, binary_image)
-        binary_image = binary_image_update
 
     pupil_area = np.pi * (width*height)
     return pupil_ROI0, center, width, height, angle, pupil_area
 
 def erase_pixels(erased_pixels, binary_image):
     if erased_pixels is not None and len(erased_pixels) > 0:
-        # Convert the list of (x, y) coordinates to a NumPy array if not already done
         if not isinstance(erased_pixels, np.ndarray):
             erased_pixels = np.array(erased_pixels)
 

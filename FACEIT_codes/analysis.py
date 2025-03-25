@@ -32,7 +32,7 @@ def create_roi(x, y, width, height):
 
 
 def process_single_frame(args):
-    current_image, frame, saturation, erased_pixels, reflect_ellipse, eye_corner_center, mnd = args
+    current_image, frame, saturation,contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold = args
     sub_region = current_image[frame[0]:frame[1], frame[2]:frame[3]]
 
     if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
@@ -42,7 +42,7 @@ def process_single_frame(args):
 
     # Pupil detection
     _, center, width, height, _, current_area = pupil_detection.detect_pupil(
-        sub_region_rgba, erased_pixels, reflect_ellipse, mnd
+        sub_region_rgba, erased_pixels, reflect_ellipse, mnd,binary_threshold
     )
 
     pupil_distance_from_corner = (
@@ -172,10 +172,10 @@ class ProcessHandler:
         if not self.app_instance.Image_loaded:
             if self.app_instance.NPY:
                 # Load images from a directory of .npy files
-                self.app_instance.images = self.app_instance.load_handler.load_images_from_directory(self.app_instance.folder_path)
+                self.app_instance.images = self.app_instance.load_handler.load_images_from_directory(self.app_instance.folder_path,self.app_instance.image_height)
             elif self.app_instance.video:
                 # Load images from a video file
-                self.app_instance.images = self.app_instance.load_handler.load_frames_from_video(self.app_instance.folder_path)
+                self.app_instance.images = self.app_instance.load_handler.load_frames_from_video(self.app_instance.folder_path, self.app_instance.image_height)
 
             # Mark images as loaded
             self.app_instance.Image_loaded = True
@@ -232,7 +232,7 @@ class ProcessHandler:
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
         return combined_blinking_ids
 
-    def pupil_dilation_comput(self, images, saturation, erased_pixels, reflect_ellipse, mnd):
+    def pupil_dilation_comput(self, images, saturation, contrast, erased_pixels, reflect_ellipse, mnd, binary_threshold):
         """
         Computes pupil dilation and related metrics from a series of images using parallel processing.
         """
@@ -250,15 +250,15 @@ class ProcessHandler:
         ####################################################################
         pupil_ROI = self.app_instance.pupil_ROI
         sub_image = pupil_ROI.rect()
-        top = int(sub_image.top())*2
-        bottom = int(sub_image.bottom())*2
-        left = int(sub_image.left())*2
-        right = int(sub_image.right())*2
+        top = int(sub_image.top())* self.app_instance.ratio
+        bottom = int(sub_image.bottom())*self.app_instance.ratio
+        left = int(sub_image.left())*self.app_instance.ratio
+        right = int(sub_image.right())*self.app_instance.ratio
         frame = (top,bottom, left,right)
         ####################################################################
         # Prepare the data for multiprocessing
         frame_args = [
-            (current_image, frame, saturation, erased_pixels, reflect_ellipse, eye_corner_center, mnd)
+            (current_image, frame, saturation, contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold)
             for current_image in images
         ]
 
@@ -291,8 +291,8 @@ class ProcessHandler:
         pupil_height = np.array(pupil_height)
         pupil_distance_from_corner = np.array(pupil_distance_from_corner)
         #########################test for saccade###################
-        timestamps = np.arange(len(pupil_center))
-        fixations_test, saccades_test = self.calculate_saccades_test(pupil_center,timestamps, 1)
+        # timestamps = np.arange(len(pupil_center))
+        # fixations_test, saccades_test = self.calculate_saccades_test(pupil_center,timestamps, 1)
 
         # Compute saccades for X and Y coordinates
         X_saccade = self.Saccade(pupil_center_X)
@@ -324,84 +324,84 @@ class ProcessHandler:
         plt.xlabel('Frame Index')
         plt.ylabel('Movement Value')
         plt.title('Saccade Movements Over Frames')
-        plt.axhline(0, color='gray', linestyle='--', linewidth=0.8)  # Reference line at y=0
+        plt.axhline(0, color='gray', linestyle='--', linewidth=0.8)
         plt.legend()
         plt.grid(alpha=0.3)
         plt.tight_layout()
         plt.show()
 
-    def calculate_saccades_test(self,positions, timestamps, velocity_threshold):
-        """
-        Detect saccades using the I-VT algorithm.
-
-        Parameters:
-        - positions: List of (x, y) pupil center positions [(x1, y1), (x2, y2), ...].
-        - timestamps: List of timestamps corresponding to each position [t1, t2, ...].
-        - velocity_threshold: Velocity threshold to classify fixations and saccades.
-
-        Returns:
-        - fixations: List of detected fixations, each as a dictionary with:
-            {"x": centroid_x, "y": centroid_y, "start_time": t_start, "duration": duration}.
-        - saccades: List of indices classified as saccades.
-        """
-
-        # Step 1: Calculate point-to-point velocities
-        velocities = []
-        for i in range(1, len(positions)):
-            dx = positions[i][0] - positions[i - 1][0]
-            dy = positions[i][1] - positions[i - 1][1]
-            velocity = np.sqrt(dx ** 2 + dy ** 2)
-            velocities.append(velocity)
-
-        # Step 2: Classify points as fixations or saccades
-        classifications = [0]  # Start with the first point classified as fixation
-        for v in velocities:
-            if v < velocity_threshold:
-                classifications.append(0)  # Fixation
-            else:
-                classifications.append(1)  # Saccade
-
-        # Step 3: Collapse consecutive fixation points
-        fixations = []
-        saccades = []
-        start_idx = None
-        for i, cls in enumerate(classifications):
-            if cls == 0:  # Fixation
-                if start_idx is None:  # Start a new fixation group
-                    start_idx = i
-            else:  # Saccade
-                if start_idx is not None:  # End the fixation group
-                    fixation_points = positions[start_idx:i]
-                    fixation_timestamps = timestamps[start_idx:i]
-                    centroid_x = np.mean([p[0] for p in fixation_points])
-                    centroid_y = np.mean([p[1] for p in fixation_points])
-                    duration = fixation_timestamps[-1] - fixation_timestamps[0]
-                    fixations.append({
-                        "x": centroid_x,
-                        "y": centroid_y,
-                        "start_time": fixation_timestamps[0],
-                        "duration": duration
-                    })
-                    start_idx = None  # Reset fixation group
-
-        # Handle any remaining fixation group at the end
-        if start_idx is not None:
-            fixation_points = positions[start_idx:]
-            fixation_timestamps = timestamps[start_idx:]
-            centroid_x = np.mean([p[0] for p in fixation_points])
-            centroid_y = np.mean([p[1] for p in fixation_points])
-            duration = fixation_timestamps[-1] - fixation_timestamps[0]
-            fixations.append({
-                "x": centroid_x,
-                "y": centroid_y,
-                "start_time": fixation_timestamps[0],
-                "duration": duration
-            })
-
-        # Identify saccade indices for completeness
-        saccades = [i for i, cls in enumerate(classifications) if cls == 1]
-
-        return fixations, saccades
+    # def calculate_saccades_test(self,positions, timestamps, velocity_threshold):
+    #     """
+    #     Detect saccades using the I-VT algorithm.
+    #
+    #     Parameters:
+    #     - positions: List of (x, y) pupil center positions [(x1, y1), (x2, y2), ...].
+    #     - timestamps: List of timestamps corresponding to each position [t1, t2, ...].
+    #     - velocity_threshold: Velocity threshold to classify fixations and saccades.
+    #
+    #     Returns:
+    #     - fixations: List of detected fixations, each as a dictionary with:
+    #         {"x": centroid_x, "y": centroid_y, "start_time": t_start, "duration": duration}.
+    #     - saccades: List of indices classified as saccades.
+    #     """
+    #
+    #     # Step 1: Calculate point-to-point velocities
+    #     velocities = []
+    #     for i in range(1, len(positions)):
+    #         dx = positions[i][0] - positions[i - 1][0]
+    #         dy = positions[i][1] - positions[i - 1][1]
+    #         velocity = np.sqrt(dx ** 2 + dy ** 2)
+    #         velocities.append(velocity)
+    #
+    #     # Step 2: Classify points as fixations or saccades
+    #     classifications = [0]  # Start with the first point classified as fixation
+    #     for v in velocities:
+    #         if v < velocity_threshold:
+    #             classifications.append(0)  # Fixation
+    #         else:
+    #             classifications.append(1)  # Saccade
+    #
+    #     # Step 3: Collapse consecutive fixation points
+    #     fixations = []
+    #     saccades = []
+    #     start_idx = None
+    #     for i, cls in enumerate(classifications):
+    #         if cls == 0:  # Fixation
+    #             if start_idx is None:  # Start a new fixation group
+    #                 start_idx = i
+    #         else:  # Saccade
+    #             if start_idx is not None:  # End the fixation group
+    #                 fixation_points = positions[start_idx:i]
+    #                 fixation_timestamps = timestamps[start_idx:i]
+    #                 centroid_x = np.mean([p[0] for p in fixation_points])
+    #                 centroid_y = np.mean([p[1] for p in fixation_points])
+    #                 duration = fixation_timestamps[-1] - fixation_timestamps[0]
+    #                 fixations.append({
+    #                     "x": centroid_x,
+    #                     "y": centroid_y,
+    #                     "start_time": fixation_timestamps[0],
+    #                     "duration": duration
+    #                 })
+    #                 start_idx = None  # Reset fixation group
+    #
+    #     # Handle any remaining fixation group at the end
+    #     if start_idx is not None:
+    #         fixation_points = positions[start_idx:]
+    #         fixation_timestamps = timestamps[start_idx:]
+    #         centroid_x = np.mean([p[0] for p in fixation_points])
+    #         centroid_y = np.mean([p[1] for p in fixation_points])
+    #         duration = fixation_timestamps[-1] - fixation_timestamps[0]
+    #         fixations.append({
+    #             "x": centroid_x,
+    #             "y": centroid_y,
+    #             "start_time": fixation_timestamps[0],
+    #             "duration": duration
+    #         })
+    #
+    #     # Identify saccade indices for completeness
+    #     saccades = [i for i, cls in enumerate(classifications) if cls == 1]
+    #
+    #     return fixations, saccades
 
     def Saccade(self, pupil_center_i):
         """

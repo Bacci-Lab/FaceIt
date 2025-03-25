@@ -41,4 +41,5 @@ Thumbs.db
 # Explicitly keep FACEIT_codes directory
 !FACEIT_codes/
 
-
+# Ignore specific file
+freely_moving.py

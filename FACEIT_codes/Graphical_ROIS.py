@@ -29,6 +29,7 @@ class ROIHandler:
         - kwargs: Additional arguments for customization (e.g., dimensions, buttons, etc.).
         """
         saturation = 0
+        contrast = 1
         roi_item, handles = self._draw_roi(roi_center, roi_type, kwargs.get('height', 50), kwargs.get('width', 80), kwargs.get('handle_size', 10), color=kwargs.get('color', 'gold'))
 
         if roi_type in ['pupil', 'face', 'pupil_detection']:
@@ -40,23 +41,25 @@ class ROIHandler:
                 self.app_instance.graphicsView_MainFig.pupil_handles = handles
                 self.app_instance.graphicsView_MainFig.pupil_ROI = roi_item
 
-                self._process_roi_display(roi_item, image, roi_type, saturation)
+                self._process_roi_display(roi_item, image, roi_type, saturation,contrast)
                 self.enable_button(kwargs.get('Button'))
                 self.enable_button(kwargs.get('Button2'))
                 self.enable_button(kwargs.get('Button4'))
+                self.enable_button(kwargs.get('checkBox_pupil'))
                 self.enable_button(kwargs.get('Button5'))
                 self.disable_button(kwargs.get('Button3'))
 
             elif roi_type == 'face':
                 self.app_instance.graphicsView_MainFig.face_handles = handles
                 self.app_instance.graphicsView_MainFig.face_ROI = roi_item
-                self._process_roi_display(roi_item, image, roi_type, saturation)
+                self._process_roi_display(roi_item, image, roi_type, saturation, contrast)
                 self.enable_button(kwargs.get('Button4'))
                 self.disable_button(kwargs.get('Button3'))
+                self.enable_button(kwargs.get('checkBox_face'))
 
             elif roi_type == 'pupil_detection':
                 self.app_instance.graphicsView_MainFig.pupil_detection = roi_item
-                self._process_roi_display(roi_item, image, roi_type, saturation)
+                self._process_roi_display(roi_item, image, roi_type, saturation, contrast)
 
         elif roi_type == 'reflection':
             self._add_to_scene2(roi_item, handles, 'reflect', roi_center, kwargs)
@@ -95,7 +98,7 @@ class ROIHandler:
 
         return ROI, handles
 
-    def _process_roi_display(self, roi, image, roi_type, saturation):
+    def _process_roi_display(self, roi, image, roi_type, saturation, contrast):
         """
         Processes and displays a sub-region from the ROI.
 
@@ -113,7 +116,9 @@ class ROIHandler:
             self.app_instance.scene2,
             roi_type,
             saturation,
-            self.app_instance.mnd
+            contrast,
+            self.app_instance.mnd,
+            self.app_instance.binary_threshold
         )
 
     def _add_to_scene2(self, roi, handles, roi_list_attr, center, kwargs):

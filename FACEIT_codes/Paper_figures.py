@@ -1,31 +1,16 @@
 import os
-import numpy as np
 import cv2
+import numpy as np
 import matplotlib.pyplot as plt
-# image_height = 1024
-# filepath =  r"C:\Users\faezeh.rabbani\PycharmProjects\FaceProject\test_data\test_images\1710514483.2858639.npy"
-# current_image = np.load(filepath, allow_pickle=True)
-# plt.imshow(current_image)
-# plt.show()
-# original_height, original_width = current_image.shape
-# print("image shape", current_image.shape)
-# aspect_ratio = original_width / original_height
-# image_width = int(image_height * aspect_ratio)
-# resized_image = cv2.resize(current_image, (image_width, image_height), interpolation=cv2.INTER_AREA)
-# plt.imshow(resized_image)
-# plt.show()
-
-
 
 from pupil_detection import Image_binarization
 from sklearn.cluster import DBSCAN
-import cv2
-import os
 import matplotlib.pyplot as plt
-import numpy as np
 save_directory = r'C:\Users\faezeh.rabbani\Documents\save_paper_figure'
-directory_path = r"C:\Users\faezeh.rabbani\ASSEMBLE\15-53-26\FaceCamera-imgs"
-file_index = 183
+# directory_path = r"C:\Users\faezeh.rabbani\ASSEMBLE\15-53-26\FaceCamera-imgs"
+directory_path = r"C:\Users\faezeh.rabbani\Desktop\FaceCamera-imgs"
+# file_index = 64
+file_index = 11475
 def load_image(directory_path, file_index):
 
     files = sorted(os.listdir(directory_path))
@@ -44,7 +29,6 @@ def plot_simplefigure(image, title , save_directory = None, file_name = None):
     #     save_svg(save_directory, file_name)
     plt.show()
 
-
 def find_ellipse(binary_image):
     """
     Fits an ellipse to non-zero pixels in a binary image and visualizes eigenvalues and eigenvectors.
@@ -62,7 +46,7 @@ def find_ellipse(binary_image):
     """
     # Get coordinates of non-zero pixels
     coords = np.column_stack(np.where(binary_image > 0))
-    coords = coords[:, [1, 0]]  # Ensure x, y format
+    coords = coords[:, [1, 0]]
 
     # Return default values if no coordinates are found
     if coords.size == 0:
@@ -94,6 +78,9 @@ def find_ellipse(binary_image):
     angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0])
     width = 2 * np.sqrt(eigenvalues[0])
     height = 2 * np.sqrt(eigenvalues[1])
+    #
+    # width = np.sqrt(2) * np.sqrt(eigenvalues[0])
+    # height = np.sqrt(2) * np.sqrt(eigenvalues[1])
 
     # Create the ellipse representation
     ellipse = (int(mean[0]), int(mean[1])), (int(width * 2), int(height * 2)), np.degrees(angle)
@@ -128,7 +115,7 @@ def find_ellipse(binary_image):
     #             format='svg', transparent=True)
     plt.close()
     return ellipse, (float(mean[0]), float(mean[1])), width, height, angle
-def Image_binarization(chosen_frame_region):
+def Image_binarization(chosen_frame_region, threshold = 240):
     # Check if the image is already grayscale
     if len(chosen_frame_region.shape) == 2:  # single channel, already grayscale
         sub_region_2Dgray = chosen_frame_region
@@ -137,7 +124,7 @@ def Image_binarization(chosen_frame_region):
         sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
 
     # Apply binary thresholding
-    _, binary_image = cv2.threshold(sub_region_2Dgray, 200, 255, cv2.THRESH_BINARY_INV)
+    _, binary_image = cv2.threshold(sub_region_2Dgray, threshold, 255, cv2.THRESH_BINARY_INV)
     return binary_image
 
 def make_binary_image(resized_image):
@@ -187,7 +174,10 @@ def save_svg(save_directory_path, file_name):
     file_path = os.path.join(save_directory_path, file_name)
     plt.savefig(file_path,
                 format='svg', transparent=True)
-def find_cluster0(resized_image):
+
+
+
+def find_cluster(resized_image):
     """
     Detects all clusters of non-zero pixels in a binary image and returns an image
     highlighting all detected clusters. Visualizes intermediate steps.
@@ -208,135 +198,153 @@ def find_cluster0(resized_image):
     labels = clustering.labels_
 
     # Plotting all clusters with different colors
-    plt.figure(figsize=(8, 8))
-    unique_labels = np.unique(labels)
-    colors = plt.cm.get_cmap('tab20', len(unique_labels))
-
-    for label in unique_labels:
-        cluster_coords = non_zero_coords[labels == label]
-        plt.scatter(cluster_coords[:, 1], cluster_coords[:, 0],
-                    s=5, color=colors(label), label=f'Cluster {label + 1}')
-
-    plt.title("All Detected Clusters")
-    plt.gca().invert_yaxis()
-    plt.axis('equal')
-    plt.axis('off')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.tight_layout()
-    plt.show()
+    # plt.figure(figsize=(8, 8))
+    # unique_labels = np.unique(labels)
+    # colors = plt.cm.get_cmap('tab20', len(unique_labels))
+    #
+    # for label in unique_labels:
+    #     cluster_coords = non_zero_coords[labels == label]
+    #     plt.scatter(cluster_coords[:, 1], cluster_coords[:, 0],
+    #                 s=5, color=colors(label), label=f'Cluster {label + 1}')
+    #
+    # plt.title("All Detected Clusters")
+    # plt.gca().invert_yaxis()
+    # plt.axis('equal')
+    # # plt.axis('off')
+    # plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    # plt.tight_layout()
+    # plt.show()
 
     # Create an output image highlighting all clusters
-    detected_clusters = np.zeros_like(binary_image, dtype=np.uint8)
-    for point in non_zero_coords:
-        cv2.circle(detected_clusters, (point[1], point[0]), 1, (255,), -1)
+    # detected_clusters = np.zeros_like(binary_image, dtype=np.uint8)
+    # for point in non_zero_coords:
+    #     cv2.circle(detected_clusters, (point[1], point[0]), 1, (255,), -1)
 
-    return detected_clusters
+    # Find the biggest cluster
+    unique_labels, counts = np.unique(labels, return_counts=True)
+    biggest_cluster_label = unique_labels[np.argmax(counts)]  # Label of the largest cluster
 
-import cv2
-import numpy as np
-import matplotlib.pyplot as plt
+    # Extract only the largest cluster points
+    biggest_cluster_coords = non_zero_coords[labels == biggest_cluster_label]
+    ###############
+    boundary_thickness = 1
+    # Create an empty image and draw the biggest cluster
+    biggest_cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
+    for point in biggest_cluster_coords:
+        cv2.circle(biggest_cluster_image, (point[1], point[0]), 1, (255,), -1)
 
-def find_cluster0(image):
-    # Convert to grayscale
-    gray_img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image.copy()
-    blurred_img = cv2.medianBlur(gray_img, 5)
+    # # Find the contours (edges) of the biggest cluster
+    # contours, _ = cv2.findContours(biggest_cluster_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # surroundings_image = np.zeros_like(binary_image, dtype=np.uint8)
+    #
+    # # Draw the contour to extract surroundings
+    # cv2.drawContours(surroundings_image, contours, -1, (255,), thickness=boundary_thickness)
+    #
+    # surroundings_coords = np.column_stack(np.where(surroundings_image > 0))
+    #
+    # # Plot only the biggest cluster
+    # plt.figure(figsize=(8, 8))
+    # plt.scatter(biggest_cluster_coords[:, 1], biggest_cluster_coords[:, 0],
+    #             s=5, color='red', label=f'Biggest Cluster ({biggest_cluster_label})')
+    #
+    # ################
+    # plt.scatter(surroundings_coords[:, 1], surroundings_coords[:, 0],
+    #             s=5, color='blue', label="Surroundings of Biggest Cluster")
+    # ####################
+    #
+    # plt.title("Biggest Detected Cluster")
+    # plt.gca().invert_yaxis()
+    # plt.axis('equal')
+    # plt.axis('off')
+    # plt.legend()
+    # plt.show()
 
-    # Detect circles
-    circles = cv2.HoughCircles(
-        blurred_img,
-        cv2.HOUGH_GRADIENT,
-        dp=1.2,
-        minDist=30,
-        param1=50,
-        param2=30,  # adjust sensitivity here
-        minRadius=10,
-        maxRadius=100
-    )
+    # Create an output image highlighting only the biggest cluster
+    biggest_cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
+    for point in biggest_cluster_coords:
+        cv2.circle(biggest_cluster_image, (point[1], point[0]), 1, (255,), -1)
+    ###################################
+    # surroundings_cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
+    # for point in surroundings_coords:
+    #     cv2.circle(surroundings_cluster_image, (point[1], point[0]), 1, (255,), -1)
+    #
+    # plt.figure(figsize=(8, 8))
+    # plt.title("Compare surroundings_cluster_image")
+    # plt.imshow(surroundings_cluster_image)
+    # plt.figure(figsize=(8, 8))
+    # plt.title("Compare biggest_cluster_image")
+    # plt.imshow(biggest_cluster_image)
+    # plt.show()
 
-    output_img = image.copy()
-    mask = np.zeros_like(gray_img)
+    ######################
+    binary_image = biggest_cluster_image
 
-    if circles is not None:
-        circles = np.uint16(np.around(circles))
-        for c in circles[0,:]:
-            # Draw detected circle
-            cv2.circle(output_img, (c[0], c[1]), c[2], (255, 0, 0), 2)
-            # Fill mask with circle
-            cv2.circle(mask, (c[0], c[1]), c[2], 255, thickness=-1)
+    # # Find contours to determine the object size
+    # contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # largest_contour = max(contours, key=cv2.contourArea)  # Get the largest detected shape
+    # # Get bounding box dimensions
+    # x, y, w, h = cv2.boundingRect(largest_contour)
+    #
+    # print("x, y, w, h",x, y, w, h)
+    #
+    # # Define an adaptive kernel size based on the object size
+    # kernel_size = max(w, h)
+    # kernel_size = max(5, kernel_size)  # Ensure a minimum size
+    #
+    # # Create an elliptical kernel
+    # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+    #
+    # # Apply morphological closing
+    # closed_image = cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel)
+    #
+    # # Display the original and closed images
+    # plt.figure(figsize=(10, 5))
+    #
+    # plt.subplot(1, 2, 1)
+    # plt.imshow(binary_image, cmap='gray')
+    # plt.title("Original Binary Image")
+    # plt.axis("off")
+    #
+    # plt.subplot(1, 2, 2)
+    # plt.imshow(closed_image, cmap='gray')
+    # plt.title(f"After Morphological Closing (Kernel: {kernel_size}x{kernel_size})")
+    # plt.axis("off")
+    #
+    # plt.show()
 
-    # Visualize result
-    plt.figure(figsize=(8,4))
-    plt.subplot(1,2,1)
-    plt.title("Detected Circle")
-    plt.imshow(output_img, cmap='gray')
-    plt.axis('off')
+    #################################
 
-    plt.subplot(1,2,2)
-    plt.title("Pupil Mask")
-    plt.imshow(mask, cmap='gray')
-    plt.axis('off')
+    # Find all contours
+    contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Merge all contour points into a single array
+    all_points = np.vstack(contours)  # Stack all contour points together
+
+    # Compute the convex hull
+    hull = cv2.convexHull(all_points)
+
+    # Create a blank image to draw the convex hull
+    hull_image = np.zeros_like(binary_image)
+
+    # Draw and fill the convex hull
+    cv2.drawContours(hull_image, [hull], -1, 255, -1)  # -1 fills the hull with white
+
+    # Display results
+    plt.figure(figsize=(10, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.imshow(binary_image, cmap='gray')
+    plt.title("Original Binary Image")
+    plt.axis("off")
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(hull_image, cmap='gray')
+    plt.title("After Convex Hull (Forced Circular Shape)")
+    plt.axis("off")
 
     plt.show()
 
-    return mask
-
-def find_cluster(resized_image):
-    """
-    Detects circular clusters (pupil) in the image using Hough Circle Transform.
-
-    Parameters:
-    resized_image (np.ndarray): Input grayscale or color image.
-
-    Returns:
-    np.ndarray: Binary image highlighting detected circular clusters.
-    """
-    import cv2
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    # Step 1: Convert to grayscale if image is colored
-    if len(resized_image.shape) == 3 and resized_image.shape[2] == 3:
-        gray_img = cv2.cvtColor(resized_image, cv2.COLOR_BGR2GRAY)
-    else:
-        gray_img = resized_image.copy()
-
-    # Step 2: Blur to reduce noise
-    # blurred_img = cv2.medianBlur(gray_img, 5)
-
-    # Step 3: Hough Circle Transform
-    circles = cv2.HoughCircles(
-        gray_img,
-        cv2.HOUGH_GRADIENT,
-        dp=1.2,
-        minDist=30,
-        param1=50,
-        param2=30,
-        minRadius=5,
-        maxRadius=60
-    )
-
-    # Prepare binary image
-    detected_clusters = np.zeros_like(gray_img, dtype=np.uint8)
-
-    # Visualize detected circles
-    if circles is not None:
-        circles = np.uint16(np.around(circles))
-        for c in circles[0, :]:
-            center = (c[0], c[1])
-            radius = c[2]
-            # Draw filled circle on binary mask
-            cv2.circle(detected_clusters, center, radius, (255,), thickness=-1)
-
-        # Optional visualization
-        plt.figure(figsize=(6, 6))
-        plt.imshow(detected_clusters, cmap='gray')
-        plt.title("Detected Circular Clusters (Pupil)")
-        plt.axis('off')
-        plt.show()
-    else:
-        print("No circular cluster detected.")
-
-    return detected_clusters
+    return hull_image
 
 
 
@@ -404,11 +412,11 @@ def overlap_reflect(reflections, pupil_ellipse, binary_image):
         reflection_mask = np.zeros_like(binary_image, dtype=np.uint8)
 
         # Draw the pupil ellipse on the pupil mask
-        cv2.ellipse(pupil_mask, pupil_ellipse, color=255, thickness=-1)
+        cv2.ellipse(pupil_mask, pupil_ellipse, color = 255, thickness = -1)
 
         # Draw each reflection ellipse on the reflection mask
         for reflection in reflections:
-            cv2.ellipse(reflection_mask, reflection, color=255, thickness=-1)
+            cv2.ellipse(reflection_mask, reflection, color = 255, thickness = -1)
 
         # Identify overlapping regions between the pupil and reflection masks
         overlap_mask = cv2.bitwise_and(pupil_mask, reflection_mask)
@@ -430,6 +438,21 @@ binary_image = load_image(directory_path, file_index)
 center, axes, angle = define_ellipse_parameters()
 Image_height, Image_width = binary_image.shape
 cropped_image, resized_image = crop_Image(binary_image, center,angle, axes)
+########################
+# Convert to float for precise calculations
+alpha = 3  # Contrast control (1.0 = original, <1.0 decreases, >1.0 increases)
+beta = 0  # Brightness control
+
+# Apply contrast and brightness adjustments
+adjusted = cv2.convertScaleAbs(resized_image, alpha=alpha, beta=beta)
+
+# Display the result
+cv2.imshow("Original", resized_image)
+cv2.imshow("Contrast Adjusted", adjusted)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
+##################################################
+
 detected_cluster = find_cluster(resized_image)
 # #-------------------------------------------------------------#
 pupil_ellipse, mean, width, height, angle = find_ellipse(detected_cluster)
@@ -486,21 +509,21 @@ plot_simplefigure(origenal_image4, "Second fit", save_directory,"second_fit")
 # # # List all saved variables
 # # print("Keys in NPZ file:", list(data.keys()))
 # #
-# # # If video is stored as a NumPy array
-# # if "video_frames" in data:
-# #     video_frames = data["video_frames"]  # Shape: (frames, height, width, channels)
-# #     print(f"Video shape: {video_frames.shape}")  # Check video shape
-# #
-# # # If video is stored as binary
-# # if "video_file" in data:
-# #     video_bytes = data["video_file"].item()  # Extract binary video
-# #     video_output_path = "restored_video.mp4"
-# #
-# #     # Save binary video to a file
-# #     with open(video_output_path, "wb") as f:
-# #         f.write(video_bytes)
-# #
-# #     print(f"Video restored and saved as {video_output_path}")
+# # If video is stored as a NumPy array
+# if "video_frames" in data:
+#     video_frames = data["video_frames"]  # Shape: (frames, height, width, channels)
+#     print(f"Video shape: {video_frames.shape}")  # Check video shape
+#
+# # If video is stored as binary
+# if "video_file" in data:
+#     video_bytes = data["video_file"].item()  # Extract binary video
+#     video_output_path = "restored_video.mp4"
+#
+#     # Save binary video to a file
+#     with open(video_output_path, "wb") as f:
+#         f.write(video_bytes)
+#
+#     print(f"Video restored and saved as {video_output_path}")
 
 # import numpy as np
 # import matplotlib.pyplot as plt

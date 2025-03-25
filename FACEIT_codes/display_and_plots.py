@@ -10,6 +10,11 @@ class PlotHandler:
         self.panning = False
         self.press_event = None
 
+        # Create figure and canvas ONCE (for performance optimization)
+        self.fig, self.ax = plt.subplots()
+        self.canvas = FigureCanvas(self.fig)
+
+
     def plot_result(
             self,
             data: np.ndarray,
@@ -19,7 +24,8 @@ class PlotHandler:
             saccade: np.ndarray = None,
             background_color: str = '#3d4242',
             grid: bool = False,
-            legend_fontsize: int = 8
+            legend_fontsize: int = 8,
+            Cursor=False
     ):
         """
         Plots the data on a given graphics view using Matplotlib.
@@ -43,19 +49,37 @@ class PlotHandler:
 
         # Create figure and axes
         fig, ax = plt.subplots()
-        self._plot_data(ax, data, label, color)
+        self._plot_data(ax, data, label, color, self.app_instance.frame)
         self._plot_saccade(ax, saccade, data)
-
         # Customize the plot
         self._customize_plot(fig, ax, data, background_color, grid, legend_fontsize)
 
         # Integrate the plot into the graphics view
         self._integrate_canvas_into_view(graphics_view, fig)
 
-    def _plot_data(self, ax: plt.Axes, data: np.ndarray, label: str, color: str):
-        """Plots the main data on the provided axes."""
+        if Cursor:
+            print("happened")
+            self._plot_Cursor(ax, data, self.app_instance.frame)
+
+    def _plot_Cursor(self, ax: plt.Axes, data, frame_index):
+        # If a specific frame is provided, plot a marker at that frame
+        if hasattr(self, 'vertical_line') and self.vertical_line is not None:
+            self.vertical_line.remove()  # Removes the old line from the plot
+            self.vertical_line = None  # Reset reference
+            if frame_index is not None and 0 <= frame_index < len(data):
+                self.vertical_line = ax.axvline(x=frame_index, color='blue', linewidth=2)
+
+
+    def _plot_data(self, ax: plt.Axes, data: np.ndarray, label: str, color: str, frame_index: int = None):
+        """Plots the main data on the provided axes, with an optional point marker at a specific frame."""
+
         x_values = np.arange(len(data))
+        # Plot the main data
         ax.plot(x_values, data, color=color, label=label, linestyle='--')
+
+        if frame_index is not None and 0 <= frame_index < len(data):
+            self.vertical_line = ax.axvline(x=frame_index, color='blue', linewidth=2)
+
 
     def _plot_saccade(self, ax: plt.Axes, saccade: np.ndarray, data: np.ndarray):
         """Plots the saccade data as a colormap if provided."""
@@ -84,23 +108,22 @@ class PlotHandler:
 
         fig.patch.set_facecolor(background_color)
         ax.set_facecolor(background_color)
+        ax.set_yticks([])
         ax.set_xlim(0, len(data))
         ax.set_ylim(data_min, data_max + range_val / 4)
 
         # Customize axes and ticks
-        for spine in ['top', 'right']:
+        for spine in ['top', 'right', 'left']:
             ax.spines[spine].set_visible(False)
-        for spine in ['left', 'bottom']:
+        for spine in ['bottom']:
             ax.spines[spine].set_visible(True)
-        ax.tick_params(left=True, bottom=False, labelleft=True, labelbottom=True)
+        ax.tick_params(left=False, bottom=False, labelleft=True, labelbottom=True)
 
         # Add legend and set font color
         legend = ax.legend(loc='upper right', fontsize=legend_fontsize, frameon=False)
         for text in legend.get_texts():
             text.set_color("white")
-
         ax.grid(grid)
-
         # Add zoom and pan interactions
         self._setup_interaction_events(fig, ax)
 
@@ -111,25 +134,13 @@ class PlotHandler:
         canvas.updateGeometry()
 
         layout = QtWidgets.QVBoxLayout(graphics_view)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         layout.addWidget(canvas)
         graphics_view.setLayout(layout)
 
         fig.tight_layout(pad=0)
-        fig.subplots_adjust(bottom=0.15)
-        canvas.draw()
-
-    def _integrate_canvas_into_view(self, graphics_view: QtWidgets.QGraphicsView, fig: plt.Figure):
-        """Integrates the Matplotlib canvas into the PyQt graphics view."""
-        canvas = FigureCanvas(fig)
-        canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        canvas.updateGeometry()
-
-        layout = QtWidgets.QVBoxLayout(graphics_view)
-        layout.addWidget(canvas)
-        graphics_view.setLayout(layout)
-
-        fig.tight_layout(pad=0)
-        fig.subplots_adjust(bottom=0.15)
+        fig.subplots_adjust(left=0.01, right=1, top=0.95, bottom=0.25)
         canvas.draw()
 
     def _clear_graphics_view(self, graphics_view: QtWidgets.QGraphicsView):
@@ -194,6 +205,7 @@ class PlotHandler:
         fig.canvas.mpl_connect('scroll_event', zoom)
         fig.canvas.mpl_connect('button_press_event', on_click)
 
+
 class Display:
     def __init__(self, app_instance):
         """
@@ -214,7 +226,6 @@ class Display:
         """
 
         self.app_instance.frame = frame
-
         # Load the image based on the data type (NPY or video)
         if self.app_instance.NPY:
             self.app_instance.image = functions.load_npy_by_index(self.app_instance.folder_path, frame)
@@ -236,6 +247,32 @@ class Display:
         # Check if a face ROI exists and update its display if present
         elif self.app_instance.Face_ROI_exist:
             self._display_face_roi()
+        #################################################
+        # Efficiently update the vertical line
+        # if hasattr(self.app_instance, 'motion_energy') and self.app_instance.motion_energy is not None:
+        #     self.app_instance.plot_handler.update_vertical_line(frame)
+
+        if hasattr(self.app_instance, 'pupil_dilation') and self.app_instance.pupil_dilation is not None:
+            plot_handler = PlotHandler(self.app_instance)
+            plot_handler.plot_result(
+                self.app_instance.pupil_dilation,
+                self.app_instance.graphicsView_pupil,
+                label="pupil",
+                color="palegreen",
+                saccade=self.app_instance.X_saccade,
+                Cursor=True
+            )
+
+        if hasattr(self.app_instance, 'motion_energy') and self.app_instance.motion_energy is not None:
+            plot_handler = PlotHandler(self.app_instance)
+            plot_handler.plot_result(
+                self.app_instance.motion_energy,
+                self.app_instance.graphicsView_whisker,
+                label="motion",
+                Cursor=True
+            )
+
+
 
     def _display_pupil_roi(self):
         """
@@ -248,8 +285,8 @@ class Display:
 
         self.app_instance.pupil_ellipse_items = functions.display_sub_region(
             self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
-            self.app_instance.scene2, "pupil", self.app_instance.saturation,self.app_instance.mnd,
-            self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
+            self.app_instance.scene2, "pupil", self.app_instance.saturation,self.app_instance.contrast, self.app_instance.mnd,
+            self.app_instance.binary_threshold, self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
             self.app_instance.pupil_ellipse_items, Detect_pupil=True
         )
 
@@ -263,7 +300,7 @@ class Display:
         )
         functions.display_sub_region(
             self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
-            self.app_instance.scene2, "face", self.app_instance.saturation,self.app_instance.mnd,
-            self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
+            self.app_instance.scene2, "face", self.app_instance.saturation,self.app_instance.self.app_instance.mnd,
+            self.app_instance.binary_threshold, self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
             self.app_instance.pupil_ellipse_items, Detect_pupil=False
         )

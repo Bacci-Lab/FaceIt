@@ -9,15 +9,14 @@ import math
 def initialize_attributes(obj, image):
     obj.image_height, obj.image_width =  image.shape
     obj.ratio = 2
-    obj.reflection_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
     obj.reflect_height = 30
     obj.reflect_width = 30
     obj.Face_frame = None
     obj.Pupil_frame = None
     obj.sub_region = None
-    obj.ROI_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
     obj.reflect_ellipse = None
     obj.saturation = 0
+    obj.contrast = 1
     obj.frame = None
     obj.pupil_ROI = None
     obj.face_ROI = None
@@ -25,6 +24,7 @@ def initialize_attributes(obj, image):
     obj.pupil_ellipse_items = None
     obj.current_ROI = None
     obj.ROI_exist = False
+    obj.reflection_center = (obj.image_width // obj.ratio / 2, obj.image_height // obj.ratio / 2)
     obj.oval_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
     obj.face_rect_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
     obj.ROI_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
@@ -36,6 +36,7 @@ def initialize_attributes(obj, image):
     obj.eye_corner_center = None
     obj.erased_pixels = None
     obj.mnd = 10
+    obj.binary_threshold = 220
 
 
 
@@ -51,7 +52,7 @@ def show_ROI(ROI, image):
 
 
 
-def change_saturation(image, saturation_scale):
+def change_saturation(image, saturation_scale, contrast=1, brightness=0):
     """
     Changes the saturation of an image and adjusts brightness to make dark pixels darker and bright pixels brighter.
 
@@ -62,27 +63,19 @@ def change_saturation(image, saturation_scale):
     Returns:
         numpy.ndarray: The processed image with adjusted saturation and brightness.
     """
-    if saturation_scale == 0:
-        return image
+    if saturation_scale != 0:
 
-    # Convert image to HSV
-    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+        # Convert image to HSV
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv_image[..., 1] = np.clip(hsv_image[..., 1] * (1 + saturation_scale / 100.0), 0, 255)
+        hsv_image[..., 2] = np.clip(hsv_image[..., 2] * (1 + (saturation_scale / 100.0)), 0, 255)
+        hsv_image = hsv_image.astype(np.uint8)
+        image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
+    image = cv2.convertScaleAbs(image, alpha=contrast, beta=brightness)
 
-    # Scale the saturation channel
-    hsv_image[..., 1] = np.clip(hsv_image[..., 1] * (1 + saturation_scale / 100.0), 0, 255)
+    return image
 
-    # Adjust the value channel to enhance contrast
-    # Brighten brighter pixels and darken darker pixels
-    hsv_image[..., 2] = np.clip(hsv_image[..., 2] * (1 + (saturation_scale / 100.0)), 0, 255)
-
-    # Convert back to BGR format
-    hsv_image = hsv_image.astype(np.uint8)
-    bgr_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
-
-    return bgr_image
-
-
-def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,mnd,  erased_pixels = None,
+def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,contrast, mnd, binary_threshold, erased_pixels = None,
                        reflect_ellipse = None, pupil_ellipse_items = None, Detect_pupil = False):
     if pupil_ellipse_items is not None:
         scene2.removeItem(pupil_ellipse_items)
@@ -94,8 +87,7 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,mnd,  e
 
     if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
         sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
-    sub_region = change_saturation(sub_region, saturation)
-    # Add alpha channel to sub_region
+    sub_region = change_saturation(sub_region, saturation, contrast)
     sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
 
 
@@ -112,27 +104,20 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,mnd,  e
     scene2.setSceneRect(0, 0, scaled_pixmap.width(), scaled_pixmap.height())
 
     if Detect_pupil == True:
-        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = pupil_detection.detect_pupil(sub_region_rgba, erased_pixels, reflect_ellipse, mnd)
+        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = pupil_detection.detect_pupil(sub_region_rgba, erased_pixels, reflect_ellipse, mnd, binary_threshold)
         pupil_ellipse_item = QtWidgets.QGraphicsEllipseItem(int(P_detected_center[0] - P_detected_width), int(P_detected_center[1] - P_detected_height),
                                                             P_detected_width*2, P_detected_height*2)
 
         pupil_ellipse_item.setTransformOriginPoint(int(P_detected_center[0]),
-                                                   int(P_detected_center[1]))  # Set the origin point for rotation
-
-
-        # rect_x, rect_y, rect_width, rect_height = get_bounding_rect(P_detected_center, P_detected_width,
-        #                                                             P_detected_height, angle)
-        # pupil_ellipse_item = QtWidgets.QGraphicsEllipseItem(rect_x, rect_y, rect_width*2, rect_height*2)
-
-        # Apply rotation around the ellipse's center
-        #pupil_ellipse_item.setTransformOriginPoint(P_detected_center[0], P_detected_center[1])
-        pupil_ellipse_item.setTransformOriginPoint(int(P_detected_center[0]),
                                                    int(P_detected_center[1]))
         pupil_ellipse_item.setRotation(np.degrees(angle))
 
+        # color = QtGui.QColor(128, 0, 128, 50)
+        # brush = QtGui.QBrush(color)
         pen = QtGui.QPen(QtGui.QColor("purple"))
         pen.setWidth(1)
-        # pen.setStyle(QtCore.Qt.DashLine)
+
+        # pupil_ellipse_item.setBrush(brush)
         pupil_ellipse_item.setPen(pen)
         scene2.addItem(pupil_ellipse_item)
         pupil_ellipse_items = pupil_ellipse_item
@@ -165,7 +150,7 @@ def display_region(image, graphicsView_MainFig, image_width, image_height, scene
     pixmap = QtGui.QPixmap.fromImage(qimage)
 
     # Scale the pixmap to fit inside the window
-    scaled_pixmap = pixmap.scaled(640, 512, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+    scaled_pixmap = pixmap.scaled(image_width/2, image_height/2, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
 
     item = QtWidgets.QGraphicsPixmapItem(scaled_pixmap)
     item.setZValue(-1)
@@ -184,43 +169,19 @@ def display_region(image, graphicsView_MainFig, image_width, image_height, scene
     return graphicsView_MainFig, scene
 
 
-# def display_region(image,graphicsView_MainFig, image_width, image_height, scene = None):
-#     if scene is None:
-#         scene = QtWidgets.QGraphicsScene(graphicsView_MainFig)
-#     else:
-#         for item in scene.items():
-#             if isinstance(item, QtWidgets.QGraphicsPixmapItem):
-#                 scene.removeItem(item)
-#                 del item
-#
-#
-#     qimage = QtGui.QImage(image.data, image_width, image_height, QtGui.QImage.Format_Grayscale8)
-#     pixmap = QtGui.QPixmap.fromImage(qimage)
-#
-#     item = QtWidgets.QGraphicsPixmapItem(pixmap)
-#     item.setZValue(-1)
-#     scene.addItem(item)
-#     graphicsView_MainFig.setScene(scene)
-#     scene.setSceneRect(0, 0, image_width, image_height)
-#     graphicsView_MainFig.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-#     graphicsView_MainFig.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-#     graphicsView_MainFig.setFixedSize(image_width, image_height)
-#     return graphicsView_MainFig, scene
-
-
-def load_npy_by_index(folder_path, index, image_height = 1024):
+def load_npy_by_index(folder_path, index):
     npy_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.npy')])
     if index < 0 or index >= len(npy_files):
         raise IndexError("Index out of range")
     file_path = os.path.join(folder_path, npy_files[index])
     image = np.load(file_path)
-    original_height, original_width = image.shape
-    aspect_ratio = original_width / original_height
-    image_width = int(image_height * aspect_ratio)
-    image = cv2.resize(image, (image_width, image_height), interpolation = cv2.INTER_AREA)
+    # original_height, original_width = image.shape
+    # aspect_ratio = original_width / original_height
+    # image_width = int(image_height * aspect_ratio)
+    # image = cv2.resize(image, (image_width, image_height), interpolation = cv2.INTER_AREA)
     return image
 
-def load_frame_by_index(video_path, index, image_height=1024):
+def load_frame_by_index(video_path, index):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError(f"Error: Cannot open video file {video_path}.")
@@ -235,13 +196,12 @@ def load_frame_by_index(video_path, index, image_height=1024):
         raise ValueError(f"Error: Could not read frame at index {index}.")
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    original_height, original_width = frame.shape[:2]
-    aspect_ratio = original_width / original_height
-    image_width = int(image_height * aspect_ratio)
-    resized_frame = cv2.resize(frame, (image_width, image_height), interpolation=cv2.INTER_AREA)
+    # original_height, original_width = frame.shape[:2]
+    # aspect_ratio = original_width / original_height
+    # image_width = int(image_height * aspect_ratio)
+    # resized_frame = cv2.resize(frame, (image_width, image_height), interpolation=cv2.INTER_AREA)
     cap.release()
-    return resized_frame
-    #return frame
+    return frame
 
 def setup_sliders(parent,min,max,set_value, orientation):
     Slider = QtWidgets.QSlider(parent)
@@ -259,6 +219,14 @@ def get_stylesheet():
         background-color: #3d4242;  /* Light gray background */
         color: #000000;  /* Black text */
     }
+    QLabel {
+        color: white;  /* White text for all labels */
+    }
+    
+    QCheckBox {
+    color: white;  /* White text for all QCheckBox */
+    }
+    
     QPushButton {
         background-color: #CD853F ;  /* Background for buttons */
         color: white;  /* White text on buttons */

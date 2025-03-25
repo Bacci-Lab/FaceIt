@@ -179,9 +179,6 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 self.ROI_height = self.reflect_heights[self.current_reflect_idx]
                 self.ROI_width = self.reflect_widths[self.current_reflect_idx]
                 ########################
-                # self.ROI_width = self.ROI_width * self.parent.ratio
-                # self.ROI_height = self.ROI_width * self.parent.ratio
-                ############################
                 frame_height_boundary = self.parent.sub_region.shape[0]
                 frame_width_boundary = self.parent.sub_region.shape[1]
 
@@ -294,11 +291,11 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         if self.dragging:
             if self.dragging_face:
                 self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation, self.parent.mnd)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation,self.parent.contrast, self.parent.mnd, self.parent.binary_threshold)
                 self.parent.set_frame(self.parent.Face_frame)
             elif self.dragging_pupil:
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2,"pupil",self.parent.saturation, self.parent.mnd)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2,"pupil",self.parent.saturation,self.parent.contrast, self.parent.mnd, self.parent.binary_threshold)
                 self.parent.set_frame(self.parent.Pupil_frame)
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
@@ -311,11 +308,11 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         elif self.Resizing:
             if self.Resize_face:
                 self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation, self.parent.mnd)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation,self.parent.contrast, self.parent.mnd, self.parent.binary_threshold)
                 self.parent.set_frame(self.parent.Face_frame)
             elif self.Resize_pupil:
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2, "pupil",self.parent.saturation, self.parent.mnd)
+                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2, "pupil",self.parent.saturation,self.parent.contrast, self.parent.mnd, self.parent.binary_threshold)
                 self.parent.set_frame(self.parent.Pupil_frame)
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
@@ -399,10 +396,10 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         # Update the 'right' handle's position.
         if 'right' in handles:
             handles['right'].setRect(
-                center_x + half_width - handle_size // 2,  # x-coordinate of the handle's top-left corner
-                center_y - handle_size // 2,  # y-coordinate of the handle's top-left corner
-                handle_size,  # width of the handle
-                handle_size  # height of the handle
+                center_x + half_width - handle_size // 2,
+                center_y - handle_size // 2,
+                handle_size,
+                handle_size
             )
 
     def _get_handles(self, handle_type):
@@ -439,7 +436,6 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         brush_item.setBrush(QtGui.QBrush(QtGui.QColor('white')))
         brush_item.setPen(QtGui.QPen(QtCore.Qt.NoPen))
         self.parent.scene2.addItem(brush_item)
-        #########
 
         # Store the coordinates of the painted pixels
         for x in range(int(scene_pos.x() - self.parent.erase_size / 2), int(scene_pos.x() + self.parent.erase_size / 2)):
