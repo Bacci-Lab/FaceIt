@@ -7,8 +7,8 @@ from pupil_detection import Image_binarization
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 save_directory = r'C:\Users\faezeh.rabbani\Documents\save_paper_figure'
-# directory_path = r"C:\Users\faezeh.rabbani\ASSEMBLE\15-53-26\FaceCamera-imgs"
-directory_path = r"C:\Users\faezeh.rabbani\Desktop\FaceCamera-imgs"
+directory_path = r"C:\Users\faezeh.rabbani\ASSEMBLE\15-53-26\FaceCamera-imgs"
+# directory_path = r"C:\Users\faezeh.rabbani\Desktop\FaceCamera-imgs"
 # file_index = 64
 file_index = 11475
 def load_image(directory_path, file_index):
@@ -20,6 +20,8 @@ def load_image(directory_path, file_index):
         file_path = os.path.join(directory_path, file_name)
         binary_image = np.load(file_path)
     return binary_image
+
+
 def plot_simplefigure(image, title , save_directory = None, file_name = None):
     plt.figure(figsize=(6, 6))
     plt.imshow(image)
@@ -175,129 +177,204 @@ def save_svg(save_directory_path, file_name):
     plt.savefig(file_path,
                 format='svg', transparent=True)
 
-
-
-def find_cluster(resized_image):
+def find_cluster(binary):
     """
-    Detects all clusters of non-zero pixels in a binary image and returns an image
-    highlighting all detected clusters. Visualizes intermediate steps.
+    Detects the largest connected component (assumed pupil) in a binary image
+    and returns a convex-hull-filled binary mask of that cluster.
 
     Parameters:
-    resized_image (np.ndarray): An input image to be binarized and processed.
+    binary_image (np.ndarray): A binary image where non-zero pixels represent the object.
+    mnd: (unused here, kept for compatibility)
 
     Returns:
-    np.ndarray: A binary image with all clusters highlighted.
+    np.ndarray: A binary mask with the largest detected cluster filled in.
     """
-    binary_image = Image_binarization(resized_image)
-    non_zero_coords = np.column_stack(np.where(binary_image > 0))
+    # Find connected components
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=4)
 
-    if non_zero_coords.shape[0] == 0:
-        return np.zeros_like(binary_image, dtype=np.uint8)
+    # If only background found, return blank image
+    if num_labels <= 1:
+        return np.zeros_like(binary, dtype=np.uint8)
 
-    clustering = DBSCAN(eps=6, min_samples=1).fit(non_zero_coords)
-    labels = clustering.labels_
+    # Ignore label 0 (background), find the largest component
+    sizes = stats[1:, cv2.CC_STAT_AREA]
+    largest_label = 1 + np.argmax(sizes)
 
-    # Plotting all clusters with different colors
-    # plt.figure(figsize=(8, 8))
-    # unique_labels = np.unique(labels)
-    # colors = plt.cm.get_cmap('tab20', len(unique_labels))
+    # Create mask for the largest component
+    pupil_mask = np.zeros_like(binary, dtype=np.uint8)
+    pupil_mask[labels == largest_label] = 255
+
+    # Find contours of the largest component
+    contours, _ = cv2.findContours(pupil_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if not contours:
+        return np.zeros_like(binary, dtype=np.uint8)
+
+    # Merge all contour points
+    all_points = np.vstack(contours)
+
+    # Compute convex hull
+    hull = cv2.convexHull(all_points)
+
+    # Create final mask and draw convex hull
+    hull_image = np.zeros_like(binary)
+    cv2.drawContours(hull_image, [hull], -1, 255, -1)
+    return hull_image
+
+
+# def find_cluster(resized_image):
+    # """
+    # Detects all clusters of non-zero pixels in a binary image and returns an image
+    # highlighting all detected clusters. Visualizes intermediate steps.
     #
-    # for label in unique_labels:
-    #     cluster_coords = non_zero_coords[labels == label]
-    #     plt.scatter(cluster_coords[:, 1], cluster_coords[:, 0],
-    #                 s=5, color=colors(label), label=f'Cluster {label + 1}')
+    # Parameters:
+    # resized_image (np.ndarray): An input image to be binarized and processed.
     #
-    # plt.title("All Detected Clusters")
-    # plt.gca().invert_yaxis()
-    # plt.axis('equal')
+    # Returns:
+    # np.ndarray: A binary image with all clusters highlighted.
+    # """
+    # binary_image = Image_binarization(resized_image)
+    # non_zero_coords = np.column_stack(np.where(binary_image > 0))
+    #
+    # if non_zero_coords.shape[0] == 0:
+    #     return np.zeros_like(binary_image, dtype=np.uint8)
+    #
+    # clustering = DBSCAN(eps=6, min_samples=1).fit(non_zero_coords)
+    # labels = clustering.labels_
+    #
+    # # Plotting all clusters with different colors
+    # # plt.figure(figsize=(8, 8))
+    # # unique_labels = np.unique(labels)
+    # # colors = plt.cm.get_cmap('tab20', len(unique_labels))
+    # #
+    # # for label in unique_labels:
+    # #     cluster_coords = non_zero_coords[labels == label]
+    # #     plt.scatter(cluster_coords[:, 1], cluster_coords[:, 0],
+    # #                 s=5, color=colors(label), label=f'Cluster {label + 1}')
+    # #
+    # # plt.title("All Detected Clusters")
+    # # plt.gca().invert_yaxis()
+    # # plt.axis('equal')
+    # # # plt.axis('off')
+    # # plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    # # plt.tight_layout()
+    # # plt.show()
+    #
+    # # Create an output image highlighting all clusters
+    # # detected_clusters = np.zeros_like(binary_image, dtype=np.uint8)
+    # # for point in non_zero_coords:
+    # #     cv2.circle(detected_clusters, (point[1], point[0]), 1, (255,), -1)
+    #
+    # # Find the biggest cluster
+    # unique_labels, counts = np.unique(labels, return_counts=True)
+    # biggest_cluster_label = unique_labels[np.argmax(counts)]  # Label of the largest cluster
+    #
+    # # Extract only the largest cluster points
+    # biggest_cluster_coords = non_zero_coords[labels == biggest_cluster_label]
+    # ###############
+    # boundary_thickness = 1
+    # # Create an empty image and draw the biggest cluster
+    # biggest_cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
+    # for point in biggest_cluster_coords:
+    #     cv2.circle(biggest_cluster_image, (point[1], point[0]), 1, (255,), -1)
+    #
+    # # # Find the contours (edges) of the biggest cluster
+    # # contours, _ = cv2.findContours(biggest_cluster_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # # surroundings_image = np.zeros_like(binary_image, dtype=np.uint8)
+    # #
+    # # # Draw the contour to extract surroundings
+    # # cv2.drawContours(surroundings_image, contours, -1, (255,), thickness=boundary_thickness)
+    # #
+    # # surroundings_coords = np.column_stack(np.where(surroundings_image > 0))
+    # #
+    # # # Plot only the biggest cluster
+    # # plt.figure(figsize=(8, 8))
+    # # plt.scatter(biggest_cluster_coords[:, 1], biggest_cluster_coords[:, 0],
+    # #             s=5, color='red', label=f'Biggest Cluster ({biggest_cluster_label})')
+    # #
+    # # ################
+    # # plt.scatter(surroundings_coords[:, 1], surroundings_coords[:, 0],
+    # #             s=5, color='blue', label="Surroundings of Biggest Cluster")
+    # # ####################
+    # #
+    # # plt.title("Biggest Detected Cluster")
+    # # plt.gca().invert_yaxis()
+    # # plt.axis('equal')
     # # plt.axis('off')
-    # plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    # plt.tight_layout()
-    # plt.show()
-
-    # Create an output image highlighting all clusters
-    # detected_clusters = np.zeros_like(binary_image, dtype=np.uint8)
-    # for point in non_zero_coords:
-    #     cv2.circle(detected_clusters, (point[1], point[0]), 1, (255,), -1)
-
-    # Find the biggest cluster
-    unique_labels, counts = np.unique(labels, return_counts=True)
-    biggest_cluster_label = unique_labels[np.argmax(counts)]  # Label of the largest cluster
-
-    # Extract only the largest cluster points
-    biggest_cluster_coords = non_zero_coords[labels == biggest_cluster_label]
-    ###############
-    boundary_thickness = 1
-    # Create an empty image and draw the biggest cluster
-    biggest_cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
-    for point in biggest_cluster_coords:
-        cv2.circle(biggest_cluster_image, (point[1], point[0]), 1, (255,), -1)
-
-    # # Find the contours (edges) of the biggest cluster
-    # contours, _ = cv2.findContours(biggest_cluster_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # surroundings_image = np.zeros_like(binary_image, dtype=np.uint8)
+    # # plt.legend()
+    # # plt.show()
     #
-    # # Draw the contour to extract surroundings
-    # cv2.drawContours(surroundings_image, contours, -1, (255,), thickness=boundary_thickness)
+    # # Create an output image highlighting only the biggest cluster
+    # biggest_cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
+    # for point in biggest_cluster_coords:
+    #     cv2.circle(biggest_cluster_image, (point[1], point[0]), 1, (255,), -1)
+    # ###################################
+    # # surroundings_cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
+    # # for point in surroundings_coords:
+    # #     cv2.circle(surroundings_cluster_image, (point[1], point[0]), 1, (255,), -1)
+    # #
+    # # plt.figure(figsize=(8, 8))
+    # # plt.title("Compare surroundings_cluster_image")
+    # # plt.imshow(surroundings_cluster_image)
+    # # plt.figure(figsize=(8, 8))
+    # # plt.title("Compare biggest_cluster_image")
+    # # plt.imshow(biggest_cluster_image)
+    # # plt.show()
     #
-    # surroundings_coords = np.column_stack(np.where(surroundings_image > 0))
+    # ######################
+    # binary_image = biggest_cluster_image
     #
-    # # Plot only the biggest cluster
-    # plt.figure(figsize=(8, 8))
-    # plt.scatter(biggest_cluster_coords[:, 1], biggest_cluster_coords[:, 0],
-    #             s=5, color='red', label=f'Biggest Cluster ({biggest_cluster_label})')
+    # # # Find contours to determine the object size
+    # # contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # # largest_contour = max(contours, key=cv2.contourArea)  # Get the largest detected shape
+    # # # Get bounding box dimensions
+    # # x, y, w, h = cv2.boundingRect(largest_contour)
+    # #
+    # # print("x, y, w, h",x, y, w, h)
+    # #
+    # # # Define an adaptive kernel size based on the object size
+    # # kernel_size = max(w, h)
+    # # kernel_size = max(5, kernel_size)  # Ensure a minimum size
+    # #
+    # # # Create an elliptical kernel
+    # # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+    # #
+    # # # Apply morphological closing
+    # # closed_image = cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel)
+    # #
+    # # # Display the original and closed images
+    # # plt.figure(figsize=(10, 5))
+    # #
+    # # plt.subplot(1, 2, 1)
+    # # plt.imshow(binary_image, cmap='gray')
+    # # plt.title("Original Binary Image")
+    # # plt.axis("off")
+    # #
+    # # plt.subplot(1, 2, 2)
+    # # plt.imshow(closed_image, cmap='gray')
+    # # plt.title(f"After Morphological Closing (Kernel: {kernel_size}x{kernel_size})")
+    # # plt.axis("off")
+    # #
+    # # plt.show()
     #
-    # ################
-    # plt.scatter(surroundings_coords[:, 1], surroundings_coords[:, 0],
-    #             s=5, color='blue', label="Surroundings of Biggest Cluster")
-    # ####################
+    # #################################
     #
-    # plt.title("Biggest Detected Cluster")
-    # plt.gca().invert_yaxis()
-    # plt.axis('equal')
-    # plt.axis('off')
-    # plt.legend()
-    # plt.show()
-
-    # Create an output image highlighting only the biggest cluster
-    biggest_cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
-    for point in biggest_cluster_coords:
-        cv2.circle(biggest_cluster_image, (point[1], point[0]), 1, (255,), -1)
-    ###################################
-    # surroundings_cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
-    # for point in surroundings_coords:
-    #     cv2.circle(surroundings_cluster_image, (point[1], point[0]), 1, (255,), -1)
-    #
-    # plt.figure(figsize=(8, 8))
-    # plt.title("Compare surroundings_cluster_image")
-    # plt.imshow(surroundings_cluster_image)
-    # plt.figure(figsize=(8, 8))
-    # plt.title("Compare biggest_cluster_image")
-    # plt.imshow(biggest_cluster_image)
-    # plt.show()
-
-    ######################
-    binary_image = biggest_cluster_image
-
-    # # Find contours to determine the object size
+    # # Find all contours
     # contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # largest_contour = max(contours, key=cv2.contourArea)  # Get the largest detected shape
-    # # Get bounding box dimensions
-    # x, y, w, h = cv2.boundingRect(largest_contour)
     #
-    # print("x, y, w, h",x, y, w, h)
+    # # Merge all contour points into a single array
+    # all_points = np.vstack(contours)  # Stack all contour points together
     #
-    # # Define an adaptive kernel size based on the object size
-    # kernel_size = max(w, h)
-    # kernel_size = max(5, kernel_size)  # Ensure a minimum size
+    # # Compute the convex hull
+    # hull = cv2.convexHull(all_points)
     #
-    # # Create an elliptical kernel
-    # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+    # # Create a blank image to draw the convex hull
+    # hull_image = np.zeros_like(binary_image)
     #
-    # # Apply morphological closing
-    # closed_image = cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel)
+    # # Draw and fill the convex hull
+    # cv2.drawContours(hull_image, [hull], -1, 255, -1)  # -1 fills the hull with white
     #
-    # # Display the original and closed images
+    # # Display results
     # plt.figure(figsize=(10, 5))
     #
     # plt.subplot(1, 2, 1)
@@ -306,45 +383,13 @@ def find_cluster(resized_image):
     # plt.axis("off")
     #
     # plt.subplot(1, 2, 2)
-    # plt.imshow(closed_image, cmap='gray')
-    # plt.title(f"After Morphological Closing (Kernel: {kernel_size}x{kernel_size})")
+    # plt.imshow(hull_image, cmap='gray')
+    # plt.title("After Convex Hull (Forced Circular Shape)")
     # plt.axis("off")
     #
     # plt.show()
-
-    #################################
-
-    # Find all contours
-    contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Merge all contour points into a single array
-    all_points = np.vstack(contours)  # Stack all contour points together
-
-    # Compute the convex hull
-    hull = cv2.convexHull(all_points)
-
-    # Create a blank image to draw the convex hull
-    hull_image = np.zeros_like(binary_image)
-
-    # Draw and fill the convex hull
-    cv2.drawContours(hull_image, [hull], -1, 255, -1)  # -1 fills the hull with white
-
-    # Display results
-    plt.figure(figsize=(10, 5))
-
-    plt.subplot(1, 2, 1)
-    plt.imshow(binary_image, cmap='gray')
-    plt.title("Original Binary Image")
-    plt.axis("off")
-
-    plt.subplot(1, 2, 2)
-    plt.imshow(hull_image, cmap='gray')
-    plt.title("After Convex Hull (Forced Circular Shape)")
-    plt.axis("off")
-
-    plt.show()
-
-    return hull_image
+    #
+    # return hull_image
 
 
 

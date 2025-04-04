@@ -9,6 +9,10 @@ from FACEIT_codes.Load_data import LoadData
 from FACEIT_codes.Graphical_ROIS import ROIHandler
 from FACEIT_codes import functions, display_and_plots
 from FACEIT_codes.GUI_Intractions import GUI_Intract
+from PyQt5.QtCore import QThread
+from FACEIT_codes.Workers import PupilWorker
+
+
 class FaceMotionApp(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -21,16 +25,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-
-        # Determine the project root
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
-        # Construct the path to the logo within the repository
         logo_path = os.path.join(project_root, "figures", "Logo_FaceIT.jpg")
-
-        # Check if the file exists
         if os.path.exists(logo_path):
-            # Set the window icon using the logo from the repository
             MainWindow.setWindowIcon(QtGui.QIcon(logo_path))
         else:
             print(f"Logo not found at {logo_path}")
@@ -39,11 +36,14 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.NPY = False
         self.video = False
         self.find_grooming_threshold = False
+        self.contrast = 1
         self.len_file = 1
         self.erase_size = 20
         self.ratio = 2
         self.mnd = 10
         self.binary_threshold = 220
+        self.clustering_method = "DBSCAN"
+        self.Show_biary =  False
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.Main_V_Layout = QtWidgets.QVBoxLayout(self.centralwidget)
         MainWindow.setCentralWidget(self.centralwidget)
@@ -136,12 +136,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         MainWindow.setStatusBar(self.statusbar)
 
     def open_settings_window(self):
-        # Store the window as an instance attribute to prevent garbage collection
         self.settings_window = QtWidgets.QWidget()
         self.settings_window.setWindowTitle("Settings")
         self.settings_window.resize(400, 300)
-
-        # Create the main layout for the settings window
         main_layout = QtWidgets.QVBoxLayout()
 
         # Create a layout for the Brush Size slider
@@ -198,9 +195,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.lineEdit_frame_number.setText(str(self.Slider_frame.value()))
         self.slider_layout.addWidget(self.lineEdit_frame_number)
         self.vertical_process_Layout.addLayout(self.slider_layout)
-        self.progressBar = QtWidgets.QProgressBar(self.centralwidget)
-        self.progressBar.setProperty("value", 0)
-        self.vertical_process_Layout.addWidget(self.progressBar)
         self.Main_V_Layout.addLayout(self.vertical_process_Layout)
 
     def change_cursor_color(self):
@@ -287,34 +281,46 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.fileOpsLayout.addWidget(self.Save_Button)
 
         # === Options and Threshold ===
-        self.optionsLayout = QtWidgets.QVBoxLayout()
+        self.optionsLayout = QtWidgets.QGridLayout()
         label = QtWidgets.QLabel("Options & Threshold")
         font = label.font()
-        font.setBold(True)  # Make the text bold
+        font.setBold(True)
         label.setFont(font)
         self.groupBoxLayout.addWidget(label)
         self.groupBoxLayout.addLayout(self.optionsLayout)
 
         self.grooming_limit_Label = QtWidgets.QLabel("Grooming Threshold:")
-        self.optionsLayout.addWidget(self.grooming_limit_Label)
+        self.optionsLayout.addWidget(self.grooming_limit_Label, 0, 0)
 
         self.lineEdit_grooming_y = QtWidgets.QLineEdit()
         self.lineEdit_grooming_y.setFixedWidth(50)
-        self.optionsLayout.addWidget(self.lineEdit_grooming_y)
+        self.optionsLayout.addWidget(self.lineEdit_grooming_y, 1, 0)
+
+
+        self.checkBox_binary = QtWidgets.QCheckBox("Show binary")
+        self.optionsLayout.addWidget(self.checkBox_binary, 0, 1)
 
         self.checkBox_face = QtWidgets.QCheckBox("Whisker Pad")
-        self.optionsLayout.addWidget(self.checkBox_face)
+        self.optionsLayout.addWidget(self.checkBox_face,1,1)
         self.checkBox_face.setEnabled(False)
 
-        self.checkBox_pupil = QtWidgets.QCheckBox("Pupil")
-        self.optionsLayout.addWidget(self.checkBox_pupil)
-        self.checkBox_pupil.setEnabled(False)
 
         self.checkBox_nwb = QtWidgets.QCheckBox("Save nwb")
-        self.optionsLayout.addWidget(self.checkBox_nwb)
-
+        self.optionsLayout.addWidget(self.checkBox_nwb, 2,1)
+        self.Clustering_Label = QtWidgets.QLabel("Clustering method:")
+        self.optionsLayout.addWidget(self.Clustering_Label, 2, 0)
+        self.radioButton_DBSCAN = QtWidgets.QRadioButton("DBSCAN")
+        self.radioButton_DBSCAN.setChecked(True)
+        self.optionsLayout.addWidget(self.radioButton_DBSCAN, 3, 0)
+        self.radioButton_watershed = QtWidgets.QRadioButton("watershed")
+        self.optionsLayout.addWidget(self.radioButton_watershed, 4, 0)
+        self.radioButton_SimpleContour = QtWidgets.QRadioButton("Simple Contour")
+        self.optionsLayout.addWidget(self.radioButton_SimpleContour, 5, 0)
+        self.checkBox_pupil = QtWidgets.QCheckBox("Pupil")
+        self.optionsLayout.addWidget(self.checkBox_pupil, 3,1)
+        self.checkBox_pupil.setEnabled(False)
         self.save_video = QtWidgets.QCheckBox("Save Video")
-        self.optionsLayout.addWidget(self.save_video)
+        self.optionsLayout.addWidget(self.save_video, 4, 1)
 
         # Add the group box to the main layout
         self.mainLayout.addWidget(self.groupBox)
@@ -342,7 +348,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.contrast_Label.setAlignment(QtCore.Qt.AlignLeft)
         self.sliderLayout2.addWidget(self.contrast_Label)
         self.contrast_slider_layout = QtWidgets.QHBoxLayout()
-        self.contrast_Slider = functions.setup_sliders(self.centralwidget, 0, 30, 0, "horizontal")
+        self.contrast_Slider = functions.setup_sliders(self.centralwidget, 0, 30, 10, "horizontal")
         self.contrast_slider_layout.addWidget(self.contrast_Slider)
         self.lineEdit_contrast_value = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit_contrast_value.setFixedWidth(50)
@@ -356,7 +362,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.binary_threshold_Label.setAlignment(QtCore.Qt.AlignLeft)
         self.sliderLayout3.addWidget(self.binary_threshold_Label)
         self.binary_threshold_slider_layout = QtWidgets.QHBoxLayout()
-        self.binary_threshold_Slider = functions.setup_sliders(self.centralwidget, 0, 255, 0, "horizontal")
+        self.binary_threshold_Slider = functions.setup_sliders(self.centralwidget, 0, 255, 220, "horizontal")
         self.binary_threshold_slider_layout.addWidget(self.binary_threshold_Slider)
         self.lineEdit_binary_threshold_value = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit_binary_threshold_value.setFixedWidth(50)
@@ -382,14 +388,18 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Undo_grooming_Button.clicked.connect(self.undo_grooming)
         self.Erase_Button.clicked.connect(self.graphicsView_subImage.activateEraseMode)
         self.Undo_Erase_Button.clicked.connect(self.graphicsView_subImage.undoBrushStrokes)
-
-
+        self.checkBox_binary.stateChanged.connect(self.update_binary_flag)
+        self.radioButton_DBSCAN.toggled.connect(self.update_clustering_method)
+        self.radioButton_watershed.toggled.connect(self.update_clustering_method)
+        self.radioButton_SimpleContour.toggled.connect(self.update_clustering_method)
 
     def setup_styles(self):
         self.centralwidget.setStyleSheet(functions.get_stylesheet())
         functions.set_button_style(self.saturation_Slider, "QSlider")
         functions.set_button_style(self.contrast_Slider, "QSlider")
+        functions.set_button_style(self.binary_threshold_Slider, "QSlider")
         functions.set_button_style(self.Slider_frame, "QSlider")
+        self.lineEdit_binary_threshold_value.setStyleSheet("background-color: #999999")
         self.lineEdit_frame_number.setStyleSheet("background-color: #999999")
         self.lineEdit_satur_value.setStyleSheet("background-color: #999999")
         self.lineEdit_contrast_value.setStyleSheet("background-color: #999999")
@@ -415,28 +425,35 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.reflect_ellipse = reflect_ellipse
 
 
-
-
     def pupil_check(self):
         return self.checkBox_pupil.isChecked()
-
+    def update_binary_flag(self, state):
+        self.Show_biary = (state == QtCore.Qt.Checked)
     def face_check(self):
         return self.checkBox_face.isChecked()
     def nwb_check(self):
         return self.checkBox_nwb.isChecked()
     def save_video_chack(self):
         return self.save_video.isChecked()
-    def init_erasing_pixel(self):
-        self.Eraser_active = True
+
+    def update_clustering_method(self):
+        if self.radioButton_DBSCAN.isChecked():
+            self.clustering_method = "DBSCAN"
+        elif self.radioButton_watershed.isChecked():
+            self.clustering_method = "watershed"
+        elif self.radioButton_SimpleContour.isChecked():
+            self.clustering_method = "SimpleContour"
 
     def satur_value(self, value):
         """Update saturation value and apply changes to the displayed sub-region."""
-
-        # Update the text box with the new saturation value
         self.lineEdit_satur_value.setText(str(value))
-
-        # Store the saturation value
         self.saturation = value
+
+
+        if self.checkBox_binary.isChecked():
+            self.Show_biary = True
+        else:
+            self.Show_biary = False
 
         # Ensure `sub_region` and `scene2` exist before trying to update the display
         if hasattr(self, 'sub_region') and self.sub_region is not None:
@@ -445,13 +462,33 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
             # Update the display with the new saturation
             functions.display_sub_region(
-                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation,self.contrast, self.mnd, self.binary_threshold
+                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation,self.contrast, self.mnd, self.binary_threshold,self.clustering_method,self.Show_biary
             )
 
     def contrast_value(self, value):
         self.lineEdit_contrast_value.setText(str(value/10))
         self.contrast =value/10
-        print("self.contrast", self.contrast)
+        if self.checkBox_binary.isChecked():
+            self.Show_biary = True
+        else:
+            self.Show_biary = False
+        if hasattr(self, 'sub_region') and self.sub_region is not None:
+            if not hasattr(self, 'scene2') or self.scene2 is None:
+                self.scene2 = QtWidgets.QGraphicsScene()  # Initialize if missing
+
+            # Update the display with the new saturation
+            functions.display_sub_region(
+                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation,self.contrast, self.mnd, self.binary_threshold,self.clustering_method,self.Show_biary
+            )
+
+    def binary_threshold_value(self, value):
+        self.lineEdit_binary_threshold_value.setText(str(value))
+        self.binary_threshold = value
+        if self.checkBox_binary.isChecked():
+            self.Show_biary = True
+        else:
+            self.Show_biary = False
+
         # Ensure `sub_region` and `scene2` exist before trying to update the display
         if hasattr(self, 'sub_region') and self.sub_region is not None:
             if not hasattr(self, 'scene2') or self.scene2 is None:
@@ -459,12 +496,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
             # Update the display with the new saturation
             functions.display_sub_region(
-                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation,self.contrast, self.mnd, self.binary_threshold
+                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation,self.contrast, self.mnd, self.binary_threshold,self.clustering_method, self.Show_biary
             )
-
-    def binary_threshold_value(self, value):
-        self.lineEdit_binary_threshold_value.setText(str(value))
-        self.binary_threshold = value
 
 
 
@@ -478,16 +511,48 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         except ValueError:
             self.lineEdit_frame_number.setText(str(self.Slider_frame.value()))
 
-
     def start_pupil_dilation_computation(self, images):
-        pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
-            X_saccade, Y_saccade, pupil_distance_from_corner, width, height =\
-            self.process_handler.pupil_dilation_comput(images, self.saturation,self.contrast, self.erased_pixels, self.reflect_ellipse, self.mnd, self.binary_threshold)
-        self.final_pupil_area = pupil_dilation
-        self.X_saccade_updated = X_saccade
-        self.Y_saccade_updated = Y_saccade
-        return pupil_dilation, pupil_center_X, pupil_center_y,pupil_center,\
-            X_saccade, Y_saccade, pupil_distance_from_corner,width, height
+        self.thread = QThread()
+        self.worker = PupilWorker(
+            images, self.process_handler, self.saturation, self.contrast,
+            self.erased_pixels, self.reflect_ellipse, self.mnd,
+            self.binary_threshold, self.clustering_method
+        )
+        self.worker.moveToThread(self.thread)
+
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.handle_pupil_results)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.worker.error.connect(self.handle_worker_error)
+        self.thread.start()
+
+    def handle_pupil_results(self, result):
+        (self.pupil_dilation,
+         self.pupil_center_X,
+         self.pupil_center_y,
+         self.pupil_center,
+         self.X_saccade,
+         self.Y_saccade,
+         self.pupil_distance_from_corner,
+         self.width,
+         self.height) = result
+
+        self.final_pupil_area = self.pupil_dilation
+        self.X_saccade_updated = self.X_saccade
+        self.Y_saccade_updated = self.Y_saccade
+
+        self.plot_handler.plot_result(
+            self.pupil_dilation,
+            self.graphicsView_pupil,
+            "pupil",
+            color="palegreen",
+            saccade=self.X_saccade
+        )
+
+    def handle_worker_error(self, error_msg):
+        self.warning(f"Pupil processing error: {error_msg}")
 
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):
@@ -544,6 +609,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.lineEdit_grooming_y.setText(_translate("MainWindow", "0"))
 
 
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -559,6 +625,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+#############################
 # import cProfile
 # import pstats
 # import io

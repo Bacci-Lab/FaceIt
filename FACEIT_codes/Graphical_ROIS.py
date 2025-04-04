@@ -118,7 +118,9 @@ class ROIHandler:
             saturation,
             contrast,
             self.app_instance.mnd,
-            self.app_instance.binary_threshold
+            self.app_instance.binary_threshold,
+            self.app_instance.clustering_method,
+            self.app_instance.Show_biary
         )
 
     def _add_to_scene2(self, roi, handles, roi_list_attr, center, kwargs):

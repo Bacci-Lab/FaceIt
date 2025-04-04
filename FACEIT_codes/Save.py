@@ -26,7 +26,7 @@ class SaveHandler:
         """
 
         if self.app_instance.save_video_chack():
-            print("is checked")
+            pass
 
         self.save_directory = self._make_dir(self.app_instance.save_path)
 
@@ -153,8 +153,7 @@ class SaveHandler:
             if not hasattr(self, 'facemotion_without_grooming') or self.facemotion_without_grooming is None:
                 self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
 
-            time_stamps = np.arange(0, len_data, 1)  #time stamps in frame
-
+            time_stamps = np.arange(0, len_data, 1)
 
             pupil_center_series = TimeSeries(
                 name='pupil_center',

@@ -37,6 +37,8 @@ def initialize_attributes(obj, image):
     obj.erased_pixels = None
     obj.mnd = 10
     obj.binary_threshold = 220
+    obj.Show_biary = False
+    obj.clustering_method = "DBSCAN"
 
 
 
@@ -52,7 +54,7 @@ def show_ROI(ROI, image):
 
 
 
-def change_saturation(image, saturation_scale, contrast=1, brightness=0):
+def change_saturation(image, saturation_scale, contrast, brightness=0):
     """
     Changes the saturation of an image and adjusts brightness to make dark pixels darker and bright pixels brighter.
 
@@ -75,8 +77,8 @@ def change_saturation(image, saturation_scale, contrast=1, brightness=0):
 
     return image
 
-def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,contrast, mnd, binary_threshold, erased_pixels = None,
-                       reflect_ellipse = None, pupil_ellipse_items = None, Detect_pupil = False):
+def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,contrast, mnd, binary_threshold,clustering_method,Show_biary, erased_pixels = None,
+                       reflect_ellipse = None, pupil_ellipse_items = None, Detect_pupil = False ):
     if pupil_ellipse_items is not None:
         scene2.removeItem(pupil_ellipse_items)
     for item in scene2.items():
@@ -90,9 +92,14 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,contras
     sub_region = change_saturation(sub_region, saturation, contrast)
     sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
 
+    if Show_biary == True:
+        sub_region_binary = pupil_detection.Image_binarization(sub_region, binary_threshold)
+        sub_region_binary_rgba = cv2.cvtColor(sub_region_binary, cv2.COLOR_BGR2BGRA)
+    else:
+        sub_region_binary_rgba = sub_region_rgba
 
     bytes_per_line = width * 4
-    qimage = QtGui.QImage(sub_region_rgba.data.tobytes(), width, height, bytes_per_line, QtGui.QImage.Format_RGBA8888)
+    qimage = QtGui.QImage(sub_region_binary_rgba.data.tobytes(), width, height, bytes_per_line, QtGui.QImage.Format_RGBA8888)
     pixmap = QPixmap.fromImage(qimage)
     ############
     scaled_pixmap = pixmap.scaled(width, height, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
@@ -104,20 +111,15 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,contras
     scene2.setSceneRect(0, 0, scaled_pixmap.width(), scaled_pixmap.height())
 
     if Detect_pupil == True:
-        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = pupil_detection.detect_pupil(sub_region_rgba, erased_pixels, reflect_ellipse, mnd, binary_threshold)
+        pupil_ROI0, P_detected_center, P_detected_width, P_detected_height, angle, _ = pupil_detection.detect_pupil(sub_region_rgba, erased_pixels, reflect_ellipse, mnd, binary_threshold, clustering_method)
         pupil_ellipse_item = QtWidgets.QGraphicsEllipseItem(int(P_detected_center[0] - P_detected_width), int(P_detected_center[1] - P_detected_height),
                                                             P_detected_width*2, P_detected_height*2)
 
         pupil_ellipse_item.setTransformOriginPoint(int(P_detected_center[0]),
                                                    int(P_detected_center[1]))
         pupil_ellipse_item.setRotation(np.degrees(angle))
-
-        # color = QtGui.QColor(128, 0, 128, 50)
-        # brush = QtGui.QBrush(color)
         pen = QtGui.QPen(QtGui.QColor("purple"))
         pen.setWidth(1)
-
-        # pupil_ellipse_item.setBrush(brush)
         pupil_ellipse_item.setPen(pen)
         scene2.addItem(pupil_ellipse_item)
         pupil_ellipse_items = pupil_ellipse_item
@@ -126,13 +128,11 @@ def display_sub_region(graphicsView, sub_region, scene2, ROI, saturation,contras
     if graphicsView:
         graphicsView.setScene(scene2)
         graphicsView.setFixedSize(scaled_pixmap.width(), scaled_pixmap.height())
-        # graphicsView.fitInView(scene2.sceneRect(), QtCore.Qt.KeepAspectRatio)
     return pupil_ellipse_items
 
 def second_region(graphicsView_subImage,graphicsView_MainFig,  image_width, image_height):
     scene2 = QtWidgets.QGraphicsScene(graphicsView_subImage)
     graphicsView_subImage.setScene(scene2)
-    # graphicsView_subImage.setFixedSize(image_width, image_height)
     graphicsView_MainFig.graphicsView_subImage = graphicsView_subImage
     return scene2
 
@@ -193,6 +193,7 @@ def load_frame_by_index(video_path, index):
     ret, frame = cap.read()
     if not ret:
         cap.release()
+        cap.release()
         raise ValueError(f"Error: Could not read frame at index {index}.")
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -241,15 +242,6 @@ def get_stylesheet():
         color: #000000;
         border: 1px solid #3d4242;
         padding: 5px;
-    }
-    QProgressBar {
-        border: 2px solid #999999;
-        border-radius: 5px;
-        text-align: center;
-    }
-    QProgressBar::chunk {
-        background-color: #cc9900;
-        width: 20px;
     }
     """
 

@@ -1,12 +1,22 @@
+
+from PyQt5.QtCore import QObject, pyqtSignal, QThread
+from FACEIT_codes import pupil_detection, functions
+from FACEIT_codes.Workers import MotionWorker
+from multiprocessing import Pool
+from PyQt5 import QtWidgets
+import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
-from PyQt5 import QtWidgets
-from FACEIT_codes import pupil_detection, functions
 import math
 import cv2
-from multiprocessing import Pool
 import time
-import matplotlib.patches as patches
+from multiprocessing import cpu_count
+from tqdm import tqdm
+from line_profiler import profile
+from concurrent.futures import ThreadPoolExecutor
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+
 
 def display_show_ROI(ROI, image):
 
@@ -30,21 +40,40 @@ def create_roi(x, y, width, height):
         'height': height
     }
 
-
 def process_single_frame(args):
-    current_image, frame, saturation,contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold = args
+    current_image, frame, saturation,contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold,clustering_method = args
     sub_region = current_image[frame[0]:frame[1], frame[2]:frame[3]]
 
     if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
         sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
-
+    sub_region = functions.change_saturation(sub_region, saturation, contrast)
     sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
 
-    # Pupil detection
-    _, center, width, height, _, current_area = pupil_detection.detect_pupil(
-        sub_region_rgba, erased_pixels, reflect_ellipse, mnd,binary_threshold
-    )
 
+    _, center, width, height, angle, current_area = pupil_detection.detect_pupil(
+        sub_region_rgba, erased_pixels, reflect_ellipse, mnd,binary_threshold,clustering_method
+    )
+########################
+    # fig, ax = plt.subplots()
+    # plt.title("current_area: " + str(current_area))
+    # plt.imshow(sub_region_rgba)
+    # plt.imshow(sub_region_rgba)
+    #
+    # width = width * 2
+    # height = height * 2
+    #
+    # # Create the ellipse (note: Ellipse uses center, not top-left corner!)
+    # ellipse = Ellipse(xy=(center[0], center[1]),  # center
+    #                   width=width, height=height,angle= np.degrees(angle),
+    #                   edgecolor='red', facecolor='none', linewidth=2)
+    #
+    # # Add the ellipse to the current axes
+    # ax = plt.gca()
+    # ax.add_patch(ellipse)
+    #
+    # # Show the result
+    # plt.show()
+#######################
     pupil_distance_from_corner = (
         math.sqrt((center[0] - eye_corner_center[0]) ** 2 + (center[1] - eye_corner_center[1]) ** 2)
         if eye_corner_center is not None else np.nan
@@ -75,97 +104,49 @@ class ProcessHandler:
             self.process_face_data()
 
     def process_pupil_data(self):
-        """Processes and plots pupil data."""
+        """Processes pupil data asynchronously using a worker thread."""
         if not self.app_instance.Pupil_ROI_exist:
-            # Warn the user if no Pupil ROI is chosen
             self.app_instance.warning("NO Pupil ROI is chosen!")
             return
 
-        # Ensure images are loaded
         self.load_images_if_needed()
-
-        # Compute pupil data
-        self.app_instance.pupil_dilation, self.app_instance.pupil_center_X, self.app_instance.pupil_center_y, \
-            self.app_instance.pupil_center, self.app_instance.X_saccade, self.app_instance.Y_saccade, \
-            self.app_instance.pupil_distance_from_corner, self.app_instance.width, self.app_instance.height = \
-            self.app_instance.start_pupil_dilation_computation(self.app_instance.images)
-
-        # Plot the result
-        self.app_instance.plot_handler.plot_result(
-            self.app_instance.pupil_dilation,
-            self.app_instance.graphicsView_pupil,
-            "pupil",
-            color="palegreen",
-            saccade=self.app_instance.X_saccade
-        )
+        self.app_instance.start_pupil_dilation_computation(self.app_instance.images)
 
     def process_face_data(self):
-        """Processes and plots face data."""
         if not self.app_instance.Face_ROI_exist:
-            # Warn the user if no Face ROI is chosen
             self.app_instance.warning("NO Face ROI is chosen!")
             return
 
-        # Ensure images are loaded
         self.load_images_if_needed()
 
-        # Compute motion energy for face
-        self.app_instance.motion_energy = self.motion_Energy_comput(self.app_instance.images)
+        # Setup threading
+        self.motion_thread = QThread()
+        self.motion_worker = MotionWorker(self.app_instance.images, self.app_instance.Face_frame)
 
-        # Plot the result
+        self.motion_worker.moveToThread(self.motion_thread)
+
+        # Signals
+        self.motion_thread.started.connect(self.motion_worker.run)
+        self.motion_worker.finished.connect(self.handle_motion_result)
+        self.motion_worker.error.connect(self.handle_worker_error)
+
+
+        # Cleanup
+        self.motion_worker.finished.connect(self.motion_thread.quit)
+        self.motion_worker.finished.connect(self.motion_worker.deleteLater)
+        self.motion_thread.finished.connect(self.motion_thread.deleteLater)
+        self.motion_thread.start()
+
+    def handle_motion_result(self, result):
+        self.app_instance.motion_energy = result
         self.app_instance.plot_handler.plot_result(
-            self.app_instance.motion_energy,
+            result,
             self.app_instance.graphicsView_whisker,
             "motion"
         )
 
-    def motion_Energy_comput(self, images):
-        """
-        Computes the motion energy from a series of image frames.
-
-        Parameters:
-            images (list): A list of image arrays.
-
-        Returns:
-            list: A list of computed motion energy values.
-        """
-        start_time = time.time()
-        frame = self.app_instance.Face_frame
-        motion_energy_values = []
-
-        # Total number of image frames to process
-        total_files = len(images)
-        self.app_instance.progressBar.setMaximum(total_files)
-
-        # Variable to store the previous frame's region of interest (ROI)
-        previous_ROI = None
-
-        # Iterate through each image and compute motion energy
-        for i, current_array in enumerate(images):
-            # Update progress bar and process UI events
-            self.app_instance.progressBar.setValue(i + 1)
-            QtWidgets.QApplication.processEvents()
-
-            # Extract the region of interest (ROI) from the current frame
-            current_ROI = current_array[frame[0]:frame[1], frame[2]:frame[3]].flatten()
-
-            # Compute motion energy if the previous ROI exists
-            if previous_ROI is not None:
-                motion_energy_value = np.mean((current_ROI - previous_ROI) ** 2)
-                motion_energy_values.append(motion_energy_value)
-
-            # Update the previous ROI for the next iteration
-            previous_ROI = current_ROI
-
-        # Ensure the progress bar is set to complete
-        self.app_instance.progressBar.setValue(total_files)
-        # Duplicate the first computed value at the beginning of the list to avoid data length change
-        if motion_energy_values:
-            first_value = motion_energy_values[0]
-            motion_energy_values.insert(0, first_value)
-        end_time = time.time()
-        print(f"Time taken for motion energy computation: {end_time - start_time:.2f} seconds")
-        return motion_energy_values
+    def handle_worker_error(self, error_msg):
+        self.app_instance.warning(f"Motion processing error: {error_msg}")
 
     def load_images_if_needed(self):
         """Loads images if they are not already loaded."""
@@ -232,7 +213,7 @@ class ProcessHandler:
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
         return combined_blinking_ids
 
-    def pupil_dilation_comput(self, images, saturation, contrast, erased_pixels, reflect_ellipse, mnd, binary_threshold):
+    def pupil_dilation_comput(self, images, saturation, contrast, erased_pixels, reflect_ellipse, mnd, binary_threshold, clustering_method):
         """
         Computes pupil dilation and related metrics from a series of images using parallel processing.
         """
@@ -244,8 +225,6 @@ class ProcessHandler:
             self.app_instance.eye_corner_center[1]
         ) if self.app_instance.eye_corner_center is not None else None
 
-        total_files = len(images)
-        self.app_instance.progressBar.setMaximum(total_files)
 
         ####################################################################
         pupil_ROI = self.app_instance.pupil_ROI
@@ -258,14 +237,17 @@ class ProcessHandler:
         ####################################################################
         # Prepare the data for multiprocessing
         frame_args = [
-            (current_image, frame, saturation, contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold)
+            (current_image, frame, saturation, contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold,clustering_method)
             for current_image in images
         ]
 
+        num_workers = max(1, cpu_count() // 2)
 
-        # Use a multiprocessing pool to process images in parallel
-        with Pool() as pool:
-            results = pool.map(process_single_frame, frame_args)
+        print(f"Using {num_workers} workers out of {cpu_count()} cores.")
+
+        with Pool(processes=num_workers) as pool:
+            results = list(tqdm(pool.imap(process_single_frame, frame_args), total=len(frame_args)))
+
 
         # Aggregate the results
         pupil_dilation, pupil_center, pupil_center_X, pupil_center_y, pupil_width, pupil_height, pupil_distance_from_corner = zip(
@@ -279,8 +261,6 @@ class ProcessHandler:
         # Print the elapsed time
         print(f"Time taken for pupil dilation computation: {elapsed_time:.2f} seconds")
 
-        # Update progress bar to complete
-        self.app_instance.progressBar.setValue(total_files)
 
         # Convert lists to numpy arrays for consistency and efficient computation
         pupil_dilation = np.array(pupil_dilation)
@@ -301,6 +281,7 @@ class ProcessHandler:
         # Return all computed pupil metrics
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
                 X_saccade, Y_saccade, pupil_distance_from_corner, pupil_width, pupil_height)
+
 
     def plot_saccade(self, pupil_center_i, saccade):
         """
@@ -330,78 +311,6 @@ class ProcessHandler:
         plt.tight_layout()
         plt.show()
 
-    # def calculate_saccades_test(self,positions, timestamps, velocity_threshold):
-    #     """
-    #     Detect saccades using the I-VT algorithm.
-    #
-    #     Parameters:
-    #     - positions: List of (x, y) pupil center positions [(x1, y1), (x2, y2), ...].
-    #     - timestamps: List of timestamps corresponding to each position [t1, t2, ...].
-    #     - velocity_threshold: Velocity threshold to classify fixations and saccades.
-    #
-    #     Returns:
-    #     - fixations: List of detected fixations, each as a dictionary with:
-    #         {"x": centroid_x, "y": centroid_y, "start_time": t_start, "duration": duration}.
-    #     - saccades: List of indices classified as saccades.
-    #     """
-    #
-    #     # Step 1: Calculate point-to-point velocities
-    #     velocities = []
-    #     for i in range(1, len(positions)):
-    #         dx = positions[i][0] - positions[i - 1][0]
-    #         dy = positions[i][1] - positions[i - 1][1]
-    #         velocity = np.sqrt(dx ** 2 + dy ** 2)
-    #         velocities.append(velocity)
-    #
-    #     # Step 2: Classify points as fixations or saccades
-    #     classifications = [0]  # Start with the first point classified as fixation
-    #     for v in velocities:
-    #         if v < velocity_threshold:
-    #             classifications.append(0)  # Fixation
-    #         else:
-    #             classifications.append(1)  # Saccade
-    #
-    #     # Step 3: Collapse consecutive fixation points
-    #     fixations = []
-    #     saccades = []
-    #     start_idx = None
-    #     for i, cls in enumerate(classifications):
-    #         if cls == 0:  # Fixation
-    #             if start_idx is None:  # Start a new fixation group
-    #                 start_idx = i
-    #         else:  # Saccade
-    #             if start_idx is not None:  # End the fixation group
-    #                 fixation_points = positions[start_idx:i]
-    #                 fixation_timestamps = timestamps[start_idx:i]
-    #                 centroid_x = np.mean([p[0] for p in fixation_points])
-    #                 centroid_y = np.mean([p[1] for p in fixation_points])
-    #                 duration = fixation_timestamps[-1] - fixation_timestamps[0]
-    #                 fixations.append({
-    #                     "x": centroid_x,
-    #                     "y": centroid_y,
-    #                     "start_time": fixation_timestamps[0],
-    #                     "duration": duration
-    #                 })
-    #                 start_idx = None  # Reset fixation group
-    #
-    #     # Handle any remaining fixation group at the end
-    #     if start_idx is not None:
-    #         fixation_points = positions[start_idx:]
-    #         fixation_timestamps = timestamps[start_idx:]
-    #         centroid_x = np.mean([p[0] for p in fixation_points])
-    #         centroid_y = np.mean([p[1] for p in fixation_points])
-    #         duration = fixation_timestamps[-1] - fixation_timestamps[0]
-    #         fixations.append({
-    #             "x": centroid_x,
-    #             "y": centroid_y,
-    #             "start_time": fixation_timestamps[0],
-    #             "duration": duration
-    #         })
-    #
-    #     # Identify saccade indices for completeness
-    #     saccades = [i for i, cls in enumerate(classifications) if cls == 1]
-    #
-    #     return fixations, saccades
 
     def Saccade(self, pupil_center_i):
         """

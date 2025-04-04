@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import bottleneck as bn
 from sklearn.cluster import DBSCAN
+from line_profiler import profile
 def find_ellipse(binary_image):
     """
     Fits an ellipse to non-zero pixels in a binary image.
@@ -91,19 +92,93 @@ def overlap_reflect(reflections, pupil_ellipse, binary_image):
     # Return the modified binary image
     return binary_image
 
+def find_cluster_watershed(binary_mask):
+    """
+    Applies watershed segmentation to a binary mask to separate touching blobs,
+    plots all intermediate results, and returns the final convex hull mask.
 
-def find_cluster(binary_image, mnd):
+    Parameters:
+    - binary_mask (np.ndarray): Binary image (uint8) of a single connected region.
+    - mnd: (Unused; kept for compatibility with interface)
+
+    Returns:
+    - hull_image (np.ndarray): Binary mask (uint8) of the convex hull around all separated regions.
+    """
+    # Ensure binary
+    binary = cv2.threshold(binary_mask, 1, 255, cv2.THRESH_BINARY)[1]
+
+    # Distance transform
+    dist_transform = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+
+    # Sure foreground (peaks of objects)
+    _, sure_fg = cv2.threshold(dist_transform, 0.5 * dist_transform.max(), 255, 0)
+    sure_fg = np.uint8(sure_fg)
+
+    # Sure background
+    kernel = np.ones((3, 3), np.uint8)
+    sure_bg = cv2.dilate(binary, kernel, iterations=2)
+    unknown = cv2.subtract(sure_bg, sure_fg)
+
+    # Marker labelling
+    num_labels, markers = cv2.connectedComponents(sure_fg)
+    markers = markers + 1  # Ensure background is not 0
+    markers[unknown == 255] = 0  # Unknown region
+
+    # Apply watershed
+    img_color = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+    cv2.watershed(img_color, markers)
+
+    # === Plot 1: Watershed-separated clusters in color ===
+    color_img = np.zeros((*binary.shape, 3), dtype=np.uint8)
+    unique_labels = np.unique(markers)
+    rng = np.random.default_rng(42)
+    for label in unique_labels:
+        if label <= 1:
+            continue  # skip background and border
+        color = rng.integers(0, 255, 3).tolist()
+        color_img[markers == label] = color
+
+    # Remove watershed borders (-1) and prepare binary mask
+    markers[markers == -1] = 0
+    label_mask = np.where(markers > 1, 255, 0).astype(np.uint8)
+    # === Convex Hull computation ===
+    contours, _ = cv2.findContours(label_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        print("No contours found after watershed.")
+        return np.zeros_like(binary_mask)
+
+    all_points = np.vstack(contours)
+    hull = cv2.convexHull(all_points)
+
+    hull_image = np.zeros_like(binary_mask)
+    cv2.drawContours(hull_image, [hull], -1, 255, -1)
+    return hull_image, color_img
+
+
+def find_cluster_simple(binary_image):
+    contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return np.zeros_like(binary_image)
+
+    largest = max(contours, key=cv2.contourArea)
+    hull = cv2.convexHull(largest)  # <-- Apply convexHull here
+
+    mask = np.zeros_like(binary_image)
+    cv2.drawContours(mask, [hull], -1, 255, -1)
+    return mask
+
+
+def find_cluster_DBSCAN(binary_image, mnd):
     """
     Detects the largest cluster of non-zero pixels in a binary image and returns an image
     highlighting the detected cluster.
 
     Parameters:
     binary_image (np.ndarray): A binary image with non-zero pixels representing objects.
-
-    mnd (Maximum neighbor distance): maximum distance to consider two points as neighbors in clustering
+    mnd (float): Maximum neighbor distance for DBSCAN.
 
     Returns:
-    np.ndarray: A binary image of the same size as the input, with the largest cluster highlighted(pupil).
+    np.ndarray: A binary image with the largest cluster highlighted.
     """
     # Get coordinates of non-zero pixels in the binary image
     non_zero_coords = np.column_stack(np.where(binary_image > 0))
@@ -114,43 +189,35 @@ def find_cluster(binary_image, mnd):
 
     # Apply the DBSCAN clustering algorithm to the coordinates
     clustering = DBSCAN(eps=mnd, min_samples=1).fit(non_zero_coords)
-    # Extract cluster labels from the clustering result
     labels = clustering.labels_
 
-    # Find unique labels and their respective counts
+    # Find the label of the largest cluster
     unique_labels, counts = np.unique(labels, return_counts=True)
-
-    # Identify the label of the largest cluster
     largest_cluster_label = unique_labels[np.argmax(counts)]
-
-    # Create a mask for the points that belong to the largest cluster
     largest_cluster_coords = non_zero_coords[labels == largest_cluster_label]
 
-    # Create an output image with the largest cluster drawn on it
-    detected_cluster = np.zeros_like(binary_image, dtype=np.uint8)
-    for point in largest_cluster_coords:
-        cv2.circle(detected_cluster, (point[1], point[0]), 1, (255,), -1)
+    # Create an image with the largest cluster
+    cluster_image = np.zeros_like(binary_image, dtype=np.uint8)
+    for y, x in largest_cluster_coords:
+        cluster_image[y, x] = 255
 
-    # Return the image with the largest cluster highlighted
-    ######################
-    binary_image = detected_cluster
+    # Find contours
+    contours, _ = cv2.findContours(cluster_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Find all contours
-    contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return cluster_image  # No contours found
 
-    # Merge all contour points into a single array
-    all_points = np.vstack(contours)  # Stack all contour points together
+    # Merge all contour points
+    all_points = np.vstack(contours)
 
-    # Compute the convex hull
+    # Compute convex hull
     hull = cv2.convexHull(all_points)
 
-    # Create a blank image to draw the convex hull
-    hull_image = np.zeros_like(binary_image)
-
-    # Draw and fill the convex hull
-    cv2.drawContours(hull_image, [hull], -1, 255, -1)  # -1 fills the hull with white
-
+    # Draw the convex hull
+    hull_image = np.zeros_like(binary_image, dtype=np.uint8)
+    cv2.drawContours(hull_image, [hull], -1, 255, -1)
     return hull_image
+
 
 def detect_blinking_ids(pupil_data, threshold_factor, window_size=8):
     """
@@ -214,15 +281,21 @@ def Image_binarization(chosen_frame_region, binary_threshold = 220):
     _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
     return binary_image
 
-def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd, binary_threshold):
+def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd, binary_threshold, clustering_method):
     binary_image = Image_binarization(chosen_frame_region,binary_threshold)
     binary_image = erase_pixels(erased_pixels, binary_image)
-    binary_image = find_cluster(binary_image, mnd)
+
+    if clustering_method == "DBSCAN":
+        binary_image = find_cluster_DBSCAN(binary_image, mnd)
+    elif clustering_method == "watershed":
+        binary_image, _ = find_cluster_watershed(binary_image)
+    elif clustering_method == "SimpleContour":
+        binary_image = find_cluster_simple(binary_image)
+
 
     if reflect_ellipse is None or reflect_ellipse == [[], [], []]:
         pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
     else:
-        print("take into account reflection")
         All_reflects = [
             [reflect_ellipse[0][variable], (reflect_ellipse[1][variable], reflect_ellipse[2][variable]), 0]
             for variable in
@@ -231,8 +304,6 @@ def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd, binar
             pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
             binary_image_update = overlap_reflect(All_reflects, pupil_ROI0, binary_image)
             binary_image = binary_image_update
-
-
     pupil_area = np.pi * (width*height)
     return pupil_ROI0, center, width, height, angle, pupil_area
 
@@ -240,7 +311,6 @@ def erase_pixels(erased_pixels, binary_image):
     if erased_pixels is not None and len(erased_pixels) > 0:
         if not isinstance(erased_pixels, np.ndarray):
             erased_pixels = np.array(erased_pixels)
-
         # Ensure the array is of shape (N, 2) for valid indexing
         if erased_pixels.ndim == 2 and erased_pixels.shape[1] == 2:
             # Set those pixels to 0 in the binary image

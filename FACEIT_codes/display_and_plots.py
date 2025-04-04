@@ -56,9 +56,7 @@ class PlotHandler:
 
         # Integrate the plot into the graphics view
         self._integrate_canvas_into_view(graphics_view, fig)
-
         if Cursor:
-            print("happened")
             self._plot_Cursor(ax, data, self.app_instance.frame)
 
     def _plot_Cursor(self, ax: plt.Axes, data, frame_index):
@@ -242,20 +240,15 @@ class Display:
         )
 
         # Check if a pupil ROI exists and update its display if present
-        if self.app_instance.Pupil_ROI_exist:
+        if self.app_instance.current_ROI == "pupi":
             self._display_pupil_roi()
-        # Check if a face ROI exists and update its display if present
-        elif self.app_instance.Face_ROI_exist:
+        elif self.app_instance.current_ROI == "face":
             self._display_face_roi()
         #################################################
-        # Efficiently update the vertical line
-        # if hasattr(self.app_instance, 'motion_energy') and self.app_instance.motion_energy is not None:
-        #     self.app_instance.plot_handler.update_vertical_line(frame)
-
-        if hasattr(self.app_instance, 'pupil_dilation') and self.app_instance.pupil_dilation is not None:
+        if hasattr(self.app_instance, 'final_pupil_area') and self.app_instance.final_pupil_area is not None:
             plot_handler = PlotHandler(self.app_instance)
             plot_handler.plot_result(
-                self.app_instance.pupil_dilation,
+                self.app_instance.final_pupil_area,
                 self.app_instance.graphicsView_pupil,
                 label="pupil",
                 color="palegreen",
@@ -286,7 +279,8 @@ class Display:
         self.app_instance.pupil_ellipse_items = functions.display_sub_region(
             self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
             self.app_instance.scene2, "pupil", self.app_instance.saturation,self.app_instance.contrast, self.app_instance.mnd,
-            self.app_instance.binary_threshold, self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
+            self.app_instance.binary_threshold,self.app_instance.clustering_method, self.app_instance.Show_biary,
+            self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
             self.app_instance.pupil_ellipse_items, Detect_pupil=True
         )
 
@@ -300,7 +294,7 @@ class Display:
         )
         functions.display_sub_region(
             self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
-            self.app_instance.scene2, "face", self.app_instance.saturation,self.app_instance.self.app_instance.mnd,
-            self.app_instance.binary_threshold, self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
+            self.app_instance.scene2, "face", self.app_instance.saturation,self.app_instance.contrast, self.app_instance.mnd,
+            self.app_instance.binary_threshold, self.app_instance.clustering_method,self.app_instance.Show_biary, self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
             self.app_instance.pupil_ellipse_items, Detect_pupil=False
         )

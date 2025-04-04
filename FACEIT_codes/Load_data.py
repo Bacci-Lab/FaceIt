@@ -2,10 +2,12 @@ import os
 import numpy as np
 import cv2
 import queue
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from PyQt5 import QtWidgets
 from FACEIT_codes import functions
+from line_profiler import profile
 import threading
 class LoadData:
     def __init__(self, app_instance):
@@ -28,27 +30,6 @@ class LoadData:
         # Get all .npy files in the folder
         npy_files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
 
-        # if not npy_files:
-        #     self.app_instance.warning("⚠️ No .npy files found in the selected directory.")
-        #     return
-        #
-        # # Check if all .npy files are 2D arrays
-        # all_are_2D = True
-        # for f in npy_files:
-        #     file_path = os.path.join(folder_path, f)
-        #     try:
-        #         array = np.load(file_path, allow_pickle=False)
-        #         if array.ndim != 2:
-        #             all_are_2D = False
-        #     except Exception as e:
-        #         print(f"⚠️ Error loading '{f}': {e}")
-        #         all_are_2D = False
-        #
-        # if all_are_2D == False:
-        #     self.app_instance.warning("❌ Some .npy files are not 2D.")
-        #     return
-        # else:
-        #     pass
 
         # Configure application settings if valid .npy files are found
         self.app_instance.len_file = len(npy_files)
@@ -65,7 +46,7 @@ class LoadData:
     def load_video(self):
         """Load video and prepare for processing."""
         self.app_instance.folder_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self.app_instance, "Load Video", "", "Video Files (*.avi *.wmv)"
+            self.app_instance, "Load Video", "", "Video Files (*.avi *.wmv *mp4)"
         )
         if self.app_instance.folder_path:
             directory_path = os.path.dirname(self.app_instance.folder_path)
@@ -99,22 +80,28 @@ class LoadData:
             return None
 
     def load_images_from_directory(self, directory, image_height, max_workers=8):
-        """Load images from a directory using multithreading."""
+        """Load images from a directory using multithreading while preserving order and improving performance."""
+        start_time = time.time()
         file_list = sorted([os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')])
-        self.app_instance.progressBar.setMaximum(len(file_list))
-        images = []
 
+        images = [None] * len(file_list)  # Preallocate the list to maintain order
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(self.load_image, file, image_height): file for file in file_list}
+            futures = {
+                executor.submit(self.load_image, file, image_height): i
+                for i, file in enumerate(file_list)
+            }
 
-            for i, future in enumerate(as_completed(futures)):
-                image = future.result()
-                if image is not None:
-                    images.append(image)
-                self.app_instance.progressBar.setValue(i + 1)
+            with tqdm(total=len(file_list), desc="Loading .npy images") as pbar:
+                for future in as_completed(futures):
+                    index = futures[future]
+                    image = future.result()
+                    if image is not None:
+                        images[index] = image
+                    pbar.update(1)
 
-        self.app_instance.progressBar.setValue(len(file_list))
+        elapsed_time = time.time() - start_time
+        print(f"✅ Image loading completed in {elapsed_time:.2f} seconds.")
         return images
 
     def load_frames_from_video(self, video_path,image_height, max_workers=8, buffer_size=32):
@@ -134,13 +121,12 @@ class LoadData:
                 if not ret:
                     break
                 frame_queue.put(frame)
-            frame_queue.put(None)  # Sentinel to indicate end of frames
+            frame_queue.put(None)
 
         def resize_frame(frame, image_height):
             original_height, original_width, _ = frame.shape if len(frame.shape) == 3 else (frame.shape[0], frame.shape[1])
             aspect_ratio = original_width / original_height
             image_width = int(image_height * aspect_ratio)
-            #return frame
             return cv2.resize(frame, (image_width, image_height), interpolation=cv2.INTER_AREA)
 
         def consumer():
@@ -159,11 +145,15 @@ class LoadData:
                             pbar.update(1)
                             futures.remove(future)
 
+
+        start_time = time.time()
         producer_thread = threading.Thread(target=producer)
         producer_thread.start()
         consumer()
         producer_thread.join()
         cap.release()
+        elapsed_time = time.time() - start_time
+        print(f"✅ Video frame loading completed in {elapsed_time:.2f} seconds.")
 
         return frames
 
