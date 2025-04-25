@@ -22,12 +22,11 @@ class LoadData:
         folder_path = QtWidgets.QFileDialog.getExistingDirectory(self.app_instance, "Select Folder", default_path)
 
         if not folder_path:
-            return  # User canceled the selection
+            return
 
         self.app_instance.folder_path = folder_path
         self.app_instance.save_path = folder_path
 
-        # Get all .npy files in the folder
         npy_files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
 
 
@@ -51,10 +50,8 @@ class LoadData:
         if self.app_instance.folder_path:
             directory_path = os.path.dirname(self.app_instance.folder_path)
             self.app_instance.save_path = directory_path
-            cap = cv2.VideoCapture(self.app_instance.folder_path)
-            self.app_instance.len_file = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            cap.release()
-
+            self.app_instance.cap = cv2.VideoCapture(self.app_instance.folder_path)
+            self.app_instance.len_file = int(self.app_instance.cap.get(cv2.CAP_PROP_FRAME_COUNT))
             self.app_instance.Slider_frame.setMaximum(self.app_instance.len_file - 1)
             self.app_instance.video = True
             self.app_instance.NPY = False
@@ -65,7 +62,6 @@ class LoadData:
 
     def load_image(self, filepath, image_height):
         """Load and resize a single image from the given file path."""
-
         try:
             current_image = np.load(filepath, allow_pickle=True)
             height, width = current_image.shape[:2]
@@ -73,7 +69,6 @@ class LoadData:
             aspect_ratio = original_width / original_height
             image_width = int(image_height * aspect_ratio)
             resized_image = cv2.resize(current_image, (image_width, image_height), interpolation=cv2.INTER_AREA)
-            #return current_image
             return resized_image
         except Exception as e:
             print(f"Error loading image {filepath}: {e}")
@@ -83,7 +78,6 @@ class LoadData:
         """Load images from a directory using multithreading while preserving order and improving performance."""
         start_time = time.time()
         file_list = sorted([os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')])
-
         images = [None] * len(file_list)  # Preallocate the list to maintain order
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -163,14 +157,12 @@ class LoadData:
         if self.app_instance.NPY:
             self.app_instance.image = functions.load_npy_by_index(folder_path, self.app_instance.frame)
         elif self.app_instance.video:
-            self.app_instance.image = functions.load_frame_by_index(folder_path, self.app_instance.frame)
+            self.app_instance.image = functions.load_frame_by_index(self.app_instance.cap, self.app_instance.frame)
 
         functions.initialize_attributes(self.app_instance, self.app_instance.image)
         self.app_instance.scene2 = functions.second_region(
             self.app_instance.graphicsView_subImage,
             self.app_instance.graphicsView_MainFig,
-            self.app_instance.image_width,
-            self.app_instance.image_height
         )
         self.app_instance.graphicsView_MainFig, self.app_instance.scene = functions.display_region(
             self.app_instance.image,

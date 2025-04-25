@@ -1,9 +1,15 @@
 import numpy as np
+import cv2
 import matplotlib.pyplot as plt
+from FACEIT_codes.functions import SaturationSettings, apply_intensity_gradient_gray
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QSizePolicy
 from FACEIT_codes import functions
+from FACEIT_codes import pupil_detection
+from FACEIT_codes.functions import change_saturation_uniform, change_Gradual_saturation
+
+
 class PlotHandler:
     def __init__(self,app_instance):
         self.app_instance = app_instance
@@ -72,7 +78,6 @@ class PlotHandler:
         """Plots the main data on the provided axes, with an optional point marker at a specific frame."""
 
         x_values = np.arange(len(data))
-        # Plot the main data
         ax.plot(x_values, data, color=color, label=label, linestyle='--')
 
         if frame_index is not None and 0 <= frame_index < len(data):
@@ -215,20 +220,146 @@ class Display:
         self.app_instance = app_instance
 
 
+    def apply_intensity_gradient(self, gray_image):
+        settings = SaturationSettings(
+            primary_direction=self.app_instance.primary_direction,
+            brightness_curve=self.app_instance.brightness_curve,
+            brightness=self.app_instance.brightness,
+            secondary_direction=self.app_instance.secondary_direction,
+            secondary_brightness_curve=self.app_instance.secondary_brightness_curve,
+            secondary_brightness=self.app_instance.secondary_brightness,
+            saturation_ununiform=self.app_instance.saturation_ununiform,
+        )
+
+        return apply_intensity_gradient_gray(gray_image, settings)
+
+
+
+
+    from FACEIT_codes.functions import SaturationSettings, apply_intensity_gradient_gray
+
+    def display_sub_region(self, sub_region, ROI, Detect_pupil=False):
+        # === Remove old items ===
+        if self.app_instance.pupil_ellipse_items is not None:
+            self.app_instance.scene2.removeItem(self.app_instance.pupil_ellipse_items)
+            self.app_instance.pupil_ellipse_items = None
+        for item in self.app_instance.scene2.items():
+            if isinstance(item, QtWidgets.QGraphicsPixmapItem):
+                self.app_instance.scene2.removeItem(item)
+                del item
+
+        # === Build saturation settings once ===
+        saturation_settings = SaturationSettings(
+            primary_direction=self.app_instance.primary_direction,
+            brightness_curve=self.app_instance.brightness_curve,
+            brightness=self.app_instance.brightness,
+            secondary_direction=self.app_instance.secondary_direction,
+            secondary_brightness_curve=self.app_instance.secondary_brightness_curve,
+            secondary_brightness=self.app_instance.secondary_brightness,
+            saturation_ununiform = self.app_instance.saturation_ununiform,
+        )
+
+        # === Apply saturation ===
+        if self.app_instance.saturation_method == "Gradual":
+            if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
+                # Grayscale image
+                processed = apply_intensity_gradient_gray(sub_region, saturation_settings)
+                # processed = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
+            else:
+                # Fake grayscale (R == G == B)
+                if np.allclose(sub_region[..., 0], sub_region[..., 1]) and np.allclose(sub_region[..., 1],
+                                                                                       sub_region[..., 2]):
+                    gray = cv2.cvtColor(sub_region, cv2.COLOR_BGR2GRAY)
+                    processed = apply_intensity_gradient_gray(gray, saturation_settings)
+                    # processed = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
+                else:
+                    # Real color image
+                    processed = change_Gradual_saturation(sub_region, saturation_settings)
+                    processed = cv2.cvtColor(processed, cv2.COLOR_RGB2BGR)
+
+        elif self.app_instance.saturation_method == "Uniform":
+            if sub_region is not None:
+                processed = change_saturation_uniform(sub_region, saturation=self.app_instance.saturation,
+                                                       contrast=self.app_instance.contrast)
+            else:
+                raise ValueError("sub_region is None. Cannot apply uniform saturation.")
+        else:
+            processed = sub_region.copy()
+
+        # === Apply binarization ===
+        if self.app_instance.Show_binary:
+            binary = pupil_detection.Image_binarization(processed, self.app_instance.binary_threshold)
+
+            if binary.ndim == 2:  # Grayscale
+                sub_region_to_present = cv2.cvtColor(binary, cv2.COLOR_GRAY2RGBA)
+            elif binary.ndim == 3 and binary.shape[2] == 3:  # Color image
+                sub_region_to_present = cv2.cvtColor(binary, cv2.COLOR_BGR2RGBA)
+            else:
+                raise ValueError("Unsupported number of channels in binary image")
+        else:
+
+            if processed.ndim == 3 and processed.shape[2] == 3:
+                processed_gray = cv2.cvtColor(processed, cv2.COLOR_BGR2GRAY)
+            else:
+                processed_gray = processed
+
+            sub_region_to_present = cv2.cvtColor(processed_gray, cv2.COLOR_GRAY2RGBA)
+            # sub_region_to_present = cv2.cvtColor(processed, cv2.COLOR_BGR2RGBA)
+
+        # === Display in QGraphicsView ===
+        height, width = sub_region_to_present.shape[:2]
+        bytes_per_line = width * 4
+        qimage = QtGui.QImage(sub_region_to_present.data.tobytes(), width, height, bytes_per_line,
+                              QtGui.QImage.Format_RGBA8888)
+        pixmap = QtGui.QPixmap.fromImage(qimage)
+        scaled_pixmap = pixmap.scaled(width, height, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+
+        item = QtWidgets.QGraphicsPixmapItem(scaled_pixmap)
+        if ROI == "pupil":
+            item.setZValue(-1)
+        self.app_instance.scene2.addItem(item)
+        self.app_instance.scene2.setSceneRect(0, 0, scaled_pixmap.width(), scaled_pixmap.height())
+
+        # === Pupil Detection ===
+        if Detect_pupil:
+            _, center, w, h, angle, _ = pupil_detection.detect_pupil(
+                processed,
+                self.app_instance.erased_pixels,
+                self.app_instance.reflect_ellipse,
+                self.app_instance.mnd,
+                self.app_instance.binary_threshold,
+                self.app_instance.clustering_method,
+            )
+            ellipse_item = QtWidgets.QGraphicsEllipseItem(
+                int(center[0] - w), int(center[1] - h), w * 2, h * 2
+            )
+            ellipse_item.setTransformOriginPoint(int(center[0]), int(center[1]))
+            ellipse_item.setRotation(np.degrees(angle))
+            ellipse_item.setPen(QtGui.QPen(QtGui.QColor("purple"), 1))
+            self.app_instance.scene2.addItem(ellipse_item)
+            self.app_instance.pupil_ellipse_items = ellipse_item
+
+        # === Final render update ===
+        if self.app_instance.graphicsView_subImage:
+            self.app_instance.graphicsView_subImage.setScene(self.app_instance.scene2)
+            self.app_instance.graphicsView_subImage.setFixedSize(scaled_pixmap.width(), scaled_pixmap.height())
+
+        return self.app_instance.pupil_ellipse_items
+
     def update_frame_view(self, frame):
         """
-        Updates the displayed frame in the graphics view and handles the display of the pupil and face regions of interest (ROIs).
+        Updates the displayed frame in the graphics view and
+        handles the display of the pupil and face regions of interest (ROIs).
 
         Parameters:
         - frame (int): The frame index to be displayed.
         """
 
         self.app_instance.frame = frame
-        # Load the image based on the data type (NPY or video)
         if self.app_instance.NPY:
             self.app_instance.image = functions.load_npy_by_index(self.app_instance.folder_path, frame)
         elif self.app_instance.video:
-            self.app_instance.image = functions.load_frame_by_index(self.app_instance.folder_path, frame)
+            self.app_instance.image = functions.load_frame_by_index(self.app_instance.cap, frame)
 
         # Update the displayed frame number
         self.app_instance.lineEdit_frame_number.setText(str(self.app_instance.Slider_frame.value()))
@@ -240,7 +371,7 @@ class Display:
         )
 
         # Check if a pupil ROI exists and update its display if present
-        if self.app_instance.current_ROI == "pupi":
+        if self.app_instance.current_ROI == "pupil":
             self._display_pupil_roi()
         elif self.app_instance.current_ROI == "face":
             self._display_face_roi()
@@ -265,6 +396,27 @@ class Display:
                 Cursor=True
             )
 
+    def handle_pupil_detection_result(self, result):
+        if self.app_instance.pupil_ellipse_items is not None:
+            self.app_instance.scene2.removeItem(self.app_instance.pupil_ellipse_items)
+            self.app_instance.pupil_ellipse_items = None
+
+        _, P_detected_center, P_detected_width, P_detected_height, angle, _ = result
+        ellipse_item = QtWidgets.QGraphicsEllipseItem(
+            int(P_detected_center[0] - P_detected_width),
+            int(P_detected_center[1] - P_detected_height),
+            P_detected_width * 2,
+            P_detected_height * 2
+        )
+        ellipse_item.setTransformOriginPoint(int(P_detected_center[0]), int(P_detected_center[1]))
+        ellipse_item.setRotation(np.degrees(angle))
+        ellipse_item.setPen(QtGui.QPen(QtGui.QColor("purple"), 1))
+        self.app_instance.scene2.addItem(ellipse_item)
+        self.app_instance.pupil_ellipse_items = ellipse_item
+
+    def handle_pupil_error(self, error_msg):
+        print(f"[ERROR] Pupil detection failed: {error_msg}")
+
 
 
     def _display_pupil_roi(self):
@@ -276,13 +428,7 @@ class Display:
             self.app_instance.pupil_ROI, self.app_instance.image
         )
 
-        self.app_instance.pupil_ellipse_items = functions.display_sub_region(
-            self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
-            self.app_instance.scene2, "pupil", self.app_instance.saturation,self.app_instance.contrast, self.app_instance.mnd,
-            self.app_instance.binary_threshold,self.app_instance.clustering_method, self.app_instance.Show_biary,
-            self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
-            self.app_instance.pupil_ellipse_items, Detect_pupil=True
-        )
+        self.display_sub_region( self.app_instance.sub_region,"pupil", Detect_pupil=True)
 
     def _display_face_roi(self):
         """
@@ -292,9 +438,5 @@ class Display:
         self.app_instance.sub_region, _ = functions.show_ROI(
             self.app_instance.face_ROI, self.app_instance.image
         )
-        functions.display_sub_region(
-            self.app_instance.graphicsView_subImage, self.app_instance.sub_region,
-            self.app_instance.scene2, "face", self.app_instance.saturation,self.app_instance.contrast, self.app_instance.mnd,
-            self.app_instance.binary_threshold, self.app_instance.clustering_method,self.app_instance.Show_biary, self.app_instance.erased_pixels, self.app_instance.reflect_ellipse,
-            self.app_instance.pupil_ellipse_items, Detect_pupil=False
+        self.display_sub_region(self.app_instance.sub_region,"face", Detect_pupil=False
         )

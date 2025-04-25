@@ -31,13 +31,23 @@ def find_ellipse(binary_image):
     mean = np.mean(coords, axis=0)
     centered_coords = coords - mean
 
-    # Compute covariance matrix and its eigenvalues and eigenvectors
+    # Compute covariance matrix and check its validity
+    if len(centered_coords) < 2:
+        # Not enough points to calculate covariance matrix
+        return ((0, 0), (0, 0), 0), (float(mean[0]), float(mean[1])), 0.0, 0.0, 0.0
+
     cov_matrix = np.cov(centered_coords, rowvar=False)
+
+    # Ensure covariance matrix is 2D
+    if cov_matrix.ndim != 2 or cov_matrix.shape != (2, 2):
+        return ((0, 0), (0, 0), 0), (float(mean[0]), float(mean[1])), 0.0, 0.0, 0.0
+
+    # Compute eigenvalues and eigenvectors
     eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
 
     # Handle potential issues with eigenvalues
-    if np.any(np.isnan(eigenvalues)):
-        return ((0, 0), (0, 0), 0), (0.0, 0.0), 0.0, 0.0, 0.0
+    if np.any(np.isnan(eigenvalues)) or np.any(eigenvalues <= 0):
+        return ((0, 0), (0, 0), 0), (float(mean[0]), float(mean[1])), 0.0, 0.0, 0.0
 
     # Sort eigenvalues and eigenvectors in descending order
     sorted_indices = np.argsort(eigenvalues)[::-1]
@@ -49,10 +59,10 @@ def find_ellipse(binary_image):
     width = 2 * np.sqrt(eigenvalues[0])
     height = 2 * np.sqrt(eigenvalues[1])
 
-
     # Create the ellipse representation
     ellipse = (int(mean[0]), int(mean[1])), (int(width * 2), int(height * 2)), np.degrees(angle)
     return ellipse, (float(mean[0]), float(mean[1])), width, height, angle
+
 
 def overlap_reflect(reflections, pupil_ellipse, binary_image):
     """
@@ -92,7 +102,7 @@ def overlap_reflect(reflections, pupil_ellipse, binary_image):
     # Return the modified binary image
     return binary_image
 
-def find_cluster_watershed(binary_mask):
+def find_cluster_watershed(binary):
     """
     Applies watershed segmentation to a binary mask to separate touching blobs,
     plots all intermediate results, and returns the final convex hull mask.
@@ -104,8 +114,6 @@ def find_cluster_watershed(binary_mask):
     Returns:
     - hull_image (np.ndarray): Binary mask (uint8) of the convex hull around all separated regions.
     """
-    # Ensure binary
-    binary = cv2.threshold(binary_mask, 1, 255, cv2.THRESH_BINARY)[1]
 
     # Distance transform
     dist_transform = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
@@ -144,13 +152,12 @@ def find_cluster_watershed(binary_mask):
     # === Convex Hull computation ===
     contours, _ = cv2.findContours(label_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        print("No contours found after watershed.")
-        return np.zeros_like(binary_mask)
+        return np.zeros_like(binary)
 
     all_points = np.vstack(contours)
     hull = cv2.convexHull(all_points)
 
-    hull_image = np.zeros_like(binary_mask)
+    hull_image = np.zeros_like(binary)
     cv2.drawContours(hull_image, [hull], -1, 255, -1)
     return hull_image, color_img
 
@@ -276,43 +283,108 @@ def interpolate(blink_indices, data_series):
     # Return the fully interpolated data series
     return interpolated_data_series
 
-def Image_binarization(chosen_frame_region, binary_threshold = 220):
-    sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
-    _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
+def Image_binarization(chosen_frame_region, binary_threshold=220, erased_pixels=None):
+    """
+    Applies binary thresholding to a normalized grayscale, BGR, or BGRA image.
+    Supports erasing specific pixels before thresholding.
+    """
+    if len(chosen_frame_region.shape) == 3:
+        if chosen_frame_region.shape[2] == 4:
+            sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGRA2GRAY)
+        elif chosen_frame_region.shape[2] == 3:
+            sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
+        else:
+            raise ValueError(f"Unsupported number of channels: {chosen_frame_region.shape[2]}")
+    else:
+        sub_region_2Dgray = chosen_frame_region
+
+
+    # Erase pixels BEFORE thresholding
+    if erased_pixels is not None and len(erased_pixels) > 0:
+        if not isinstance(erased_pixels, np.ndarray):
+            erased_pixels = np.array(erased_pixels)
+        if erased_pixels.ndim == 2 and erased_pixels.shape[1] == 2:
+            sub_region_2Dgray[erased_pixels[:, 1], erased_pixels[:, 0]] = 255
+    # Normalize intensities to [0, 255]
+    sub_region_2Dgray = cv2.normalize(sub_region_2Dgray, None, 0, 255, cv2.NORM_MINMAX)
+    # _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
+    binary_image = cv2.adaptiveThreshold(
+        sub_region_2Dgray, 255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,  # or cv2.ADAPTIVE_THRESH_GAUSSIAN_C
+        cv2.THRESH_BINARY_INV,
+        blockSize=25,  # adjust based on pupil size
+        C=5  # offset (higher value = darker threshold)
+    )
+
     return binary_image
 
+
+# def Image_binarization(chosen_frame_region, binary_threshold=220):
+#     """
+#     Applies binary thresholding to a grayscale, BGR, or BGRA image.
+#
+#     Parameters:
+#         chosen_frame_region (np.ndarray): Input image (grayscale, BGR, or BGRA).
+#         binary_threshold (int): Threshold value for binarization.
+#
+#     Returns:
+#         np.ndarray: Binary (single-channel) image.
+#     """
+#     if len(chosen_frame_region.shape) == 3:
+#         if chosen_frame_region.shape[2] == 4:
+#             # Handle BGRA images
+#             sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGRA2GRAY)
+#         elif chosen_frame_region.shape[2] == 3:
+#             # Handle BGR images
+#             sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
+#         else:
+#             raise ValueError(f"Unsupported number of channels: {chosen_frame_region.shape[2]}")
+#     else:
+#         # Already grayscale
+#         sub_region_2Dgray = chosen_frame_region
+#
+#     _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
+#     return binary_image
+
+
+
 def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd, binary_threshold, clustering_method):
-    binary_image = Image_binarization(chosen_frame_region,binary_threshold)
-    binary_image = erase_pixels(erased_pixels, binary_image)
+
+    binary_image = Image_binarization(chosen_frame_region, binary_threshold, erased_pixels=erased_pixels)
 
     if clustering_method == "DBSCAN":
         binary_image = find_cluster_DBSCAN(binary_image, mnd)
     elif clustering_method == "watershed":
-        binary_image, _ = find_cluster_watershed(binary_image)
+        result = find_cluster_watershed(binary_image)
+        if isinstance(result, tuple):
+            binary_image = result[0]
+        else:
+            binary_image = result
     elif clustering_method == "SimpleContour":
         binary_image = find_cluster_simple(binary_image)
-
 
     if reflect_ellipse is None or reflect_ellipse == [[], [], []]:
         pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
     else:
         All_reflects = [
             [reflect_ellipse[0][variable], (reflect_ellipse[1][variable], reflect_ellipse[2][variable]), 0]
-            for variable in
-            range(len(reflect_ellipse[1]))]
-        for i in range(3):
+            for variable in range(len(reflect_ellipse[1]))
+        ]
+        for _ in range(3):
             pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
-            binary_image_update = overlap_reflect(All_reflects, pupil_ROI0, binary_image)
-            binary_image = binary_image_update
-    pupil_area = np.pi * (width*height)
+            binary_image = overlap_reflect(All_reflects, pupil_ROI0, binary_image)
+
+    pupil_area = np.pi * (width * height)
     return pupil_ROI0, center, width, height, angle, pupil_area
 
-def erase_pixels(erased_pixels, binary_image):
-    if erased_pixels is not None and len(erased_pixels) > 0:
-        if not isinstance(erased_pixels, np.ndarray):
-            erased_pixels = np.array(erased_pixels)
-        # Ensure the array is of shape (N, 2) for valid indexing
-        if erased_pixels.ndim == 2 and erased_pixels.shape[1] == 2:
-            # Set those pixels to 0 in the binary image
-            binary_image[erased_pixels[:, 1], erased_pixels[:, 0]] = 0
-    return binary_image
+
+
+# def erase_pixels(erased_pixels, binary_image):
+#     if erased_pixels is not None and len(erased_pixels) > 0:
+#         if not isinstance(erased_pixels, np.ndarray):
+#             erased_pixels = np.array(erased_pixels)
+#         # Ensure the array is of shape (N, 2) for valid indexing
+#         if erased_pixels.ndim == 2 and erased_pixels.shape[1] == 2:
+#             # Set those pixels to 0 in the binary image
+#             binary_image[erased_pixels[:, 1], erased_pixels[:, 0]] = 0
+#     return binary_image

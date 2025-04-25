@@ -110,18 +110,7 @@ class ROIHandler:
         - kwargs: Additional arguments.
         """
         sub_region, _ = functions.show_ROI(roi, image)
-        functions.display_sub_region(
-            self.app_instance.graphicsView_subImage,
-            sub_region,
-            self.app_instance.scene2,
-            roi_type,
-            saturation,
-            contrast,
-            self.app_instance.mnd,
-            self.app_instance.binary_threshold,
-            self.app_instance.clustering_method,
-            self.app_instance.Show_biary
-        )
+        self.app_instance.Display_handler.display_sub_region(sub_region, roi_type)
 
     def _add_to_scene2(self, roi, handles, roi_list_attr, center, kwargs):
         """

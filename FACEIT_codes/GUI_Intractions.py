@@ -1,5 +1,6 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 from FACEIT_codes import functions
+from FACEIT_codes.display_and_plots import Display
 
 
 class ImageProcessingWindow(QtWidgets.QWidget):
@@ -108,7 +109,6 @@ class GUI_Intract(QtWidgets.QGraphicsView):
 
 
         if self.pupil_ROI:
-            print("This is pupil")
             for handle_name, handle in self.pupil_handles.items():
                 if handle.contains(self.scene_pos):
                     self.Resizing = True
@@ -118,7 +118,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                     return
 
             if self.pupil_ROI.contains(self.scene_pos):
-                self.parent.current_ROI = "pupi"
+                self.parent.current_ROI = "pupil"
                 self.dragging = True
                 self.dragging_pupil = True
                 self.previous_mouse_pos_pupil = (event.pos().x(), event.pos().y())
@@ -126,7 +126,6 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 return
 
         if self.face_ROI:
-            print("This is Face")
             for handle_name, handle in self.face_handles.items():
                 if handle.contains(self.scene_pos):
                     self.Resizing = True
@@ -306,14 +305,12 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         self.resetModes()
         if self.dragging:
             if self.dragging_face:
-                self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",self.parent.saturation,self.parent.contrast, self.parent.mnd,
-                                                 self.parent.binary_threshold,self.parent.clustering_method, self.parent.Show_biary)
+                self.parent.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
+                _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"face")
                 self.parent.set_frame(self.parent.Face_frame)
             elif self.dragging_pupil:
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2,"pupil",self.parent.saturation,
-                                                 self.parent.contrast, self.parent.mnd, self.parent.binary_threshold,self.parent.clustering_method,self.parent.Show_biary)
+                _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"pupil")
                 self.parent.set_frame(self.parent.Pupil_frame)
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
@@ -325,14 +322,13 @@ class GUI_Intract(QtWidgets.QGraphicsView):
 
         elif self.Resizing:
             if self.Resize_face:
-                self.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.sub_region, self.parent.scene2, "face",
-                                                 self.parent.saturation,self.parent.contrast, self.parent.mnd, self.parent.binary_threshold,self.parent.clustering_method, self.parent.Show_biary)
+                self.parent.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
+
+                _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"face")
                 self.parent.set_frame(self.parent.Face_frame)
             elif self.Resize_pupil:
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
-                _ = functions.display_sub_region(self.graphicsView_subImage, self.parent.sub_region, self.parent.scene2, "pupil",
-                                                 self.parent.saturation,self.parent.contrast, self.parent.mnd, self.parent.binary_threshold,self.parent.clustering_method, self.parent.Show_biary)
+                _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"pupil")
                 self.parent.set_frame(self.parent.Pupil_frame)
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)

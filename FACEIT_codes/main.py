@@ -37,22 +37,25 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.video = False
         self.find_grooming_threshold = False
         self.contrast = 1
+        self.brightness = 1
+        self.brightness_curve = 1
+        self.secondary_brightness_curve = 1
         self.len_file = 1
         self.erase_size = 20
         self.ratio = 2
         self.mnd = 10
         self.binary_threshold = 220
-        self.clustering_method = "DBSCAN"
-        self.Show_biary =  False
+        self.clustering_method = "SimpleContour"
+        self.saturation_method = "None"
+        self.Show_binary =  False
+        self.cap = None
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.Main_V_Layout = QtWidgets.QVBoxLayout(self.centralwidget)
         MainWindow.setCentralWidget(self.centralwidget)
         self.setup_menubar(MainWindow)
         self.setup_buttons()
         self.setup_graphics_views()
-        self.setup_saturation()
-        self.setup_contrast()
-        self.setup_binary_threshold()
+        self.initiate_sliders()
         self.setup_Result()
         self.setup_styles()
         self.setup_connections()
@@ -282,6 +285,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
         # === Options and Threshold ===
         self.optionsLayout = QtWidgets.QGridLayout()
+
         label = QtWidgets.QLabel("Options & Threshold")
         font = label.font()
         font.setBold(True)
@@ -289,92 +293,220 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.groupBoxLayout.addWidget(label)
         self.groupBoxLayout.addLayout(self.optionsLayout)
 
+        # Grooming Threshold
         self.grooming_limit_Label = QtWidgets.QLabel("Grooming Threshold:")
-        self.optionsLayout.addWidget(self.grooming_limit_Label, 0, 0)
+        self.optionsLayout.addWidget(self.grooming_limit_Label, 2, 2)
 
         self.lineEdit_grooming_y = QtWidgets.QLineEdit()
         self.lineEdit_grooming_y.setFixedWidth(50)
-        self.optionsLayout.addWidget(self.lineEdit_grooming_y, 1, 0)
+        self.optionsLayout.addWidget(self.lineEdit_grooming_y,3, 2)
 
+        # Clustering method
+        self.Clustering_Label = QtWidgets.QLabel("Clustering Method:")
+        self.optionsLayout.addWidget(self.Clustering_Label, 0, 0)
 
-        self.checkBox_binary = QtWidgets.QCheckBox("Show binary")
+        self.radioButton_DBSCAN = QtWidgets.QRadioButton("DBSCAN")
+        self.radioButton_DBSCAN.setChecked(True)
+        self.optionsLayout.addWidget(self.radioButton_DBSCAN, 1, 0)
+
+        self.radioButton_watershed = QtWidgets.QRadioButton("Watershed")
+        self.optionsLayout.addWidget(self.radioButton_watershed, 2, 0)
+
+        self.radioButton_SimpleContour = QtWidgets.QRadioButton("Simple Contour")
+        self.optionsLayout.addWidget(self.radioButton_SimpleContour, 3, 0)
+
+        # === SECOND COLUMN: Binary & Face ===
+        self.checkBox_binary = QtWidgets.QCheckBox("Show Binary")
         self.optionsLayout.addWidget(self.checkBox_binary, 0, 1)
 
         self.checkBox_face = QtWidgets.QCheckBox("Whisker Pad")
-        self.optionsLayout.addWidget(self.checkBox_face,1,1)
         self.checkBox_face.setEnabled(False)
+        self.optionsLayout.addWidget(self.checkBox_face, 1, 1)
 
+        self.checkBox_nwb = QtWidgets.QCheckBox("Save NWB")
+        self.optionsLayout.addWidget(self.checkBox_nwb, 2, 1)
 
-        self.checkBox_nwb = QtWidgets.QCheckBox("Save nwb")
-        self.optionsLayout.addWidget(self.checkBox_nwb, 2,1)
-        self.Clustering_Label = QtWidgets.QLabel("Clustering method:")
-        self.optionsLayout.addWidget(self.Clustering_Label, 2, 0)
-        self.radioButton_DBSCAN = QtWidgets.QRadioButton("DBSCAN")
-        self.radioButton_DBSCAN.setChecked(True)
-        self.optionsLayout.addWidget(self.radioButton_DBSCAN, 3, 0)
-        self.radioButton_watershed = QtWidgets.QRadioButton("watershed")
-        self.optionsLayout.addWidget(self.radioButton_watershed, 4, 0)
-        self.radioButton_SimpleContour = QtWidgets.QRadioButton("Simple Contour")
-        self.optionsLayout.addWidget(self.radioButton_SimpleContour, 5, 0)
+        # === THIRD COLUMN: Pupil & Save Video ===
         self.checkBox_pupil = QtWidgets.QCheckBox("Pupil")
-        self.optionsLayout.addWidget(self.checkBox_pupil, 3,1)
         self.checkBox_pupil.setEnabled(False)
+        self.optionsLayout.addWidget(self.checkBox_pupil, 0, 2)
+
         self.save_video = QtWidgets.QCheckBox("Save Video")
-        self.optionsLayout.addWidget(self.save_video, 4, 1)
+        self.optionsLayout.addWidget(self.save_video, 1, 2)
 
-        # Add the group box to the main layout
+        # Final add
         self.mainLayout.addWidget(self.groupBox)
-
-        # Set the main layout to the central widget
         self.centralwidget.setLayout(self.mainLayout)
 
-    def setup_saturation(self):
-        self.sliderLayout = QtWidgets.QVBoxLayout()
-        self.saturation_Label = QtWidgets.QLabel("Saturation")
-        self.saturation_Label.setAlignment(QtCore.Qt.AlignLeft)
-        self.sliderLayout.addWidget(self.saturation_Label)
-        self.saturation_slider_layout = QtWidgets.QHBoxLayout()
-        self.saturation_Slider = functions.setup_sliders(self.centralwidget, 0, 1000, 0, "horizontal")
-        self.saturation_slider_layout.addWidget(self.saturation_Slider)
+    ###################################
+    def create_slider_block(self, label_text, slider, line_edit):
+        block_layout = QtWidgets.QVBoxLayout()
+        label = QtWidgets.QLabel(label_text)
+        label.setAlignment(QtCore.Qt.AlignLeft)
+
+        slider_layout = QtWidgets.QHBoxLayout()
+        slider_layout.addWidget(slider)
+        line_edit.setFixedWidth(50)
+        slider_layout.addWidget(line_edit)
+
+        block_layout.addWidget(label)
+        block_layout.addLayout(slider_layout)
+        return block_layout
+
+    def initiate_sliders(self):
+        """Sets up sliders and controls in a 3-column layout with frames."""
+        self.slider_grid = QtWidgets.QGridLayout()
+
+        # === LEFT COLUMN: Uniform Settings ===
+        self.uniform_groupbox = QtWidgets.QGroupBox("Uniform Image Adjustments")
+        self.uniform_layout = QtWidgets.QVBoxLayout(self.uniform_groupbox)
+
+        self.radio_button_Uniform = QtWidgets.QRadioButton("Uniform Image Adjustments")
+        self.radio_button_Gradual = QtWidgets.QRadioButton("Gradual Image Adjustments")
+        self.adjustment_mode_group = QtWidgets.QButtonGroup()
+        self.adjustment_mode_group.addButton(self.radio_button_Uniform)
+        self.adjustment_mode_group.addButton(self.radio_button_Gradual)
+
+        self.saturation_Slider = functions.setup_sliders(self.centralwidget, 0, 100, 0, "horizontal")
         self.lineEdit_satur_value = QtWidgets.QLineEdit(self.centralwidget)
-        self.lineEdit_satur_value.setFixedWidth(50)
-        self.saturation_slider_layout.addWidget(self.lineEdit_satur_value)
-        self.sliderLayout.addLayout(self.saturation_slider_layout)
-        self.Main_V_Layout.addLayout(self.sliderLayout)
+        saturation_block = self.create_slider_block("Saturation", self.saturation_Slider, self.lineEdit_satur_value)
 
-    def setup_contrast(self):
-        self.sliderLayout2 = QtWidgets.QVBoxLayout()
-        self.contrast_Label = QtWidgets.QLabel("contrast")
-        self.contrast_Label.setAlignment(QtCore.Qt.AlignLeft)
-        self.sliderLayout2.addWidget(self.contrast_Label)
-        self.contrast_slider_layout = QtWidgets.QHBoxLayout()
         self.contrast_Slider = functions.setup_sliders(self.centralwidget, 0, 30, 10, "horizontal")
-        self.contrast_slider_layout.addWidget(self.contrast_Slider)
         self.lineEdit_contrast_value = QtWidgets.QLineEdit(self.centralwidget)
-        self.lineEdit_contrast_value.setFixedWidth(50)
-        self.contrast_slider_layout.addWidget(self.lineEdit_contrast_value)
-        self.sliderLayout2.addLayout(self.contrast_slider_layout)
-        self.Main_V_Layout.addLayout(self.sliderLayout2)
+        contrast_block = self.create_slider_block("Contrast", self.contrast_Slider, self.lineEdit_contrast_value)
 
-    def setup_binary_threshold(self):
-        self.sliderLayout3 = QtWidgets.QVBoxLayout()
-        self.binary_threshold_Label = QtWidgets.QLabel("binary_threshold")
-        self.binary_threshold_Label.setAlignment(QtCore.Qt.AlignLeft)
-        self.sliderLayout3.addWidget(self.binary_threshold_Label)
-        self.binary_threshold_slider_layout = QtWidgets.QHBoxLayout()
+        self.uniform_layout.addWidget(self.radio_button_Uniform)
+        self.uniform_layout.addLayout(saturation_block)
+        self.uniform_layout.addLayout(contrast_block)
+
+        self.slider_grid.addWidget(self.uniform_groupbox, 0, 0)
+
+        # === MIDDLE + RIGHT COLUMN: Gradual Settings Inside GroupBox ===
+        self.gradual_groupbox = QtWidgets.QGroupBox("Gradual Image Adjustments")
+        self.gradual_groupbox_layout = QtWidgets.QVBoxLayout(self.gradual_groupbox)  # <-- IMPORTANT: Now VERTICAL
+
+        # MIDDLE COLUMN
+        self.middle_column_layout = QtWidgets.QVBoxLayout()
+        self.primary_light_label = QtWidgets.QLabel("Primary Light Direction")
+        self.primary_directions_layout = QtWidgets.QHBoxLayout()
+
+        self.radio_button_none = QtWidgets.QRadioButton("None")
+        self.radio_button_up = QtWidgets.QRadioButton("Up")
+        self.radio_button_down = QtWidgets.QRadioButton("Down")
+        self.radio_button_left = QtWidgets.QRadioButton("Left")
+        self.radio_button_right = QtWidgets.QRadioButton("Right")
+        self.radio_button_none.setChecked(True)
+
+        for btn in [self.radio_button_none, self.radio_button_up, self.radio_button_down,
+                    self.radio_button_left, self.radio_button_right]:
+            self.primary_directions_layout.addWidget(btn)
+
+        self.radio_group_primary_direction = QtWidgets.QButtonGroup()
+        for btn in [self.radio_button_none, self.radio_button_up, self.radio_button_down,
+                    self.radio_button_left, self.radio_button_right]:
+            self.radio_group_primary_direction.addButton(btn)
+            btn.toggled.connect(self.update_light_direction)
+
+        self.brightness_curve_Slider = functions.setup_sliders(self.centralwidget, 0, 30, 10, "horizontal")
+        self.lineEdit_brightness_curve_value = QtWidgets.QLineEdit(self.centralwidget)
+        brightness_curve_block = self.create_slider_block("Primary Brightness Curve",
+                                                          self.brightness_curve_Slider,
+                                                          self.lineEdit_brightness_curve_value)
+
+        self.brightness_Slider = functions.setup_sliders(self.centralwidget, 10, 30, 10, "horizontal")
+        self.lineEdit_brightness_value = QtWidgets.QLineEdit(self.centralwidget)
+        brightness_block = self.create_slider_block("Primary Max Brightness",
+                                                    self.brightness_Slider,
+                                                    self.lineEdit_brightness_value)
+
+        self.middle_column_layout.addWidget(self.radio_button_Gradual)
+        self.middle_column_layout.addWidget(self.primary_light_label)
+        self.middle_column_layout.addLayout(self.primary_directions_layout)
+        self.middle_column_layout.addLayout(brightness_curve_block)
+        self.middle_column_layout.addLayout(brightness_block)
+
+        # RIGHT COLUMN
+        self.right_column_layout = QtWidgets.QVBoxLayout()
+        self.secondary_light_label = QtWidgets.QLabel("Secondary Light Direction")
+        self.secondary_directions_layout = QtWidgets.QHBoxLayout()
+
+        self.radio_button_none_secondary = QtWidgets.QRadioButton("None")
+        self.radio_button_up_secondary = QtWidgets.QRadioButton("Up")
+        self.radio_button_left_secondary = QtWidgets.QRadioButton("Left")
+        self.radio_button_down_secondary = QtWidgets.QRadioButton("Down")
+        self.radio_button_right_secondary = QtWidgets.QRadioButton("Right")
+        self.radio_button_none_secondary.setChecked(True)
+
+        for btn in [self.radio_button_none_secondary, self.radio_button_up_secondary,
+                    self.radio_button_left_secondary, self.radio_button_down_secondary,
+                    self.radio_button_right_secondary]:
+            self.secondary_directions_layout.addWidget(btn)
+
+        self.radio_group_secondary_direction = QtWidgets.QButtonGroup()
+        for btn in [self.radio_button_none_secondary, self.radio_button_up_secondary,
+                    self.radio_button_left_secondary, self.radio_button_down_secondary,
+                    self.radio_button_right_secondary]:
+            self.radio_group_secondary_direction.addButton(btn)
+            btn.toggled.connect(self.update_secondary_light_direction)
+
+        self.brightness_curve_secondary_Slider = functions.setup_sliders(self.centralwidget, 0, 30, 10, "horizontal")
+        self.lineEdit_brightness_curve_secondary_value = QtWidgets.QLineEdit(self.centralwidget)
+        brightness_curve_secondary_block = self.create_slider_block("Secondary Brightness Curve",
+                                                                    self.brightness_curve_secondary_Slider,
+                                                                    self.lineEdit_brightness_curve_secondary_value)
+
+        self.brightness_secondary_Slider = functions.setup_sliders(self.centralwidget, 10, 30, 10, "horizontal")
+        self.lineEdit_brightness_secondary_value = QtWidgets.QLineEdit(self.centralwidget)
+        brightness_secondary_block = self.create_slider_block("Secondary Max Brightness",
+                                                              self.brightness_secondary_Slider,
+                                                              self.lineEdit_brightness_secondary_value)
+
+        self.right_column_layout.addWidget(self.secondary_light_label)
+        self.right_column_layout.addLayout(self.secondary_directions_layout)
+        self.right_column_layout.addLayout(brightness_curve_secondary_block)
+        self.right_column_layout.addLayout(brightness_secondary_block)
+
+        # Combine MIDDLE + RIGHT into one HORIZONTAL layout
+        self.middle_right_layout = QtWidgets.QHBoxLayout()
+        self.middle_right_layout.addLayout(self.middle_column_layout)
+        self.middle_right_layout.addLayout(self.right_column_layout)
+
+        # Add the middle-right layout to gradual groupbox
+        self.gradual_groupbox_layout.addLayout(self.middle_right_layout)
+
+        # === Stretch saturation_ununiform_block across whole bottom ===
+        self.saturation_ununiform_Slider = functions.setup_sliders(self.centralwidget, 0, 20, 10, "horizontal")
+        self.lineEdit_satur_ununiform_value = QtWidgets.QLineEdit(self.centralwidget)
+        saturation_ununiform_block = self.create_slider_block("Saturation", self.saturation_ununiform_Slider,
+                                                              self.lineEdit_satur_ununiform_value)
+
+        self.saturation_ununiform_container = QtWidgets.QHBoxLayout()
+        self.saturation_ununiform_container.addLayout(saturation_ununiform_block)
+        self.gradual_groupbox_layout.addLayout(self.saturation_ununiform_container)
+
+        # === Finally add gradual groupbox to the main slider grid ===
+        self.slider_grid.addWidget(self.gradual_groupbox, 0, 1)
+        self.slider_grid.setColumnStretch(0, 1)
+        self.slider_grid.setColumnStretch(1, 2)
+
+        # === BOTTOM: Binary Threshold (full width) ===
         self.binary_threshold_Slider = functions.setup_sliders(self.centralwidget, 0, 255, 220, "horizontal")
-        self.binary_threshold_slider_layout.addWidget(self.binary_threshold_Slider)
         self.lineEdit_binary_threshold_value = QtWidgets.QLineEdit(self.centralwidget)
-        self.lineEdit_binary_threshold_value.setFixedWidth(50)
-        self.binary_threshold_slider_layout.addWidget(self.lineEdit_binary_threshold_value)
-        self.sliderLayout3.addLayout(self.binary_threshold_slider_layout)
-        self.Main_V_Layout.addLayout(self.sliderLayout3)
+        binary_block = self.create_slider_block("Binary Threshold", self.binary_threshold_Slider,
+                                                self.lineEdit_binary_threshold_value)
+        self.slider_grid.addLayout(binary_block, 4, 0, 1, 3)
 
+        self.Main_V_Layout.addLayout(self.slider_grid)
 
     def setup_connections(self):
         self.LoadVideo.triggered.connect(self.load_handler.load_video)
         self.load_np.triggered.connect(self.load_handler.open_image_folder)
         self.saturation_Slider.valueChanged.connect(self.satur_value)
+        self.saturation_ununiform_Slider.valueChanged.connect(self.satur_ununiform_value)
+        self.brightness_curve_Slider.valueChanged.connect(self.update_brightness_curve)
+        self.brightness_curve_secondary_Slider.valueChanged.connect(self.update_brightness_curve_secondary)
+        self.brightness_Slider.valueChanged.connect(self.update_brightness)
+        self.brightness_secondary_Slider.valueChanged.connect(self.update_brightness_secondary)
         self.contrast_Slider.valueChanged.connect(self.contrast_value)
         self.binary_threshold_Slider.valueChanged.connect(self.binary_threshold_value)
         self.Slider_frame.valueChanged.connect(self.Display_handler.update_frame_view)
@@ -392,18 +524,30 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.radioButton_DBSCAN.toggled.connect(self.update_clustering_method)
         self.radioButton_watershed.toggled.connect(self.update_clustering_method)
         self.radioButton_SimpleContour.toggled.connect(self.update_clustering_method)
+        self.radio_button_Uniform.toggled.connect(self.update_saturation_method)
+        self.radio_button_Gradual.toggled.connect(self.update_saturation_method)
 
     def setup_styles(self):
         self.centralwidget.setStyleSheet(functions.get_stylesheet())
         functions.set_button_style(self.saturation_Slider, "QSlider")
+        functions.set_button_style(self.saturation_ununiform_Slider, "QSlider")
         functions.set_button_style(self.contrast_Slider, "QSlider")
         functions.set_button_style(self.binary_threshold_Slider, "QSlider")
         functions.set_button_style(self.Slider_frame, "QSlider")
+        functions.set_button_style(self.brightness_Slider, "QSlider")
+        functions.set_button_style(self.brightness_curve_Slider, "QSlider")
+        functions.set_button_style(self.brightness_secondary_Slider, "QSlider")
+        functions.set_button_style(self.brightness_curve_secondary_Slider, "QSlider")
+        self.lineEdit_brightness_value.setStyleSheet("background-color: #999999")
+        self.lineEdit_brightness_curve_value.setStyleSheet("background-color: #999999")
+        self.lineEdit_brightness_curve_secondary_value.setStyleSheet("background-color: #999999")
+        self.lineEdit_brightness_secondary_value.setStyleSheet("background-color: #999999")
         self.lineEdit_binary_threshold_value.setStyleSheet("background-color: #999999")
         self.lineEdit_frame_number.setStyleSheet("background-color: #999999")
         self.lineEdit_satur_value.setStyleSheet("background-color: #999999")
         self.lineEdit_contrast_value.setStyleSheet("background-color: #999999")
         self.lineEdit_grooming_y.setStyleSheet("background-color: #999999")
+        self.lineEdit_satur_ununiform_value.setStyleSheet("background-color: #999999")
 
     def clear_graphics_view(self, graphicsView):
         """Clear any existing layout or widgets in the graphicsView."""
@@ -428,13 +572,66 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def pupil_check(self):
         return self.checkBox_pupil.isChecked()
     def update_binary_flag(self, state):
-        self.Show_biary = (state == QtCore.Qt.Checked)
+        self.Show_binary = (state == QtCore.Qt.Checked)
     def face_check(self):
         return self.checkBox_face.isChecked()
     def nwb_check(self):
         return self.checkBox_nwb.isChecked()
     def save_video_chack(self):
         return self.save_video.isChecked()
+
+
+    def update_saturation_method(self):
+        if self.radio_button_Uniform.isChecked():
+            self.saturation_method = "Uniform"
+            self.brightness_curve_Slider.setEnabled(False)
+            self.brightness_Slider.setEnabled(False)
+            self.brightness_secondary_Slider.setEnabled(False)
+            self.brightness_curve_secondary_Slider.setEnabled(False)
+            self.saturation_ununiform_Slider.setEnabled(False)
+            self.contrast_Slider.setEnabled(True)
+            self.saturation_Slider.setEnabled(True)
+            self.binary_threshold_Slider.setEnabled(True)
+        elif self.radio_button_Gradual.isChecked():
+            self.saturation_method = "Gradual"
+            self.contrast_Slider.setEnabled(False)
+            self.saturation_Slider.setEnabled(False)
+            self.binary_threshold_Slider.setEnabled(True)
+            self.brightness_curve_Slider.setEnabled(True)
+            self.brightness_Slider.setEnabled(True)
+            self.brightness_secondary_Slider.setEnabled(True)
+            self.brightness_curve_secondary_Slider.setEnabled(True)
+            self.saturation_ununiform_Slider.setEnabled(True)
+
+    def update_light_direction(self):
+        selected_direction = None
+        if self.radio_button_none.isChecked():
+            selected_direction = None
+        if self.radio_button_right.isChecked():
+            selected_direction = "Right"
+        elif self.radio_button_down.isChecked():
+            selected_direction = "Down"
+        elif self.radio_button_up.isChecked():
+            selected_direction = "UP"
+        elif self.radio_button_left.isChecked():
+            selected_direction = "Left"
+
+        self.primary_direction = selected_direction
+
+    def update_secondary_light_direction(self):
+        selected_direction = None
+        if self.radio_button_none_secondary.isChecked():
+            selected_direction = None
+        elif self.radio_button_right_secondary.isChecked():
+            selected_direction = "Right"
+        elif self.radio_button_down_secondary.isChecked():
+            selected_direction = "Down"
+        elif self.radio_button_up_secondary.isChecked():
+            selected_direction = "UP"
+        elif self.radio_button_left_secondary.isChecked():
+            selected_direction = "Left"
+        self.secondary_direction = selected_direction
+
 
     def update_clustering_method(self):
         if self.radioButton_DBSCAN.isChecked():
@@ -449,11 +646,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.lineEdit_satur_value.setText(str(value))
         self.saturation = value
 
-
         if self.checkBox_binary.isChecked():
-            self.Show_biary = True
+            self.Show_binary = True
         else:
-            self.Show_biary = False
+            self.Show_binary = False
 
         # Ensure `sub_region` and `scene2` exist before trying to update the display
         if hasattr(self, 'sub_region') and self.sub_region is not None:
@@ -461,33 +657,100 @@ class FaceMotionApp(QtWidgets.QMainWindow):
                 self.scene2 = QtWidgets.QGraphicsScene()  # Initialize if missing
 
             # Update the display with the new saturation
-            functions.display_sub_region(
-                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation,self.contrast, self.mnd, self.binary_threshold,self.clustering_method,self.Show_biary
-            )
+            self.Display_handler.display_sub_region(self.sub_region,"pupil", Detect_pupil=True)
+    def satur_ununiform_value(self, value):
+        self.lineEdit_satur_ununiform_value.setText(str( value/10))
+        self.saturation_ununiform = value/10
+
+        if self.checkBox_binary.isChecked():
+            self.Show_binary = True
+        else:
+            self.Show_binary = False
+
+        # Ensure `sub_region` and `scene2` exist before trying to update the display
+        if hasattr(self, 'sub_region') and self.sub_region is not None:
+            if not hasattr(self, 'scene2') or self.scene2 is None:
+                self.scene2 = QtWidgets.QGraphicsScene()  # Initialize if missing
+
+            # Update the display with the new saturation
+            self.Display_handler.display_sub_region(self.sub_region, "pupil", Detect_pupil=True)
 
     def contrast_value(self, value):
         self.lineEdit_contrast_value.setText(str(value/10))
         self.contrast =value/10
         if self.checkBox_binary.isChecked():
-            self.Show_biary = True
+            self.Show_binary = True
         else:
-            self.Show_biary = False
+            self.Show_binary = False
         if hasattr(self, 'sub_region') and self.sub_region is not None:
             if not hasattr(self, 'scene2') or self.scene2 is None:
                 self.scene2 = QtWidgets.QGraphicsScene()  # Initialize if missing
 
             # Update the display with the new saturation
-            functions.display_sub_region(
-                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation,self.contrast, self.mnd, self.binary_threshold,self.clustering_method,self.Show_biary
-            )
+            self.Display_handler.display_sub_region(self.sub_region, "pupil", Detect_pupil=True)
+
+    def update_brightness_curve(self, value):
+        self.lineEdit_brightness_curve_value.setText(str(value/10))
+        self.brightness_curve = value/10
+        if self.checkBox_binary.isChecked():
+            self.Show_binary = True
+        else:
+            self.Show_binary = False
+        if hasattr(self, 'sub_region') and self.sub_region is not None:
+            if not hasattr(self, 'scene2') or self.scene2 is None:
+                self.scene2 = QtWidgets.QGraphicsScene()
+            self.Display_handler.display_sub_region(self.sub_region, "pupil", Detect_pupil=True)
+    ####################################
+    def update_brightness_curve_secondary(self, value):
+        self.lineEdit_brightness_curve_secondary_value.setText(str(value/10))
+        self.secondary_brightness_curve = value/10
+        if self.checkBox_binary.isChecked():
+            self.Show_binary = True
+        else:
+            self.Show_binary = False
+        if hasattr(self, 'sub_region') and self.sub_region is not None:
+            if not hasattr(self, 'scene2') or self.scene2 is None:
+                self.scene2 = QtWidgets.QGraphicsScene()
+            self.Display_handler.display_sub_region(self.sub_region, "pupil", Detect_pupil=True)
+
+
+    def update_brightness(self, value):
+        self.lineEdit_brightness_value.setText(str(value/10))
+        self.brightness = value/10
+        if self.checkBox_binary.isChecked():
+            self.Show_binary = True
+        else:
+            self.Show_binary = False
+        if hasattr(self, 'sub_region') and self.sub_region is not None:
+            if not hasattr(self, 'scene2') or self.scene2 is None:
+                self.scene2 = QtWidgets.QGraphicsScene()
+
+            # Update the display with the new saturation
+            self.Display_handler.display_sub_region(self.sub_region, "pupil", Detect_pupil=True)
+
+
+    def update_brightness_secondary(self, value):
+        self.lineEdit_brightness_secondary_value.setText(str(value/10))
+        self.secondary_brightness = value/10
+        if self.checkBox_binary.isChecked():
+            self.Show_binary = True
+        else:
+            self.Show_binary = False
+        if hasattr(self, 'sub_region') and self.sub_region is not None:
+            if not hasattr(self, 'scene2') or self.scene2 is None:
+                self.scene2 = QtWidgets.QGraphicsScene()
+
+            # Update the display with the new saturation
+            self.Display_handler.display_sub_region(self.sub_region, "pupil", Detect_pupil=True)
+    ##############################################
 
     def binary_threshold_value(self, value):
         self.lineEdit_binary_threshold_value.setText(str(value))
         self.binary_threshold = value
         if self.checkBox_binary.isChecked():
-            self.Show_biary = True
+            self.Show_binary = True
         else:
-            self.Show_biary = False
+            self.Show_binary = False
 
         # Ensure `sub_region` and `scene2` exist before trying to update the display
         if hasattr(self, 'sub_region') and self.sub_region is not None:
@@ -495,9 +758,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
                 self.scene2 = QtWidgets.QGraphicsScene()  # Initialize if missing
 
             # Update the display with the new saturation
-            functions.display_sub_region(
-                self.graphicsView_subImage, self.sub_region, self.scene2, "pupil", self.saturation,self.contrast, self.mnd, self.binary_threshold,self.clustering_method, self.Show_biary
-            )
+            self.Display_handler.display_sub_region(self.sub_region, "pupil", Detect_pupil=True)
 
 
 
@@ -516,7 +777,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.worker = PupilWorker(
             images, self.process_handler, self.saturation, self.contrast,
             self.erased_pixels, self.reflect_ellipse, self.mnd,
-            self.binary_threshold, self.clustering_method
+            self.binary_threshold, self.clustering_method, self.saturation_method, self.saturation_ununiform
         )
         self.worker.moveToThread(self.thread)
 
@@ -564,7 +825,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def display_removed_grooming(self, grooming_thr, facemotion ):
         self.facemotion_without_grooming, self.grooming_ids, self.grooming_thr = self.process_handler.remove_grooming(grooming_thr, facemotion)
-        print("grooming_ids", self.grooming_ids)
         self.plot_handler.plot_result(self.facemotion_without_grooming, self.graphicsView_whisker, "motion")
 
     def undo_grooming(self):

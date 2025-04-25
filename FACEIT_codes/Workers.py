@@ -6,22 +6,25 @@ class PupilWorker(QObject):
     error = pyqtSignal(str)
 
     def __init__(self, images, process_handler, saturation, contrast, erased_pixels,
-                 reflect_ellipse, mnd, binary_threshold, clustering_method):
+                 reflect_ellipse, mnd, binary_threshold, clustering_method, saturation_method,saturation_ununiform):
         super().__init__()
         self.images = images
         self.process_handler = process_handler
         self.saturation = saturation
+        self.saturation_ununiform = saturation_ununiform
         self.contrast = contrast
         self.erased_pixels = erased_pixels
         self.reflect_ellipse = reflect_ellipse
         self.mnd = mnd
         self.binary_threshold = binary_threshold
         self.clustering_method = clustering_method
+        self.saturation_method = saturation_method
 
     def run(self):
+
         try:
             result = self.process_handler.pupil_dilation_comput(
-                self.images, self.saturation, self.contrast, self.erased_pixels,
+                self.images, self.saturation,self.saturation_ununiform, self.contrast, self.erased_pixels,
                 self.reflect_ellipse, self.mnd, self.binary_threshold, self.clustering_method
             )
             self.finished.emit(result)

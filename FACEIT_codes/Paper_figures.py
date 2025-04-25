@@ -57,15 +57,7 @@ def find_ellipse(binary_image):
     # Calculate mean position and center the coordinates
     mean = np.mean(coords, axis=0)
     centered_coords = coords - mean
-    ###############
-    plt.figure(figsize=(8, 8))
-    plt.imshow(binary_image, cmap='gray', alpha=0.5)
-    plt.scatter(centered_coords[:, 0] + mean[0], centered_coords[:, 1] + mean[1], color='red', s=10, label='Centered Coords')
-    plt.scatter(mean[0], mean[1], color='blue', marker='x', s=100, label='Mean (Center)')
-    plt.title("Centered Coordinates in Binary Image")
-    plt.legend()
-    plt.show()
-    #################
+
 
     # Compute covariance matrix and its eigenvalues and eigenvectors
     cov_matrix = np.cov(centered_coords, rowvar=False)

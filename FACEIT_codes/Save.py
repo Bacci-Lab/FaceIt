@@ -56,9 +56,8 @@ class SaveHandler:
             self.app_instance.grooming_thr = np.full(1, np.nan)
         if not hasattr(self.app_instance, 'blinking_ids'):
             self.app_instance.blinking_ids = np.full((len_data,), np.nan)
-            print("blinking doesnt exist")
         else:
-            print("blinking exist")
+            pass
 
 
         # Save data
@@ -256,7 +255,6 @@ class SaveHandler:
                 name='eye facial movement',
                 description='Contains pupil size, dilation, position and saccade data and whisker pad motion energy'
             )
-
             nwbfile.add_processing_module(processing_module)
 
 

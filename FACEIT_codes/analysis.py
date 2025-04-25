@@ -1,21 +1,17 @@
 
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
 from FACEIT_codes import pupil_detection, functions
+from FACEIT_codes import display_and_plots
 from FACEIT_codes.Workers import MotionWorker
 from multiprocessing import Pool
-from PyQt5 import QtWidgets
-import matplotlib.patches as patches
-import matplotlib.pyplot as plt
 import numpy as np
 import math
 import cv2
 import time
 from multiprocessing import cpu_count
 from tqdm import tqdm
-from line_profiler import profile
-from concurrent.futures import ThreadPoolExecutor
 import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
+from FACEIT_codes.functions import change_saturation_uniform
 
 
 def display_show_ROI(ROI, image):
@@ -24,8 +20,6 @@ def display_show_ROI(ROI, image):
         x, y, width, height = ROI
         sub_image = image[int(y):int(y + height), int(x):int(x + width)]
         return sub_image, ROI
-
-    # Original logic if ROI is a QGraphicsEllipseItem
     sub_image = ROI.rect()
     return sub_image, ROI
 
@@ -41,50 +35,31 @@ def create_roi(x, y, width, height):
     }
 
 def process_single_frame(args):
-    current_image, frame, saturation,contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold,clustering_method = args
+    current_image, frame, saturation, contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold, clustering_method = args
     sub_region = current_image[frame[0]:frame[1], frame[2]:frame[3]]
 
     if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
         sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
-    sub_region = functions.change_saturation(sub_region, saturation, contrast)
+
+    # Now correctly call the utility function with saturation and contrast:
+    sub_region = change_saturation_uniform(sub_region, saturation=saturation, contrast=contrast)
+
     sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
 
-
     _, center, width, height, angle, current_area = pupil_detection.detect_pupil(
-        sub_region_rgba, erased_pixels, reflect_ellipse, mnd,binary_threshold,clustering_method
+        sub_region_rgba, erased_pixels, reflect_ellipse, mnd, binary_threshold, clustering_method
     )
-########################
-    # fig, ax = plt.subplots()
-    # plt.title("current_area: " + str(current_area))
-    # plt.imshow(sub_region_rgba)
-    # plt.imshow(sub_region_rgba)
-    #
-    # width = width * 2
-    # height = height * 2
-    #
-    # # Create the ellipse (note: Ellipse uses center, not top-left corner!)
-    # ellipse = Ellipse(xy=(center[0], center[1]),  # center
-    #                   width=width, height=height,angle= np.degrees(angle),
-    #                   edgecolor='red', facecolor='none', linewidth=2)
-    #
-    # # Add the ellipse to the current axes
-    # ax = plt.gca()
-    # ax.add_patch(ellipse)
-    #
-    # # Show the result
-    # plt.show()
-#######################
+
+
     pupil_distance_from_corner = (
         math.sqrt((center[0] - eye_corner_center[0]) ** 2 + (center[1] - eye_corner_center[1]) ** 2)
         if eye_corner_center is not None else np.nan
     )
 
-    # Convert center to integer for drawing
     center = (int(center[0]), int(center[1]))
     width, height = int(width), int(height)
 
     return current_area, center, center[0], center[1], width, height, pupil_distance_from_corner
-
 
 
 class ProcessHandler:
@@ -261,7 +236,6 @@ class ProcessHandler:
         # Print the elapsed time
         print(f"Time taken for pupil dilation computation: {elapsed_time:.2f} seconds")
 
-
         # Convert lists to numpy arrays for consistency and efficient computation
         pupil_dilation = np.array(pupil_dilation)
         pupil_center = np.array(pupil_center)
@@ -271,8 +245,6 @@ class ProcessHandler:
         pupil_height = np.array(pupil_height)
         pupil_distance_from_corner = np.array(pupil_distance_from_corner)
         #########################test for saccade###################
-        # timestamps = np.arange(len(pupil_center))
-        # fixations_test, saccades_test = self.calculate_saccades_test(pupil_center,timestamps, 1)
 
         # Compute saccades for X and Y coordinates
         X_saccade = self.Saccade(pupil_center_X)
