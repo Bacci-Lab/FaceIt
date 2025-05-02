@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from PyQt5 import QtWidgets
 from FACEIT_codes import functions
-from line_profiler import profile
 import threading
 class LoadData:
     def __init__(self, app_instance):
@@ -26,11 +25,11 @@ class LoadData:
 
         self.app_instance.folder_path = folder_path
         self.app_instance.save_path = folder_path
-
         npy_files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
 
 
         # Configure application settings if valid .npy files are found
+        self.reset_GUI()
         self.app_instance.len_file = len(npy_files)
         self.app_instance.Slider_frame.setMaximum(self.app_instance.len_file - 1)
         self.app_instance.NPY = True
@@ -39,6 +38,7 @@ class LoadData:
 
         # Enable buttons after successful file check
         self.app_instance.FaceROIButton.setEnabled(True)
+        self.app_instance.PlayPause_Button.setEnabled(True)
         self.app_instance.PupilROIButton.setEnabled(True)
         self.app_instance.Slider_frame.setEnabled(True)
 
@@ -50,6 +50,7 @@ class LoadData:
         if self.app_instance.folder_path:
             directory_path = os.path.dirname(self.app_instance.folder_path)
             self.app_instance.save_path = directory_path
+            self.reset_GUI()
             self.app_instance.cap = cv2.VideoCapture(self.app_instance.folder_path)
             self.app_instance.len_file = int(self.app_instance.cap.get(cv2.CAP_PROP_FRAME_COUNT))
             self.app_instance.Slider_frame.setMaximum(self.app_instance.len_file - 1)
@@ -57,6 +58,7 @@ class LoadData:
             self.app_instance.NPY = False
             self.display_graphics(self.app_instance.folder_path)
             self.app_instance.FaceROIButton.setEnabled(True)
+            self.app_instance.PlayPause_Button.setEnabled(True)
             self.app_instance.PupilROIButton.setEnabled(True)
             self.app_instance.Slider_frame.setEnabled(True)
 
@@ -64,7 +66,6 @@ class LoadData:
         """Load and resize a single image from the given file path."""
         try:
             current_image = np.load(filepath, allow_pickle=True)
-            height, width = current_image.shape[:2]
             original_height, original_width = current_image.shape
             aspect_ratio = original_width / original_height
             image_width = int(image_height * aspect_ratio)
@@ -170,3 +171,121 @@ class LoadData:
             self.app_instance.image_width,
             self.app_instance.image_height
         )
+
+    def reset_GUI(self):
+        app = self.app_instance
+
+        # === Reset internal states ===
+        app.Eraser_active = False
+        app.find_grooming_threshold = False
+        app.contrast = 1
+        app.brightness = 1
+        app.brightness_curve = 1
+        app.brightness_concave_power = 1.5
+        app.saturation = 0
+        app.saturation_ununiform = 0
+        app.Show_binary = False
+        app.primary_direction = None
+        app.secondary_direction = None
+        app.saturation_method = "None"
+        app.clustering_method = "SimpleContour"
+        app.binary_method = "Adaptive"
+        app.mnd = 10
+        app.binary_threshold = 220
+        app.frame = 0
+        app.Image_loaded = False
+        app.Pupil_ROI_exist = False
+        app.Face_ROI_exist = False
+        app.eye_corner_mode = False
+        app.eyecorner = None
+        app.eye_corner_center = None
+        app.erased_pixels = None
+        app.reflect_ellipse = None
+
+        # === Reset GUI elements ===
+
+        # Sliders and lineEdits
+        app.saturation_Slider.setValue(0)
+        app.saturation_ununiform_Slider.setValue(10)
+        app.contrast_Slider.setValue(10)
+        app.BrightGain_primary_Slider.setValue(10)
+        app.brightness_curve_Slider.setValue(10)
+        app.brightGain_secondary_Slider.setValue(10)
+        app.Slider_frame.setValue(0)
+        app.Slider_frame.setEnabled(False)
+
+        app.lineEdit_frame_number.setText("0")
+        app.lineEdit_brightGain_primary_value.setText("1")
+        app.lineEdit_brightness_curve_value.setText("1")
+        app.lineEdit_brightGain_secondary_value.setText("1")
+        app.lineEdit_brightness_concave_power.setText("1")
+        app.lineEdit_contrast_value.setText("1")
+        app.lineEdit_satur_value.setText("0")
+        app.lineEdit_satur_ununiform_value.setText("1")
+        app.lineEdit_grooming_y.setText("0")
+
+        # Checkboxes
+        app.checkBox_binary.setChecked(False)
+        app.checkBox_pupil.setChecked(False)
+        app.checkBox_face.setChecked(False)
+        app.checkBox_nwb.setChecked(False)
+        app.save_video.setChecked(False)
+
+        # Buttons
+        app.Add_eyecorner.setEnabled(False)
+        app.ReflectionButton.setEnabled(False)
+        app.Erase_Button.setEnabled(False)
+        app.Process_Button.setEnabled(False)
+        app.Save_Button.setEnabled(False)
+        app.checkBox_face.setEnabled(False)
+        app.checkBox_pupil.setEnabled(False)
+
+        # Radio buttons
+        app.radioButton_SimpleContour.setChecked(True)
+        app.radio_button_none.setChecked(True)
+        app.radio_button_none_secondary.setChecked(True)
+        #-------------------
+        app.adjustment_mode_group.removeButton(app.radio_button_Uniform)
+        app.adjustment_mode_group.removeButton(app.radio_button_Gradual)
+
+        # 2. Uncheck both manually
+        app.radio_button_Uniform.setChecked(False)
+        app.radio_button_Gradual.setChecked(False)
+
+        # 3. Add them back (optional)
+        app.adjustment_mode_group.addButton(app.radio_button_Uniform)
+        app.adjustment_mode_group.addButton(app.radio_button_Gradual)
+        #--------------------------------------------
+
+        # Clear scenes
+        if hasattr(app, 'scene'):
+            app.scene.clear()
+        if hasattr(app, 'scene2'):
+            app.scene2.clear()
+
+        # Reset ROIs
+        app.pupil_ROI = None
+        app.face_ROI = None
+        app.pupil_detection = None
+        app.pupil_ellipse_items = None
+
+        # GraphicsViews
+        app.clear_graphics_view(app.graphicsView_MainFig)
+        app.clear_graphics_view(app.graphicsView_subImage)
+        app.clear_graphics_view(app.graphicsView_whisker)
+        app.clear_graphics_view(app.graphicsView_pupil)
+
+        # Other plots (motion energy, pupil, etc.)
+        if hasattr(app, 'motion_energy'):
+            del app.motion_energy
+        if hasattr(app, 'final_pupil_area'):
+            del app.final_pupil_area
+        if hasattr(app, 'X_saccade'):
+            del app.X_saccade
+        if hasattr(app, 'Y_saccade'):
+            del app.Y_saccade
+        if hasattr(app, 'grooming_ids'):
+            del app.grooming_ids
+
+        print("[INFO] GUI has been reset.")
+

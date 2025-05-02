@@ -1,6 +1,6 @@
 
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
-from FACEIT_codes import pupil_detection, functions
+from FACEIT_codes import pupil_detection
 from FACEIT_codes import display_and_plots
 from FACEIT_codes.Workers import MotionWorker
 from multiprocessing import Pool
@@ -11,7 +11,79 @@ import time
 from multiprocessing import cpu_count
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from FACEIT_codes.functions import change_saturation_uniform
+from FACEIT_codes.functions import (
+    change_saturation_uniform,
+    change_Gradual_saturation,
+    apply_intensity_gradient_gray,
+    SaturationSettings, show_ROI2
+)
+
+def process_single_frame(args):
+    (
+        current_image, sub_image,
+        saturation, contrast,
+        erased_pixels, reflect_ellipse,
+        eye_corner_center, mnd,
+        clustering_method, binary_method,binary_threshold,
+        saturation_method,
+        brightness, brightness_curve,
+        secondary_BrightGain, brightness_concave_power,
+        saturation_ununiform,
+        primary_direction, secondary_direction
+    ) = args
+
+
+    sub_region, _ = show_ROI2(sub_image, current_image)
+
+    # === Build saturation settings ===
+    settings = SaturationSettings(
+        primary_direction=primary_direction,
+        brightness_curve=brightness_curve,
+        brightness=brightness,
+        secondary_direction=secondary_direction,
+        brightness_concave_power=brightness_concave_power,
+        secondary_BrightGain = secondary_BrightGain,
+        saturation_ununiform=saturation_ununiform
+    )
+
+    # === Apply saturation method ===
+    if saturation_method == "Gradual":
+        if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
+            # Grayscale image
+            processed = apply_intensity_gradient_gray(sub_region, settings)
+        else:
+            # Fake grayscale check
+            if np.allclose(sub_region[..., 0], sub_region[..., 1]) and np.allclose(sub_region[..., 1], sub_region[..., 2]):
+                gray = cv2.cvtColor(sub_region, cv2.COLOR_BGR2GRAY)
+                processed = apply_intensity_gradient_gray(gray, settings)
+            else:
+                processed = change_Gradual_saturation(sub_region, settings)
+                processed = cv2.cvtColor(processed, cv2.COLOR_RGB2BGR)
+
+    elif saturation_method == "Uniform":
+        if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
+            sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
+        processed = change_saturation_uniform(sub_region, saturation=saturation, contrast=contrast)
+    else:
+        processed = sub_region.copy()
+
+    # === Convert to RGBA for pupil detection ===
+    sub_region_rgba = cv2.cvtColor(processed, cv2.COLOR_BGR2BGRA)
+
+    _, center, width, height, angle, current_area = pupil_detection.detect_pupil(
+        sub_region_rgba, erased_pixels, reflect_ellipse, mnd, clustering_method, binary_method, binary_threshold
+    )
+
+    pupil_distance_from_corner = (
+        math.sqrt((center[0] - eye_corner_center[0]) ** 2 + (center[1] - eye_corner_center[1]) ** 2)
+        if eye_corner_center is not None else np.nan
+    )
+
+    center = (int(center[0]), int(center[1]))
+    width, height = int(width), int(height)
+
+    return current_area, center, center[0], center[1], width, height, pupil_distance_from_corner
+
 
 
 def display_show_ROI(ROI, image):
@@ -33,34 +105,6 @@ def create_roi(x, y, width, height):
         'width': width,
         'height': height
     }
-
-def process_single_frame(args):
-    current_image, frame, saturation, contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold, clustering_method = args
-    sub_region = current_image[frame[0]:frame[1], frame[2]:frame[3]]
-
-    if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
-        sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
-
-    # Now correctly call the utility function with saturation and contrast:
-    sub_region = change_saturation_uniform(sub_region, saturation=saturation, contrast=contrast)
-
-    sub_region_rgba = cv2.cvtColor(sub_region, cv2.COLOR_BGR2BGRA)
-
-    _, center, width, height, angle, current_area = pupil_detection.detect_pupil(
-        sub_region_rgba, erased_pixels, reflect_ellipse, mnd, binary_threshold, clustering_method
-    )
-
-
-    pupil_distance_from_corner = (
-        math.sqrt((center[0] - eye_corner_center[0]) ** 2 + (center[1] - eye_corner_center[1]) ** 2)
-        if eye_corner_center is not None else np.nan
-    )
-
-    center = (int(center[0]), int(center[1]))
-    width, height = int(width), int(height)
-
-    return current_area, center, center[0], center[1], width, height, pupil_distance_from_corner
-
 
 class ProcessHandler:
     def __init__(self, app_instance):
@@ -188,11 +232,14 @@ class ProcessHandler:
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
         return combined_blinking_ids
 
-    def pupil_dilation_comput(self, images, saturation, contrast, erased_pixels, reflect_ellipse, mnd, binary_threshold, clustering_method):
+    def pupil_dilation_comput(self, images, saturation, contrast, erased_pixels, reflect_ellipse,
+                              mnd, clustering_method, binary_method,binary_threshold,
+                              saturation_method, brightness, brightness_curve,
+                              secondary_BrightGain, brightness_concave_power,
+                              saturation_ununiform, primary_direction, secondary_direction, sub_image):
         """
         Computes pupil dilation and related metrics from a series of images using parallel processing.
         """
-        # Start timing
         start_time = time.time()
 
         eye_corner_center = (
@@ -200,43 +247,36 @@ class ProcessHandler:
             self.app_instance.eye_corner_center[1]
         ) if self.app_instance.eye_corner_center is not None else None
 
+        #################################
 
-        ####################################################################
-        pupil_ROI = self.app_instance.pupil_ROI
-        sub_image = pupil_ROI.rect()
-        top = int(sub_image.top())* self.app_instance.ratio
-        bottom = int(sub_image.bottom())*self.app_instance.ratio
-        left = int(sub_image.left())*self.app_instance.ratio
-        right = int(sub_image.right())*self.app_instance.ratio
-        frame = (top,bottom, left,right)
-        ####################################################################
-        # Prepare the data for multiprocessing
+        # Build frame_args for parallel processing
         frame_args = [
-            (current_image, frame, saturation, contrast, erased_pixels, reflect_ellipse, eye_corner_center, mnd, binary_threshold,clustering_method)
+            (
+                current_image, sub_image,
+                saturation, contrast,
+                erased_pixels, reflect_ellipse,
+                eye_corner_center, mnd,
+                clustering_method, binary_method,binary_threshold,
+                saturation_method, brightness, brightness_curve,
+                secondary_BrightGain, brightness_concave_power,
+                saturation_ununiform, primary_direction, secondary_direction
+            )
             for current_image in images
         ]
 
         num_workers = max(1, cpu_count() // 2)
-
         print(f"Using {num_workers} workers out of {cpu_count()} cores.")
 
         with Pool(processes=num_workers) as pool:
             results = list(tqdm(pool.imap(process_single_frame, frame_args), total=len(frame_args)))
 
-
-        # Aggregate the results
         pupil_dilation, pupil_center, pupil_center_X, pupil_center_y, pupil_width, pupil_height, pupil_distance_from_corner = zip(
-            *results
-        )
+            *results)
 
-        # End timing
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-
-        # Print the elapsed time
+        elapsed_time = time.time() - start_time
         print(f"Time taken for pupil dilation computation: {elapsed_time:.2f} seconds")
 
-        # Convert lists to numpy arrays for consistency and efficient computation
+        # Convert to numpy arrays
         pupil_dilation = np.array(pupil_dilation)
         pupil_center = np.array(pupil_center)
         pupil_center_X = np.array(pupil_center_X)
@@ -244,16 +284,12 @@ class ProcessHandler:
         pupil_width = np.array(pupil_width)
         pupil_height = np.array(pupil_height)
         pupil_distance_from_corner = np.array(pupil_distance_from_corner)
-        #########################test for saccade###################
 
-        # Compute saccades for X and Y coordinates
         X_saccade = self.Saccade(pupil_center_X)
         Y_saccade = self.Saccade(pupil_center_y)
 
-        # Return all computed pupil metrics
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
                 X_saccade, Y_saccade, pupil_distance_from_corner, pupil_width, pupil_height)
-
 
     def plot_saccade(self, pupil_center_i, saccade):
         """

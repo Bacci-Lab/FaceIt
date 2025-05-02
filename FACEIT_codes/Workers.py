@@ -1,12 +1,14 @@
 from PyQt5.QtCore import QObject, pyqtSignal
 import numpy as np
-
+import traceback
 class PupilWorker(QObject):
-    finished = pyqtSignal(object)  # signal to send results back
+    finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
-    def __init__(self, images, process_handler, saturation, contrast, erased_pixels,
-                 reflect_ellipse, mnd, binary_threshold, clustering_method, saturation_method,saturation_ununiform):
+    def __init__(self, images,process_handler,saturation, contrast,erased_pixels,
+                 brightness_concave_power, secondary_direction, reflect_ellipse,
+                 mnd, clustering_method,binary_method,binary_threshold, saturation_method,saturation_ununiform
+                 , primary_direction, brightness, brightness_curve,secondary_BrightGain, sub_image):
         super().__init__()
         self.images = images
         self.process_handler = process_handler
@@ -16,25 +18,38 @@ class PupilWorker(QObject):
         self.erased_pixels = erased_pixels
         self.reflect_ellipse = reflect_ellipse
         self.mnd = mnd
-        self.binary_threshold = binary_threshold
         self.clustering_method = clustering_method
         self.saturation_method = saturation_method
+        self.binary_method = binary_method
+        self.binary_threshold = binary_threshold
+        self.brightness = brightness
+        self.brightness_curve = brightness_curve
+        self.secondary_BrightGain = secondary_BrightGain
+        self.brightness_concave_power = brightness_concave_power
+        self.saturation_ununiform = saturation_ununiform
+        self.primary_direction = primary_direction
+        self.secondary_direction = secondary_direction
+        self.sub_image =sub_image
 
     def run(self):
 
+
         try:
             result = self.process_handler.pupil_dilation_comput(
-                self.images, self.saturation,self.saturation_ununiform, self.contrast, self.erased_pixels,
-                self.reflect_ellipse, self.mnd, self.binary_threshold, self.clustering_method
-            )
+                self.images,self.saturation, self.contrast, self.erased_pixels,
+                self.reflect_ellipse, self.mnd, self.clustering_method, self.binary_method,
+                self.binary_threshold, self.saturation_method, self.brightness, self.brightness_curve,
+                self.secondary_BrightGain, self.brightness_concave_power,
+                self.saturation_ununiform, self.primary_direction, self.secondary_direction, self.sub_image)
             self.finished.emit(result)
         except Exception as e:
-            self.error.emit(str(e))
+            traceback.print_exc()  # Show full error with line number
+            raise
 
 class MotionWorker(QObject):
-    finished = pyqtSignal(np.ndarray)  # Emit the result
-    progress = pyqtSignal(int)         # Optional: for updating progress bar
-    error = pyqtSignal(str)            # NEW: emit in case of exceptions
+    finished = pyqtSignal(np.ndarray)
+    progress = pyqtSignal(int)
+    error = pyqtSignal(str)
 
     def __init__(self, images, face_frame):
         super().__init__()

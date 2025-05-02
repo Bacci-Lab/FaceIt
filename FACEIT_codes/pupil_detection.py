@@ -282,12 +282,27 @@ def interpolate(blink_indices, data_series):
 
     # Return the fully interpolated data series
     return interpolated_data_series
+def remove_reflection_with_inpaint(gray_image, reflect_ellipses):
+    mask = np.zeros_like(gray_image, dtype=np.uint8)
+    for center, width, height in zip(*reflect_ellipses):
+        center = tuple(map(int, center))
+        axes = (int(width // 2), int(height // 2))
+        cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
 
-def Image_binarization(chosen_frame_region, binary_threshold=220, erased_pixels=None):
-    """
-    Applies binary thresholding to a normalized grayscale, BGR, or BGRA image.
-    Supports erasing specific pixels before thresholding.
-    """
+    # Inpaint using surrounding pixels (telea or navier_stokes method)
+    inpainted = cv2.inpaint(gray_image, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+    return inpainted
+
+def erase_pixels(erased_pixels, binary_image):
+    if erased_pixels is not None and len(erased_pixels) > 0:
+        if not isinstance(erased_pixels, np.ndarray):
+            erased_pixels = np.array(erased_pixels)
+        # Ensure the array is of shape (N, 2) for valid indexing
+        if erased_pixels.ndim == 2 and erased_pixels.shape[1] == 2:
+            # Set those pixels to 0 in the binary image
+            binary_image[erased_pixels[:, 1], erased_pixels[:, 0]] = 0
+    return binary_image
+def Image_binarization_constant(chosen_frame_region,erased_pixels, binary_threshold = 220):
     if len(chosen_frame_region.shape) == 3:
         if chosen_frame_region.shape[2] == 4:
             sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGRA2GRAY)
@@ -296,61 +311,123 @@ def Image_binarization(chosen_frame_region, binary_threshold=220, erased_pixels=
         else:
             raise ValueError(f"Unsupported number of channels: {chosen_frame_region.shape[2]}")
     else:
-        sub_region_2Dgray = chosen_frame_region
+        sub_region_2Dgray = chosen_frame_region.copy()
+
+    _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
+    binary_image = erase_pixels(erased_pixels, binary_image)
+
+    # === Apply Ellipse Mask ===
+    height, width = binary_image.shape[:2]
+    mask = np.zeros((height, width), dtype=np.uint8)
+    center = (width // 2, height // 2)
+    axes = (width // 2, height // 2)
+    cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
+    binary_image = cv2.bitwise_and(binary_image, binary_image, mask=mask)
+
+    return binary_image
+
+def Image_binarization(chosen_frame_region, erased_pixels=None, reflect_ellipse=None):
+    """
+    Applies adaptive binary thresholding. Supports erasing specific pixels or known reflections.
+    Also applies an elliptical mask to focus only on the pupil region.
+    """
+    if len(chosen_frame_region.shape) == 3:
+        if chosen_frame_region.shape[2] == 4:
+            print("hosen_frame_region.shape = 4")
+            sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGRA2GRAY)
+        elif chosen_frame_region.shape[2] == 3:
+            print("hosen_frame_region.shape = 3")
+            sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
+        else:
+            raise ValueError(f"Unsupported number of channels: {chosen_frame_region.shape[2]}")
+    else:
+        print("hosen_frame_region.shape = 2")
+        sub_region_2Dgray = chosen_frame_region.copy()
+
+    plt.imshow(sub_region_2Dgray)
+    plt.title("Before reflection")
+    plt.show()
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    sub_region_2Dgray = clahe.apply(sub_region_2Dgray)
+
+    # # === Normalize non-erased pixels ===
+    # valid_pixels = sub_region_2Dgray[sub_region_2Dgray > 0]
+    # if valid_pixels.size > 0:
+    #     min_val = np.min(valid_pixels)
+    #     max_val = np.max(valid_pixels)
+    #     if max_val > min_val:
+    #         sub_region_2Dgray = (sub_region_2Dgray.astype(np.float32) - min_val) / (max_val - min_val) * 255
+    #     else:
+    #         sub_region_2Dgray = np.zeros_like(sub_region_2Dgray, dtype=np.float32)
+    # else:
+    #     sub_region_2Dgray = np.zeros_like(sub_region_2Dgray, dtype=np.float32)
+    #
+    # sub_region_2Dgray = np.clip(sub_region_2Dgray, 0, 255).astype(np.uint8)
 
 
-    # Erase pixels BEFORE thresholding
+    if reflect_ellipse is not None and len(reflect_ellipse) > 0:
+        sub_region_2Dgray = remove_reflection_with_inpaint(sub_region_2Dgray, reflect_ellipse)
+
+        plt.imshow(sub_region_2Dgray)
+        plt.title("after reflection")
+        plt.show()
+
+    # === Adaptive Thresholding ===
+    binary_image = cv2.adaptiveThreshold(
+        sub_region_2Dgray,
+        255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV,
+        blockSize=25,
+        C=5
+    )
+
+    #######################
+    # === Apply Ellipse Mask ===
+    height, width = binary_image.shape[:2]
+    mask = np.zeros((height, width), dtype=np.uint8)
+    center = (width // 2, height // 2)
+    axes = (width // 2, height // 2)
+    cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
+    binary_image = cv2.bitwise_and(binary_image, binary_image, mask=mask)
+
+    # === Erase specific pixels ===
     if erased_pixels is not None and len(erased_pixels) > 0:
         if not isinstance(erased_pixels, np.ndarray):
             erased_pixels = np.array(erased_pixels)
         if erased_pixels.ndim == 2 and erased_pixels.shape[1] == 2:
-            sub_region_2Dgray[erased_pixels[:, 1], erased_pixels[:, 0]] = 255
-    # Normalize intensities to [0, 255]
-    sub_region_2Dgray = cv2.normalize(sub_region_2Dgray, None, 0, 255, cv2.NORM_MINMAX)
-    # _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
-    binary_image = cv2.adaptiveThreshold(
-        sub_region_2Dgray, 255,
-        cv2.ADAPTIVE_THRESH_MEAN_C,  # or cv2.ADAPTIVE_THRESH_GAUSSIAN_C
-        cv2.THRESH_BINARY_INV,
-        blockSize=25,  # adjust based on pupil size
-        C=5  # offset (higher value = darker threshold)
-    )
+            binary_image[erased_pixels[:, 1], erased_pixels[:, 0]] = 0
+
+    # === Erase reflections if provided ===
+    # if reflect_ellipse is not None and len(reflect_ellipse) > 0:
+    #     centers, widths, heights = reflect_ellipse
+    #     for center_reflect, width, height in zip(centers, widths, heights):
+    #         center_reflect = tuple(map(int, center_reflect))
+    #         size = (int(width), int(height))
+    #         angle = 0
+    #         cv2.ellipse(
+    #             binary_image,
+    #             center=center_reflect,
+    #             axes=(size[0] // 2, size[1] // 2),
+    #             angle=angle,
+    #             startAngle=0,
+    #             endAngle=360,
+    #             color=0,
+    #             thickness=-1
+    #         )
 
     return binary_image
 
 
-# def Image_binarization(chosen_frame_region, binary_threshold=220):
-#     """
-#     Applies binary thresholding to a grayscale, BGR, or BGRA image.
-#
-#     Parameters:
-#         chosen_frame_region (np.ndarray): Input image (grayscale, BGR, or BGRA).
-#         binary_threshold (int): Threshold value for binarization.
-#
-#     Returns:
-#         np.ndarray: Binary (single-channel) image.
-#     """
-#     if len(chosen_frame_region.shape) == 3:
-#         if chosen_frame_region.shape[2] == 4:
-#             # Handle BGRA images
-#             sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGRA2GRAY)
-#         elif chosen_frame_region.shape[2] == 3:
-#             # Handle BGR images
-#             sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
-#         else:
-#             raise ValueError(f"Unsupported number of channels: {chosen_frame_region.shape[2]}")
-#     else:
-#         # Already grayscale
-#         sub_region_2Dgray = chosen_frame_region
-#
-#     _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
-#     return binary_image
 
+def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd,clustering_method, binary_method,binary_threshold ):
 
+    if binary_method == "Adaptive":
+        binary_image = Image_binarization(chosen_frame_region, erased_pixels=erased_pixels, reflect_ellipse =reflect_ellipse)
+    elif binary_method == "Constant":
+        binary_image = Image_binarization_constant(chosen_frame_region,erased_pixels, binary_threshold)
 
-def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd, binary_threshold, clustering_method):
-
-    binary_image = Image_binarization(chosen_frame_region, binary_threshold, erased_pixels=erased_pixels)
 
     if clustering_method == "DBSCAN":
         binary_image = find_cluster_DBSCAN(binary_image, mnd)
@@ -362,29 +439,21 @@ def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd, binar
             binary_image = result
     elif clustering_method == "SimpleContour":
         binary_image = find_cluster_simple(binary_image)
-
-    if reflect_ellipse is None or reflect_ellipse == [[], [], []]:
+    if binary_method == "Adaptive":
         pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
-    else:
-        All_reflects = [
-            [reflect_ellipse[0][variable], (reflect_ellipse[1][variable], reflect_ellipse[2][variable]), 0]
-            for variable in range(len(reflect_ellipse[1]))
-        ]
-        for _ in range(3):
+        pupil_area = np.pi * (width * height)
+    elif binary_method == "Constant":
+        if reflect_ellipse is None or reflect_ellipse == [[], [], []]:
             pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
-            binary_image = overlap_reflect(All_reflects, pupil_ROI0, binary_image)
-
-    pupil_area = np.pi * (width * height)
+        else:
+            All_reflects = [
+                [reflect_ellipse[0][variable], (reflect_ellipse[1][variable], reflect_ellipse[2][variable]), 0]
+                for variable in
+                range(len(reflect_ellipse[1]))]
+            for i in range(3):
+                pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
+                binary_image_update = overlap_reflect(All_reflects, pupil_ROI0, binary_image)
+                binary_image = binary_image_update
+        pupil_area = np.pi * (width * height)
     return pupil_ROI0, center, width, height, angle, pupil_area
 
-
-
-# def erase_pixels(erased_pixels, binary_image):
-#     if erased_pixels is not None and len(erased_pixels) > 0:
-#         if not isinstance(erased_pixels, np.ndarray):
-#             erased_pixels = np.array(erased_pixels)
-#         # Ensure the array is of shape (N, 2) for valid indexing
-#         if erased_pixels.ndim == 2 and erased_pixels.shape[1] == 2:
-#             # Set those pixels to 0 in the binary image
-#             binary_image[erased_pixels[:, 1], erased_pixels[:, 0]] = 0
-#     return binary_image

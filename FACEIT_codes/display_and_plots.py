@@ -226,17 +226,13 @@ class Display:
             brightness_curve=self.app_instance.brightness_curve,
             brightness=self.app_instance.brightness,
             secondary_direction=self.app_instance.secondary_direction,
-            secondary_brightness_curve=self.app_instance.secondary_brightness_curve,
-            secondary_brightness=self.app_instance.secondary_brightness,
+            brightness_concave_power=self.app_instance.brightness_concave_power,
+            secondary_BrightGain=self.app_instance.secondary_BrightGain,
             saturation_ununiform=self.app_instance.saturation_ununiform,
         )
 
         return apply_intensity_gradient_gray(gray_image, settings)
 
-
-
-
-    from FACEIT_codes.functions import SaturationSettings, apply_intensity_gradient_gray
 
     def display_sub_region(self, sub_region, ROI, Detect_pupil=False):
         # === Remove old items ===
@@ -254,8 +250,8 @@ class Display:
             brightness_curve=self.app_instance.brightness_curve,
             brightness=self.app_instance.brightness,
             secondary_direction=self.app_instance.secondary_direction,
-            secondary_brightness_curve=self.app_instance.secondary_brightness_curve,
-            secondary_brightness=self.app_instance.secondary_brightness,
+            brightness_concave_power=self.app_instance.brightness_concave_power,
+            secondary_BrightGain=self.app_instance.secondary_BrightGain,
             saturation_ununiform = self.app_instance.saturation_ununiform,
         )
 
@@ -273,7 +269,7 @@ class Display:
                     processed = apply_intensity_gradient_gray(gray, saturation_settings)
                     # processed = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
                 else:
-                    # Real color image
+
                     processed = change_Gradual_saturation(sub_region, saturation_settings)
                     processed = cv2.cvtColor(processed, cv2.COLOR_RGB2BGR)
 
@@ -288,11 +284,14 @@ class Display:
 
         # === Apply binarization ===
         if self.app_instance.Show_binary:
-            binary = pupil_detection.Image_binarization(processed, self.app_instance.binary_threshold)
+            if self.app_instance.binary_method == "Adaptive":
+                binary = pupil_detection.Image_binarization(processed,self.app_instance.erased_pixels, self.app_instance.reflect_ellipse)
+            elif self.app_instance.binary_method == "Constant":
+                binary = pupil_detection.Image_binarization_constant(processed,self.app_instance.erased_pixels, self.app_instance.binary_threshold )
 
             if binary.ndim == 2:  # Grayscale
                 sub_region_to_present = cv2.cvtColor(binary, cv2.COLOR_GRAY2RGBA)
-            elif binary.ndim == 3 and binary.shape[2] == 3:  # Color image
+            elif binary.ndim == 3 and binary.shape[2] == 3:
                 sub_region_to_present = cv2.cvtColor(binary, cv2.COLOR_BGR2RGBA)
             else:
                 raise ValueError("Unsupported number of channels in binary image")
@@ -304,7 +303,7 @@ class Display:
                 processed_gray = processed
 
             sub_region_to_present = cv2.cvtColor(processed_gray, cv2.COLOR_GRAY2RGBA)
-            # sub_region_to_present = cv2.cvtColor(processed, cv2.COLOR_BGR2RGBA)
+
 
         # === Display in QGraphicsView ===
         height, width = sub_region_to_present.shape[:2]
@@ -327,8 +326,9 @@ class Display:
                 self.app_instance.erased_pixels,
                 self.app_instance.reflect_ellipse,
                 self.app_instance.mnd,
-                self.app_instance.binary_threshold,
                 self.app_instance.clustering_method,
+                self.app_instance.binary_method,
+                self.app_instance.binary_threshold
             )
             ellipse_item = QtWidgets.QGraphicsEllipseItem(
                 int(center[0] - w), int(center[1] - h), w * 2, h * 2

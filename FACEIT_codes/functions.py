@@ -1,17 +1,14 @@
 import cv2
 import os.path
 import numpy as np
-from FACEIT_codes import pupil_detection
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtGui import QPixmap
-import matplotlib.pyplot as plt
-import math
 
 def initialize_attributes(obj, image):
-    if len (image.shape) == 3:
-        obj.image_height, obj.image_width, _ =  image.shape
-    elif len (image.shape) == 2:
+    if len(image.shape) == 3:
+        obj.image_height, obj.image_width, _ = image.shape
+    elif len(image.shape) == 2:
         obj.image_height, obj.image_width = image.shape
+
     obj.ratio = 2
     obj.reflect_height = 30
     obj.reflect_width = 30
@@ -23,7 +20,7 @@ def initialize_attributes(obj, image):
     obj.saturation_ununiform = 0
     obj.contrast = 1
     obj.brightness = 1
-    obj.secondary_brightness = 1
+    obj.secondary_BrightGain = 1
     obj.brightness_curve = 1
     obj.frame = None
     obj.pupil_ROI = None
@@ -33,9 +30,9 @@ def initialize_attributes(obj, image):
     obj.current_ROI = None
     obj.ROI_exist = False
     obj.reflection_center = (obj.image_width // obj.ratio / 2, obj.image_height // obj.ratio / 2)
-    obj.oval_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
-    obj.face_rect_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
-    obj.ROI_center = (obj.image_width // obj.ratio/2, obj.image_height // obj.ratio/2)
+    obj.oval_center = (obj.image_width // obj.ratio / 2, obj.image_height // obj.ratio / 2)
+    obj.face_rect_center = (obj.image_width // obj.ratio / 2, obj.image_height // obj.ratio / 2)
+    obj.ROI_center = (obj.image_width // obj.ratio / 2, obj.image_height // obj.ratio / 2)
     obj.Image_loaded = False
     obj.Pupil_ROI_exist = False
     obj.Face_ROI_exist = False
@@ -47,7 +44,8 @@ def initialize_attributes(obj, image):
     obj.binary_threshold = 220
     obj.Show_binary = False
     obj.clustering_method = "SimpleContour"
-    obj.saturation_method =  "None"
+    obj.saturation_method = "None"
+    obj.binary_method = "Adaptive"
     obj.primary_direction = None
     obj.secondary_direction = None
 
@@ -58,21 +56,20 @@ class SaturationSettings:
                  brightness_curve=1.0,
                  brightness=1.0,
                  secondary_direction=None,
-                 secondary_brightness_curve=1.0,
-                 secondary_brightness=1.0,
+                 brightness_concave_power=1.5,
+                 secondary_BrightGain=1.0,
                  saturation_ununiform = 0):
         self.primary_direction = primary_direction
         self.brightness_curve = brightness_curve
         self.brightness = brightness
         self.secondary_direction = secondary_direction
-        self.secondary_brightness_curve = secondary_brightness_curve
-        self.secondary_brightness = secondary_brightness
+        self.brightness_concave_power = brightness_concave_power
+        self.secondary_BrightGain = secondary_BrightGain
         self.saturation_ununiform = saturation_ununiform
 
 def change_Gradual_saturation(image_bgr: np.ndarray, settings: SaturationSettings):
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
     h, w = hsv.shape[:2]
-
     gradient = np.ones((h, w), dtype=np.float32)
 
     def get_direction_mask(direction, curve, strength):
@@ -92,15 +89,10 @@ def change_Gradual_saturation(image_bgr: np.ndarray, settings: SaturationSetting
         gradient *= get_direction_mask(settings.primary_direction,
          settings.brightness_curve, settings.brightness)
 
-    # # Apply secondary direction (if any)
-    # if settings.secondary_direction is not None:
-    #     gradient *= get_direction_mask(settings.secondary_direction,
-    #         settings.secondary_brightness_curve, settings.secondary_brightness)
 
-    def get_symmetric_concave_mask(h: int, w: int, direction="Horizontal", strength=2.0):
+    def get_symmetric_concave_mask(h: int, w: int, direction="Horizontal", strength=2.0, power = 1.5):
         size = w if direction in ["Horizontal"] else h
         x = np.linspace(-1, 1, size)
-        power = 1.5
         curve = np.abs(x) ** power
         scaled = 1 + (strength - 1) * curve
         if direction == "Horizontal":
@@ -110,14 +102,13 @@ def change_Gradual_saturation(image_bgr: np.ndarray, settings: SaturationSetting
 
     if settings.secondary_direction is not None:
         gradient *= get_symmetric_concave_mask(h, w, "Vertical",
-          settings.secondary_brightness)
+          settings.secondary_BrightGain, settings.brightness_concave_power)
 
     # Apply gradient to brightness channel
     hsv[..., 2] *= gradient
     hsv[..., 2] = np.clip(hsv[..., 2], 0, 255)
 
     # change saturation channel
-    print("settings.saturation_ununifor", settings.saturation_ununiform)
     hsv[..., 1] *= settings.saturation_ununiform
     hsv[..., 1] = np.clip(hsv[..., 1], 0, 255)
 
@@ -148,7 +139,7 @@ def change_saturation_uniform(image, saturation=0, contrast=1.0):
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
     # Apply saturation and brightness changes
     hsv_image[..., 1] = np.clip(hsv_image[..., 1] * (1 + saturation / 100.0), 0, 255)
-    # hsv_image[..., 2] = np.clip(hsv_image[..., 2] * (1 + saturation / 100.0), 0, 255)
+    hsv_image[..., 2] = np.clip(hsv_image[..., 2] * (1 + saturation / 100.0), 0, 255)
 
     # Convert back to BGR and apply contrast
     hsv_image = hsv_image.astype(np.uint8)
@@ -156,6 +147,7 @@ def change_saturation_uniform(image, saturation=0, contrast=1.0):
     image = cv2.convertScaleAbs(image, alpha=contrast, beta=brightness)
 
     return image
+
 
 
 def apply_intensity_gradient_gray(gray_image: np.ndarray, settings) -> np.ndarray:
@@ -187,42 +179,40 @@ def apply_intensity_gradient_gray(gray_image: np.ndarray, settings) -> np.ndarra
         else:
             raise ValueError(f"Unknown direction: {direction}")
 
-    # === Apply intensity gradient ===
+    def get_symmetric_concave_mask(h: int, w: int, direction="Horizontal", strength=2.0, power = 1.5):
+        size = w if direction == "Horizontal" else h
+        x = np.linspace(-1, 1, size)
+        curve = np.abs(x) ** power
+        scaled = 1 + (strength - 1) * curve
+        if direction == "Horizontal":
+            return np.tile(scaled, (h, 1))
+        elif direction == "Vertical":
+            return np.tile(scaled, (w, 1)).T
+
+    # === Apply directional gradient ===
     if settings.primary_direction:
         gradient *= get_direction_mask(settings.primary_direction, settings.brightness_curve, settings.brightness)
-    if settings.secondary_direction:
-        gradient *= get_direction_mask(settings.secondary_direction, settings.secondary_brightness_curve, settings.secondary_brightness)
 
-    # === Convert to HSV via BGR ===
-    # bgr = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
-    # hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
-    # #######
+    # === Apply symmetric concave gradient if needed ===
+    if settings.secondary_direction:
+        gradient *= get_symmetric_concave_mask(height, width, "Vertical", settings.secondary_BrightGain, settings.brightness_concave_power)
+
+    # === Convert grayscale to BGR for HSV conversion ===
     if len(gray_image.shape) == 2 or gray_image.shape[2] == 1:
         gray_image = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
     hsv = cv2.cvtColor(gray_image, cv2.COLOR_BGR2HSV).astype(np.float32)
 
-    # # === Inject base saturation if needed (gray images have S = 0) ===
-    # if np.all(hsv[..., 1] == 0):
-    #     hsv[..., 1] = 20
-
-    # === Apply uniform saturation adjustment===
-    print("settings.saturation_ununiform", settings.saturation_ununiform)
-    settings.saturation_ununiform = settings.saturation_ununiform
+    # === Apply uniform saturation adjustment ===
     hsv[..., 1] = np.clip(hsv[..., 1] * (1 + settings.saturation_ununiform / 100.0), 0, 255)
 
-    # hsv[..., 1] *= (1 + settings.saturation_ununiform)
-    # hsv[..., 1] = np.clip(hsv[..., 1], 0, 255)
-
-    # === Apply brightness/intensity gradient to Value channel ===
+    # === Apply brightness/intensity gradient ===
     hsv[..., 2] *= gradient
     hsv[..., 2] = np.clip(hsv[..., 2], 0, 255)
 
-    # === Convert back to BGR then to grayscale ===
-    brightness  = 0
+    # === Convert back to BGR ===
+    brightness = 0
     bgr_result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
     bgr_result = cv2.convertScaleAbs(bgr_result, alpha=settings.saturation_ununiform, beta=brightness)
-    # final_gray = cv2.cvtColor(bgr_result, cv2.COLOR_BGR2GRAY)
-    #############
 
     return bgr_result
 
@@ -236,7 +226,56 @@ def show_ROI(ROI, image):
     right = int(sub_image.right())*2
     sub_region = image[top:bottom, left:right]
     frame = [top,bottom, left,right]
-    return sub_region, frame
+    height, width = sub_region.shape[:2]
+    mask = np.zeros((height, width), dtype=np.uint8)
+    center = (width // 2, height // 2)
+    axes = (width // 2, height // 2)
+    cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
+
+    # === Generate masked_processed for analysis ===
+    if sub_region.ndim == 2:
+        masked_processed = cv2.bitwise_and(sub_region, sub_region, mask=mask)
+    elif sub_region.ndim == 3 and sub_region.shape[2] == 3:
+        masked_processed = cv2.bitwise_and(sub_region, sub_region, mask=mask)
+    elif sub_region.ndim == 3 and sub_region.shape[2] == 4:
+        channels = cv2.split(sub_region)
+        for i in range(3):
+            channels[i] = cv2.bitwise_and(channels[i], channels[i], mask=mask)
+        masked_processed = cv2.merge(channels)
+    else:
+        raise ValueError("Unsupported processed image format")
+
+    return masked_processed, frame
+def show_ROI2(sub_image, image):
+
+    top = int(sub_image.top())*2
+    bottom = int(sub_image.bottom())*2
+    left = int(sub_image.left())*2
+    right = int(sub_image.right())*2
+    sub_region = image[top:bottom, left:right]
+    frame = [top,bottom, left,right]
+    height, width = sub_region.shape[:2]
+    mask = np.zeros((height, width), dtype=np.uint8)
+    center = (width // 2, height // 2)
+    axes = (width // 2, height // 2)
+    cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
+
+    # === Generate masked_processed for analysis ===
+    if sub_region.ndim == 2:
+        masked_processed = cv2.bitwise_and(sub_region, sub_region, mask=mask)
+    elif sub_region.ndim == 3 and sub_region.shape[2] == 3:
+        masked_processed = cv2.bitwise_and(sub_region, sub_region, mask=mask)
+    elif sub_region.ndim == 3 and sub_region.shape[2] == 4:
+        channels = cv2.split(sub_region)
+        for i in range(3):
+            channels[i] = cv2.bitwise_and(channels[i], channels[i], mask=mask)
+        masked_processed = cv2.merge(channels)
+    else:
+        raise ValueError("Unsupported processed image format")
+
+    return masked_processed, frame
+
+
 
 def second_region(graphicsView_subImage,graphicsView_MainFig):
     scene2 = QtWidgets.QGraphicsScene(graphicsView_subImage)
@@ -316,7 +355,12 @@ def get_stylesheet():
     QLabel {
         color: white;  /* White text for all labels */
     }
-    
+    QGroupBox::title {
+    color: white;
+    }
+    QRadioButton {
+    color: white;
+    }
     QCheckBox {
     color: white;  /* White text for all QCheckBox */
     }
@@ -370,6 +414,8 @@ def add_eyecorner(x_pos , y_pos, scene2, graphicsView_subImage):
     graphicsView_subImage.eyecorner = eyecorner
     eye_corner_center = (x_pos , y_pos)
     return eye_corner_center
+
+
 
 
 
