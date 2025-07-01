@@ -2,13 +2,12 @@ import cv2
 import os.path
 import numpy as np
 from PyQt5 import QtWidgets, QtGui, QtCore
-
+import matplotlib.pyplot as plt
 def initialize_attributes(obj, image):
     if len(image.shape) == 3:
         obj.image_height, obj.image_width, _ = image.shape
     elif len(image.shape) == 2:
         obj.image_height, obj.image_width = image.shape
-
     obj.ratio = 2
     obj.reflect_height = 30
     obj.reflect_width = 30
@@ -17,7 +16,7 @@ def initialize_attributes(obj, image):
     obj.sub_region = None
     obj.reflect_ellipse = None
     obj.saturation = 0
-    obj.saturation_ununiform = 0
+    obj.saturation_ununiform = 1
     obj.contrast = 1
     obj.brightness = 1
     obj.secondary_BrightGain = 1
@@ -40,7 +39,8 @@ def initialize_attributes(obj, image):
     obj.eyecorner = None
     obj.eye_corner_center = None
     obj.erased_pixels = None
-    obj.mnd = 10
+    obj.mnd = 3
+    obj.reflect_brightness = 230
     obj.binary_threshold = 220
     obj.Show_binary = False
     obj.clustering_method = "SimpleContour"
@@ -58,7 +58,7 @@ class SaturationSettings:
                  secondary_direction=None,
                  brightness_concave_power=1.5,
                  secondary_BrightGain=1.0,
-                 saturation_ununiform = 0):
+                 saturation_ununiform = 1):
         self.primary_direction = primary_direction
         self.brightness_curve = brightness_curve
         self.brightness = brightness
@@ -68,7 +68,9 @@ class SaturationSettings:
         self.saturation_ununiform = saturation_ununiform
 
 def change_Gradual_saturation(image_bgr: np.ndarray, settings: SaturationSettings):
+    cv2.imwrite(r"C:\Users\faezeh.rabbani\FACEIT_DATA\Frames\output_image.png", image_bgr)
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
+    cv2.imwrite(r"C:\Users\faezeh.rabbani\FACEIT_DATA\Frames\hsv.png", hsv)
     h, w = hsv.shape[:2]
     gradient = np.ones((h, w), dtype=np.float32)
 
@@ -209,16 +211,16 @@ def apply_intensity_gradient_gray(gray_image: np.ndarray, settings) -> np.ndarra
     hsv[..., 2] *= gradient
     hsv[..., 2] = np.clip(hsv[..., 2], 0, 255)
 
+
     # === Convert back to BGR ===
-    brightness = 0
     bgr_result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-    bgr_result = cv2.convertScaleAbs(bgr_result, alpha=settings.saturation_ununiform, beta=brightness)
+    bgr_result = cv2.convertScaleAbs(bgr_result, alpha=settings.saturation_ununiform)
 
     return bgr_result
 
 
 
-def show_ROI(ROI, image):
+def show_ROI(ROI, image, ROI_type = "pupil"):
     sub_image = ROI.rect()
     top = int(sub_image.top())*2
     bottom = int(sub_image.bottom())*2
@@ -226,26 +228,30 @@ def show_ROI(ROI, image):
     right = int(sub_image.right())*2
     sub_region = image[top:bottom, left:right]
     frame = [top,bottom, left,right]
-    height, width = sub_region.shape[:2]
-    mask = np.zeros((height, width), dtype=np.uint8)
-    center = (width // 2, height // 2)
-    axes = (width // 2, height // 2)
-    cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
+    if ROI_type == "pupil":
+        height, width = sub_region.shape[:2]
+        mask = np.zeros((height, width), dtype=np.uint8)
+        center = (width // 2, height // 2)
+        axes = (width // 2, height // 2)
+        cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
 
-    # === Generate masked_processed for analysis ===
-    if sub_region.ndim == 2:
-        masked_processed = cv2.bitwise_and(sub_region, sub_region, mask=mask)
-    elif sub_region.ndim == 3 and sub_region.shape[2] == 3:
-        masked_processed = cv2.bitwise_and(sub_region, sub_region, mask=mask)
-    elif sub_region.ndim == 3 and sub_region.shape[2] == 4:
-        channels = cv2.split(sub_region)
-        for i in range(3):
-            channels[i] = cv2.bitwise_and(channels[i], channels[i], mask=mask)
-        masked_processed = cv2.merge(channels)
+        # === Generate masked_processed for analysis ===
+        if sub_region.ndim == 2:
+            final_image = cv2.bitwise_and(sub_region, sub_region, mask=mask)
+        elif sub_region.ndim == 3 and sub_region.shape[2] == 3:
+            final_image = cv2.bitwise_and(sub_region, sub_region, mask=mask)
+        elif sub_region.ndim == 3 and sub_region.shape[2] == 4:
+            channels = cv2.split(sub_region)
+            for i in range(3):
+                channels[i] = cv2.bitwise_and(channels[i], channels[i], mask=mask)
+            final_image = cv2.merge(channels)
+        else:
+            raise ValueError("Unsupported processed image format")
     else:
-        raise ValueError("Unsupported processed image format")
+        final_image = sub_region
 
-    return masked_processed, frame
+
+    return final_image, frame
 def show_ROI2(sub_image, image):
 
     top = int(sub_image.top())*2
@@ -337,7 +343,7 @@ def load_frame_by_index(cap, index):
 
 def setup_sliders(parent,min,max,set_value, orientation):
     Slider = QtWidgets.QSlider(parent)
-    if orientation == "vertical":
+    if orientation == "Vertical":
         Slider.setOrientation(QtCore.Qt.Vertical)
     elif orientation == "horizontal":
         Slider.setOrientation(QtCore.Qt.Horizontal)
@@ -346,64 +352,125 @@ def setup_sliders(parent,min,max,set_value, orientation):
     Slider.setValue(set_value)
     Slider.setEnabled(False)
     return Slider
-def get_stylesheet():
+def set_active_style():
     return """
     QWidget {
-        background-color: #3d4242;  /* Light gray background */
-        color: #000000;  /* Black text */
-    }
-    QLabel {
-        color: white;  /* White text for all labels */
-    }
-    QGroupBox::title {
-    color: white;
-    }
-    QRadioButton {
-    color: white;
-    }
-    QCheckBox {
-    color: white;  /* White text for all QCheckBox */
+        background-color: #3d4242;
+        color: #000000;
     }
     
+    QRadioButton::indicator:checked {
+    background-color: #CD853F;
+    border: 1px solid white;
+    }
+
+    QRadioButton::indicator:unchecked {
+        background-color: #4d5454;
+        border: 1px solid gray;
+    }
+
+    QLabel,
+    QRadioButton,
+    QCheckBox,
+    QGroupBox::title {
+        color: white;
+    }
+
     QPushButton {
-        background-color: #CD853F ;  /* Background for buttons */
-        color: white;  /* White text on buttons */
+        background-color: #CD853F;
+        color: white;
         border: 3px outset #CD853F;
         padding: 4px;
     }
     QPushButton:hover {
-        background-color: #c24b23;  /* Darker on hover */
+        background-color: #c24b23;
     }
+
     QLineEdit, QSlider {
         background-color: #3d4242;
         color: #000000;
         border: 1px solid #3d4242;
         padding: 5px;
     }
+
+    QSlider::groove:horizontal {
+        border: 1px solid #999999;
+        height: 8px;
+        background: #b0b0b0;
+        margin: 2px 0;
+    }
+
+    QSlider::handle:horizontal {
+        background: #CD853F;
+        border: 1px ridge #CD853F;
+        width: 8px;
+        height: 20px;
+        margin: -7px 0;
+        border-radius: 3px;
+    }
+    """
+def set_inactive_style():
+    return """
+    
+    QWidget {
+        background-color: #3d4242;
+        color: #000000;
+    }
+    
+    QRadioButton::indicator:checked {
+    background-color: 3d4242;
+    border: 1px solid white;
+    }
+
+    QRadioButton::indicator:unchecked {
+        background-color: 3d4242;
+        border: 1px solid gray;
+    }
+
+    QLabel,
+    QRadioButton,
+    QCheckBox,
+    QGroupBox::title {
+        color: white;
+    }
+
+    QPushButton {
+        background-color:  #3d4242;
+        color: red;
+        border: 3px outset  #3d4242;
+        padding: 4px;
+    }
+    QPushButton:hover {
+        background-color:  #3d4242;
+    }
+
+    QLineEdit, QSlider {
+        background-color:  #4d5454;
+        color: #4d5454;
+        border: 1px solid  #4d5454;
+        padding: 5px;
+    }
+    QSlider::groove:horizontal {
+        border: 1px solid  #4d5454;
+        height: 8px;
+        background:  #4d5454;
+        margin: 2px 0;
+    }
+    QSlider::handle:horizontal {
+        background: #4d5454;
+        border: 1px solid  #4d5454;
+        width: 10px;
+        height: 20px;
+        margin: -7px 0;
+        border-radius: 4px;
+    }
     """
 
-def set_button_style(widget, widget_type):
-    widget.setStyleSheet(f"""
-        {widget_type}::groove:horizontal {{
-            border: 1px solid #999999;
-            height: 8px;
-            background: #b0b0b0;
-            margin: 2px 0;
-        }}
-        {widget_type}::handle:horizontal {{
-            background: #CD853F;
-            border: 1px ridge #CD853F;
-            width: 8px;
-            height: 20px;
-            margin: -7px 0;
-            border-radius: 3px;
-        }}
-    """)
 
 def add_eyecorner(x_pos , y_pos, scene2, graphicsView_subImage):
     if hasattr(graphicsView_subImage, 'eyecorner') and graphicsView_subImage.eyecorner is not None:
         scene2.removeItem(graphicsView_subImage.eyecorner)
-    diameter = 2
+    diameter = 5
     eyecorner = QtWidgets.QGraphicsEllipseItem(x_pos-diameter/2 , y_pos-diameter/2, diameter , diameter)
     pen = QtGui.QPen(QtGui.QColor("peru"))
     pen.setWidth(0)

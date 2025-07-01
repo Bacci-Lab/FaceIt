@@ -305,7 +305,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
         self.resetModes()
         if self.dragging:
             if self.dragging_face:
-                self.parent.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
+                self.parent.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image, "face")
                 _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"face")
                 self.parent.set_frame(self.parent.Face_frame)
             elif self.dragging_pupil:
@@ -322,7 +322,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
 
         elif self.Resizing:
             if self.Resize_face:
-                self.parent.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image)
+                self.parent.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image, "face")
 
                 _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"face")
                 self.parent.set_frame(self.parent.Face_frame)

@@ -7,7 +7,7 @@ class PupilWorker(QObject):
 
     def __init__(self, images,process_handler,saturation, contrast,erased_pixels,
                  brightness_concave_power, secondary_direction, reflect_ellipse,
-                 mnd, clustering_method,binary_method,binary_threshold, saturation_method,saturation_ununiform
+                 mnd,reflect_brightness, clustering_method,binary_method,binary_threshold, saturation_method,saturation_ununiform
                  , primary_direction, brightness, brightness_curve,secondary_BrightGain, sub_image):
         super().__init__()
         self.images = images
@@ -18,6 +18,7 @@ class PupilWorker(QObject):
         self.erased_pixels = erased_pixels
         self.reflect_ellipse = reflect_ellipse
         self.mnd = mnd
+        self.reflect_brightness = reflect_brightness
         self.clustering_method = clustering_method
         self.saturation_method = saturation_method
         self.binary_method = binary_method
@@ -37,7 +38,7 @@ class PupilWorker(QObject):
         try:
             result = self.process_handler.pupil_dilation_comput(
                 self.images,self.saturation, self.contrast, self.erased_pixels,
-                self.reflect_ellipse, self.mnd, self.clustering_method, self.binary_method,
+                self.reflect_ellipse, self.mnd,self.reflect_brightness, self.clustering_method, self.binary_method,
                 self.binary_threshold, self.saturation_method, self.brightness, self.brightness_curve,
                 self.secondary_BrightGain, self.brightness_concave_power,
                 self.saturation_ununiform, self.primary_direction, self.secondary_direction, self.sub_image)
@@ -85,7 +86,7 @@ class MotionWorker(QObject):
             self.finished.emit(np.array(motion_energy_values))
 
         except Exception as e:
-            self.error.emit(str(e))  # Handle unexpected exceptions
+            self.error.emit(str(e))
 
     def stop(self):
         self._is_running = False

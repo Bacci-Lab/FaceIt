@@ -183,14 +183,15 @@ class LoadData:
         app.brightness_curve = 1
         app.brightness_concave_power = 1.5
         app.saturation = 0
-        app.saturation_ununiform = 0
+        app.saturation_ununiform = 1
         app.Show_binary = False
         app.primary_direction = None
         app.secondary_direction = None
         app.saturation_method = "None"
         app.clustering_method = "SimpleContour"
         app.binary_method = "Adaptive"
-        app.mnd = 10
+        app.mnd = 3
+        app.reflect_brightness = 230
         app.binary_threshold = 220
         app.frame = 0
         app.Image_loaded = False
@@ -200,7 +201,6 @@ class LoadData:
         app.eyecorner = None
         app.eye_corner_center = None
         app.erased_pixels = None
-        app.reflect_ellipse = None
 
         # === Reset GUI elements ===
 
@@ -256,36 +256,3 @@ class LoadData:
         app.adjustment_mode_group.addButton(app.radio_button_Uniform)
         app.adjustment_mode_group.addButton(app.radio_button_Gradual)
         #--------------------------------------------
-
-        # Clear scenes
-        if hasattr(app, 'scene'):
-            app.scene.clear()
-        if hasattr(app, 'scene2'):
-            app.scene2.clear()
-
-        # Reset ROIs
-        app.pupil_ROI = None
-        app.face_ROI = None
-        app.pupil_detection = None
-        app.pupil_ellipse_items = None
-
-        # GraphicsViews
-        app.clear_graphics_view(app.graphicsView_MainFig)
-        app.clear_graphics_view(app.graphicsView_subImage)
-        app.clear_graphics_view(app.graphicsView_whisker)
-        app.clear_graphics_view(app.graphicsView_pupil)
-
-        # Other plots (motion energy, pupil, etc.)
-        if hasattr(app, 'motion_energy'):
-            del app.motion_energy
-        if hasattr(app, 'final_pupil_area'):
-            del app.final_pupil_area
-        if hasattr(app, 'X_saccade'):
-            del app.X_saccade
-        if hasattr(app, 'Y_saccade'):
-            del app.Y_saccade
-        if hasattr(app, 'grooming_ids'):
-            del app.grooming_ids
-
-        print("[INFO] GUI has been reset.")
-

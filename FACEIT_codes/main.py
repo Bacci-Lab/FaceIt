@@ -24,6 +24,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Display_handler = display_and_plots.Display(self)
         self.timer = QtCore.QTimer()
         self.is_playing = False
+        self.manual_pupil_mode = False
 
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
@@ -45,7 +46,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.len_file = 1
         self.erase_size = 20
         self.ratio = 2
-        self.mnd = 10
+        self.mnd = 3
+        self.reflect_brightness = 230
         self.clustering_method = "SimpleContour"
         self.binary_method = "Adaptive"
         self.binary_threshold = 220
@@ -170,10 +172,25 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.mnd_slider.setMaximum(30)
         self.mnd_slider.setValue(self.mnd)
         self.mnd_slider.valueChanged.connect(self.get_cluster_pixel_value)
+        #####################
+        br_reflect_layout = QtWidgets.QHBoxLayout()
+        br_reflect_label = QtWidgets.QLabel("Reflect br:")
+        self.reflect_brightness_edit = QtWidgets.QLineEdit(str(self.reflect_brightness))
+        self.reflect_brightness_edit.setReadOnly(True)
+        self.reflect_brightness_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.reflect_brightness_slider.setMinimum(1)
+        self.reflect_brightness_slider.setMaximum(255)
+        self.reflect_brightness_slider.setValue(self.reflect_brightness)
+        self.reflect_brightness_slider.valueChanged.connect(self.get_reflect_brightness_value)
+        ########################################
         cluster_pixel_layout.addWidget(cluster_pixel_label)
         cluster_pixel_layout.addWidget(self.mnd_slider)
         cluster_pixel_layout.addWidget(self.mnd_edit)
+        br_reflect_layout.addWidget(br_reflect_label)
+        br_reflect_layout.addWidget(self.reflect_brightness_slider)
+        br_reflect_layout.addWidget(self.reflect_brightness_edit)
         main_layout.addLayout(cluster_pixel_layout)
+        main_layout.addLayout(br_reflect_layout)
         self.settings_window.setLayout(main_layout)
         self.settings_window.show()
 
@@ -181,6 +198,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.erase_size = self.brush_size_slider.value()
         self.brush_size_edit.setText(str(self.erase_size))
         return self.erase_size
+
+    def get_reflect_brightness_value(self):
+        self.reflect_brightness = self.reflect_brightness_slider.value()
+        self.reflect_brightness_edit.setText((str(self.reflect_brightness)))
+        return self.reflect_brightness
 
     def get_cluster_pixel_value(self):
         self.mnd = self.mnd_slider.value()
@@ -261,10 +283,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.groupBoxLayout.addWidget(QtWidgets.QLabel("Post processing"))
         self.groupBoxLayout.addLayout(self.detectionLayout)
 
-        self.detect_blinking_Button = QtWidgets.QPushButton("Detect Blinking")
+        self.detect_blinking_Button = QtWidgets.QPushButton("Filter pupil")
         self.detectionLayout.addWidget(self.detect_blinking_Button, 0, 0)
 
-        self.Undo_blinking_Button = QtWidgets.QPushButton("Undo Blinking")
+        self.Undo_blinking_Button = QtWidgets.QPushButton("Undo Filtering pupil")
         self.detectionLayout.addWidget(self.Undo_blinking_Button, 0, 1)
 
         self.grooming_Button = QtWidgets.QPushButton("Define Grooming threshold")
@@ -272,6 +294,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
         self.Undo_grooming_Button = QtWidgets.QPushButton("Undo Grooming")
         self.detectionLayout.addWidget(self.Undo_grooming_Button, 1, 1)
+
+        self.manual_pupil_detection_Button = QtWidgets.QPushButton("Manual pupil detection")
+        self.detectionLayout.addWidget(self.manual_pupil_detection_Button, 0, 2)
 
         # === File Operations ===
         self.fileOpsLayout = QtWidgets.QVBoxLayout()
@@ -420,7 +445,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.radio_group_primary_direction.addButton(btn)
             btn.toggled.connect(self.update_light_direction)
 
-        self.brightness_curve_Slider = functions.setup_sliders(self.centralwidget, 0, 30, 10, "horizontal")
+        self.brightness_curve_Slider = functions.setup_sliders(self.centralwidget, 0, 30, 15, "horizontal")
         self.lineEdit_brightness_curve_value = QtWidgets.QLineEdit(self.centralwidget)
         brightness_curve_block = self.create_slider_block("Primary Brightness Curve",
                                                           self.brightness_curve_Slider,
@@ -484,7 +509,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.gradual_groupbox_layout.addLayout(self.middle_right_layout)
 
         # === Stretch saturation_ununiform_block across whole bottom ===
-        self.saturation_ununiform_Slider = functions.setup_sliders(self.centralwidget, 0, 20, 10, "horizontal")
+        self.saturation_ununiform_Slider = functions.setup_sliders(self.centralwidget, 0, 30, 10, "horizontal")
         self.lineEdit_satur_ununiform_value = QtWidgets.QLineEdit(self.centralwidget)
         saturation_ununiform_block = self.create_slider_block("Saturation", self.saturation_ununiform_Slider,
                                                               self.lineEdit_satur_ununiform_value)
@@ -503,6 +528,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.binary_threshold_slider = functions.setup_sliders(self.centralwidget, 0, 255, 220, "horizontal")
         self.lineEdit_binary_threshold_value = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit_binary_threshold_value.setFixedWidth(50)
+        self.binary_threshold_slider.setStyleSheet(functions.set_inactive_style())
 
 
         self.binary_threshold_block = QtWidgets.QHBoxLayout()
@@ -510,6 +536,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.binary_threshold_block.addWidget(self.radioButton_Constant)
         self.binary_threshold_block.addWidget(self.binary_threshold_slider)
         self.binary_threshold_block.addWidget(self.lineEdit_binary_threshold_value)
+
+        self.gradual_groupbox.setStyleSheet(functions.set_inactive_style())
+        self.uniform_groupbox.setStyleSheet(functions.set_inactive_style())
 
         self.Main_V_Layout.addLayout(self.binary_threshold_block)
 
@@ -531,6 +560,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Undo_blinking_Button.clicked.connect(self.init_undo_blinking)
         self.checkBox_binary.stateChanged.connect(self.update_binary_flag)
         self.detect_blinking_Button.clicked.connect(self.start_blinking_detection)
+        self.manual_pupil_detection_Button.clicked.connect(self.Manual_pupil_detection)
         self.Save_Button.clicked.connect(self.save_handler.init_save_data)
         self.grooming_Button.clicked.connect(self.change_cursor_color)
         self.Undo_grooming_Button.clicked.connect(self.undo_grooming)
@@ -547,16 +577,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.timer.timeout.connect(self.play_next_frame)
 
     def setup_styles(self):
-        self.centralwidget.setStyleSheet(functions.get_stylesheet())
-        functions.set_button_style(self.saturation_Slider, "QSlider")
-        functions.set_button_style(self.saturation_ununiform_Slider, "QSlider")
-        functions.set_button_style(self.contrast_Slider, "QSlider")
-        functions.set_button_style(self.binary_threshold_slider, "QSlider")
-        functions.set_button_style(self.Slider_frame, "QSlider")
-        functions.set_button_style(self.BrightGain_primary_Slider, "QSlider")
-        functions.set_button_style(self.brightness_curve_Slider, "QSlider")
-        functions.set_button_style(self.brightGain_secondary_Slider, "QSlider")
-        functions.set_button_style(self.brightness_concave_power_Slider, "QSlider")
+        self.centralwidget.setStyleSheet(functions.set_active_style())
         self.lineEdit_brightGain_primary_value.setStyleSheet("background-color: #999999")
         self.lineEdit_binary_threshold_value.setStyleSheet("background-color: #999999")
         self.lineEdit_brightness_curve_value.setStyleSheet("background-color: #999999")
@@ -617,9 +638,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def save_video_chack(self):
         return self.save_video.isChecked()
 
-
     def update_saturation_method(self):
         if self.radio_button_Uniform.isChecked():
+            self.gradual_groupbox.setStyleSheet(functions.set_inactive_style())
+            self.uniform_groupbox.setStyleSheet(functions.set_active_style())
             self.saturation_method = "Uniform"
             self.brightness_curve_Slider.setEnabled(False)
             self.BrightGain_primary_Slider.setEnabled(False)
@@ -629,6 +651,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.contrast_Slider.setEnabled(True)
             self.saturation_Slider.setEnabled(True)
         elif self.radio_button_Gradual.isChecked():
+            self.gradual_groupbox.setStyleSheet(functions.set_active_style())
+            self.uniform_groupbox.setStyleSheet(functions.set_inactive_style())
             self.saturation_method = "Gradual"
             self.contrast_Slider.setEnabled(False)
             self.saturation_Slider.setEnabled(False)
@@ -676,24 +700,13 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         if self.radioButton_Constant.isChecked():
             self.binary_method = "Constant"
             self.binary_threshold_slider.setEnabled(True)
-            self.binary_threshold_slider.setStyleSheet("""
-                QSlider::groove:horizontal {
-                    height: 8px;
-                    background: #dc4141;
-                }
-                QSlider::handle:horizontal {
-                background: #c88a8a;
-                border: 1px ridge #c88a8a;
-                width: 8px;
-                height: 20px;
-                margin: -7px 0;
-                border-radius: 3px;
-                    }
-            """)
+            self.binary_threshold_slider.setStyleSheet(functions.set_active_style())
         else:
             self.binary_method = "Adaptive"
             self.binary_threshold_slider.setEnabled(False)
-            functions.set_button_style(self.binary_threshold_slider, "QSlider")
+            self.binary_threshold_slider.setStyleSheet(functions.set_inactive_style())
+
+
 
     def satur_value(self, value):
         """Update saturation value and apply changes to the displayed sub-region."""
@@ -807,9 +820,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             if not hasattr(self, 'scene2') or self.scene2 is None:
                 self.scene2 = QtWidgets.QGraphicsScene()
             self.Display_handler.display_sub_region(self.sub_region, "pupil", Detect_pupil=True)
-    ##############################################
-
-
 
     def update_slider(self):
         try:
@@ -826,7 +836,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.thread = QThread()
         self.worker = PupilWorker(
             images, self.process_handler, self.saturation, self.contrast,
-            self.erased_pixels,self.brightness_concave_power,self.secondary_direction, self.reflect_ellipse, self.mnd,
+            self.erased_pixels,self.brightness_concave_power,self.secondary_direction, self.reflect_ellipse, self.mnd, self.reflect_brightness,
             self.clustering_method, self.binary_method, self.binary_threshold, self.saturation_method, self.saturation_ununiform, self.primary_direction,
             self.brightness, self.brightness_curve, self.secondary_BrightGain, self.sub_image)
         self.worker.moveToThread(self.thread)
@@ -898,7 +908,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Y_saccade_updated = np.array(self.Y_saccade)
         self.plot_handler.plot_result(self.pupil_dilation, self.graphicsView_pupil, "pupil", color="palegreen",
                          saccade=self.X_saccade)
-
+    def Manual_pupil_detection(self):
+        print("frame number is: ")
     def eyecorner_clicked(self):
         self.eye_corner_mode = True
         self.Eraser_active = False

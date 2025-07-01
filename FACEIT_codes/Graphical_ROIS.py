@@ -110,7 +110,7 @@ class ROIHandler:
         - saturation: Saturation value for display.
         - kwargs: Additional arguments.
         """
-        sub_region, _ = functions.show_ROI(roi, image)
+        sub_region, _ = functions.show_ROI(roi, image, roi_type)
         self.app_instance.Display_handler.display_sub_region(sub_region, roi_type)
 
     def _add_to_scene2(self, roi, handles, roi_list_attr, center, kwargs):

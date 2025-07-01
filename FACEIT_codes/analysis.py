@@ -1,7 +1,6 @@
 
-from PyQt5.QtCore import QObject, pyqtSignal, QThread
+from PyQt5.QtCore import  QThread
 from FACEIT_codes import pupil_detection
-from FACEIT_codes import display_and_plots
 from FACEIT_codes.Workers import MotionWorker
 from multiprocessing import Pool
 import numpy as np
@@ -24,6 +23,7 @@ def process_single_frame(args):
         saturation, contrast,
         erased_pixels, reflect_ellipse,
         eye_corner_center, mnd,
+        reflect_brightness,
         clustering_method, binary_method,binary_threshold,
         saturation_method,
         brightness, brightness_curve,
@@ -71,7 +71,7 @@ def process_single_frame(args):
     sub_region_rgba = cv2.cvtColor(processed, cv2.COLOR_BGR2BGRA)
 
     _, center, width, height, angle, current_area = pupil_detection.detect_pupil(
-        sub_region_rgba, erased_pixels, reflect_ellipse, mnd, clustering_method, binary_method, binary_threshold
+        sub_region_rgba, erased_pixels, reflect_ellipse, mnd,reflect_brightness, clustering_method, binary_method, binary_threshold
     )
 
     pupil_distance_from_corner = (
@@ -180,46 +180,74 @@ class ProcessHandler:
             # Mark images as loaded
             self.app_instance.Image_loaded = True
 
-    def detect_blinking(self, pupil, width, height, x_saccade, y_saccade):
+    def detect_blinking(self,
+                        pupil,
+                        width,
+                        height,
+                        x_saccade,
+                        y_saccade,
+                        win=15,
+                        k=3.0):
         """
-        Detects and processes blinking events based on pupil data, width, and height ratios.
+        Detect blinks by flagging outliers in the pupil signal via a Hampel filter
+        (rolling median ± k * scaled‐MAD), then mask and interpolate saccade data.
 
         Parameters:
-            pupil (array): Array of pupil data.
-            width (array): Array of pupil width data.
-            height (array): Array of pupil height data.
-            x_saccade (array): Array of X-axis saccade data.
-            y_saccade (array): Array of Y-axis saccade data.
+            pupil      (array): 1D pupil-area (or diameter) time series
+            width      (array): [unused]—kept for signature compatibility
+            height     (array): [unused]—kept for signature compatibility
+            x_saccade  (array): raw X‐saccade time series
+            y_saccade  (array): raw Y‐saccade time series
+            win        (int): half‐window length for rolling stats (default 25)
+            k          (float): outlier threshold multiplier (default 3.0)
+        Returns:
+            combined_blinking_ids (list): indices of samples flagged as blinks
         """
 
-        # Convert width, height, and saccade data to numpy arrays
-        width = np.array(width)
-        height = np.array(height)
-        self.app_instance.X_saccade_updated = np.array(x_saccade)
-        self.app_instance.Y_saccade_updated = np.array(y_saccade)
+        # 1) Copy inputs into instance attributes
+        pupil = np.asarray(pupil)
+        self.app_instance.X_saccade_updated = np.asarray(x_saccade)
+        self.app_instance.Y_saccade_updated = np.asarray(y_saccade)
 
-        # Calculate the width-to-height ratio to identify potential blinking
-        ratio = width / height
+        # 2) Set up Hampel parameters
+        L = 1.4826  # consistency factor → MAD ≈ σ for Gaussians
+        n = len(pupil)
+        medians = np.zeros(n)
+        mads = np.zeros(n)
+        outliers = np.zeros(n, dtype=bool)
 
-        # Detect blinking based on the ratio and pupil data using defined thresholds
-        blinking_id_ratio = pupil_detection.detect_blinking_ids(ratio, 20)
-        blinking_id_area = pupil_detection.detect_blinking_ids(pupil, 10)
+        # 3) Rolling‐window Hampel filter
+        half = win // 2
+        for i in range(n):
+            start = max(0, i - half)
+            end = min(n, i + half + 1)  # +1 because Python slicing is exclusive
+            window = pupil[start:end]
 
-        # Combine the detected blinking indices and remove duplicates
-        combined_blinking_ids = list(set(blinking_id_ratio + blinking_id_area))
+            med = np.median(window)
+            mad = L * np.median(np.abs(window - med))
 
-        # Ensure indices do not exceed the length of the saccade data
-        combined_blinking_ids = [x for x in combined_blinking_ids if x < len(self.app_instance.X_saccade_updated[0])]
-        combined_blinking_ids.sort()
+            medians[i] = med
+            mads[i] = mad
 
-        # Replace the detected blinking indices with NaNs in the updated saccade arrays
-        self.app_instance.X_saccade_updated[0][combined_blinking_ids] = np.nan
-        self.app_instance.Y_saccade_updated[0][combined_blinking_ids] = np.nan
+            # Flag as blink if it exceeds k × local MAD
+            if mad > 0 and np.abs(pupil[i] - med) > k * mad:
+                outliers[i] = True
 
-        # Interpolate the pupil data to handle the blinking periods smoothly
-        self.app_instance.interpolated_pupil = pupil_detection.interpolate(combined_blinking_ids, pupil)
+        # 4) Extract the blink indices
+        blinking_ids = np.where(outliers)[0].tolist()
 
-        # Plot the interpolated pupil data with the detected saccade events
+        # 5) Mask saccade samples at those times
+        max_idx = self.app_instance.X_saccade_updated.shape[-1]
+        valid_ids = [i for i in blinking_ids if i < max_idx]
+        valid_ids.sort()
+
+        self.app_instance.X_saccade_updated[0, valid_ids] = np.nan
+        self.app_instance.Y_saccade_updated[0, valid_ids] = np.nan
+
+        # 6) Interpolate pupil through blinks
+        self.app_instance.interpolated_pupil = pupil_detection.interpolate(valid_ids, pupil)
+
+        # 7) Plot final result
         self.app_instance.plot_handler.plot_result(
             self.app_instance.interpolated_pupil,
             self.app_instance.graphicsView_pupil,
@@ -228,12 +256,12 @@ class ProcessHandler:
             saccade=self.app_instance.X_saccade
         )
 
-        # Store the final pupil area as the interpolated result
+        # 8) Store and return
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
-        return combined_blinking_ids
+        return valid_ids
 
     def pupil_dilation_comput(self, images, saturation, contrast, erased_pixels, reflect_ellipse,
-                              mnd, clustering_method, binary_method,binary_threshold,
+                              mnd,reflect_brightness, clustering_method, binary_method,binary_threshold,
                               saturation_method, brightness, brightness_curve,
                               secondary_BrightGain, brightness_concave_power,
                               saturation_ununiform, primary_direction, secondary_direction, sub_image):
@@ -247,15 +275,13 @@ class ProcessHandler:
             self.app_instance.eye_corner_center[1]
         ) if self.app_instance.eye_corner_center is not None else None
 
-        #################################
-
         # Build frame_args for parallel processing
         frame_args = [
             (
                 current_image, sub_image,
                 saturation, contrast,
                 erased_pixels, reflect_ellipse,
-                eye_corner_center, mnd,
+                eye_corner_center, mnd,reflect_brightness,
                 clustering_method, binary_method,binary_threshold,
                 saturation_method, brightness, brightness_curve,
                 secondary_BrightGain, brightness_concave_power,
@@ -291,33 +317,7 @@ class ProcessHandler:
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
                 X_saccade, Y_saccade, pupil_distance_from_corner, pupil_width, pupil_height)
 
-    def plot_saccade(self, pupil_center_i, saccade):
-        """
-        Plots the saccades based on pupil center changes.
 
-        Parameters:
-            pupil_center_i (array-like): The center coordinates of the pupil for each frame in the i-axis.
-            saccade (array-like): Computed saccade values (differences with filtering).
-        """
-        # Frame indices for plotting
-        frames = np.arange(len(pupil_center_i))
-
-        # Plotting pupil center movement
-        plt.figure(figsize=(10, 5))
-        plt.plot(frames, pupil_center_i, label='Pupil Center (i-axis)', color='blue', marker='o', alpha=0.6)
-
-        # Plotting saccades (filter out NaN values)
-        plt.plot(frames, np.nan_to_num(saccade[0]), label='Saccade Movement', color='red', linestyle='--', alpha=0.7)
-
-        # Adding labels, legend, and title
-        plt.xlabel('Frame Index')
-        plt.ylabel('Movement Value')
-        plt.title('Saccade Movements Over Frames')
-        plt.axhline(0, color='gray', linestyle='--', linewidth=0.8)
-        plt.legend()
-        plt.grid(alpha=0.3)
-        plt.tight_layout()
-        plt.show()
 
 
     def Saccade(self, pupil_center_i):
