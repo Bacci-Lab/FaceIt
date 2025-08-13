@@ -909,7 +909,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.plot_handler.plot_result(self.pupil_dilation, self.graphicsView_pupil, "pupil", color="palegreen",
                          saccade=self.X_saccade)
     def Manual_pupil_detection(self):
-        print("frame number is: ")
     def eyecorner_clicked(self):
         self.eye_corner_mode = True
         self.Eraser_active = False
