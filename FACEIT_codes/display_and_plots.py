@@ -373,20 +373,7 @@ class Display:
             self.app_instance.pupil_ellipse_items = (ellipse_item, center_circle)
 
             ###################
-            # === Show as a popped-up OpenCV image ===
             show_img = processed.copy()
-            # if len(show_img.shape) == 2:  # grayscale
-            #     show_img = cv2.cvtColor(show_img, cv2.COLOR_GRAY2BGR)
-
-            # # Show in popup
-            # plt.figure(figsize=(10, 8))
-            # if len(show_img.shape) == 3 and show_img.shape[2] == 3:
-            #     imgGray = cv2.cvtColor(show_img, cv2.COLOR_BGR2GRAY)
-            # else:
-            #     imgGray = show_img.copy()
-            #
-            # plt.imshow(imgGray, cmap='gray')
-            # plt.show()
 
             # Draw the ellipse on a copy
             ellipse_center = (int(center[0]), int(center[1]))
@@ -395,20 +382,7 @@ class Display:
 
             cv2.ellipse(show_img, ellipse_center, ellipse_axes, ellipse_angle, 0, 360, (255, 0, 255), 2)  # purple
             cv2.circle(show_img, ellipse_center, 3, (0, 255, 255), -1)  # yellow center
-            if len(show_img.shape) == 3 and show_img.shape[2] == 3:
-                show_imgGray = cv2.cvtColor(show_img, cv2.COLOR_BGR2GRAY)
-            else:
-                show_imgGray = show_img.copy()
 
-            # # # Show in popup
-            # plt.figure(figsize=(10, 8))
-            # plt.imshow(show_imgGray, cmap='gray')
-            # plt.show()
-            #
-
-            ###############################
-
-        # === Final render update ===
         if self.app_instance.graphicsView_subImage:
             self.app_instance.graphicsView_subImage.setScene(self.app_instance.scene2)
             self.app_instance.graphicsView_subImage.setFixedSize(scaled_pixmap.width(), scaled_pixmap.height())

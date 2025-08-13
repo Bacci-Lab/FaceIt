@@ -946,24 +946,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-#############################
-# import cProfile
-# import pstats
-# import io
-# from PyQt5 import QtWidgets
-#
-# def main():
-#     app = QtWidgets.QApplication(sys.argv)
-#     window = MainWindow()
-#     window.show()
-#     app.exec_()
-#
-# if __name__ == "__main__":
-#     pr = cProfile.Profile()
-#     pr.enable()
-#     main()
-#     pr.disable()
-#     s = io.StringIO()
-#     ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
-#     ps.print_stats()
-#     print(s.getvalue())
+
