@@ -99,58 +99,40 @@ class LoadData:
         print(f"✅ Image loading completed in {elapsed_time:.2f} seconds.")
         return images
 
-    def load_frames_from_video(self, video_path,image_height, max_workers=8, buffer_size=32):
-        """Load frames from a video file using multithreading."""
+    def load_frames_from_video(self, video_path, image_height, buffer_size=64):
+        """Stream frames from a video file using a background thread and buffer (fast + memory-safe)."""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             print(f"Error: Cannot open video file {video_path}.")
-            return None
+            return
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        frames = []
         frame_queue = queue.Queue(maxsize=buffer_size)
 
         def producer():
-            for _ in range(total_frames):
+            while True:
                 ret, frame = cap.read()
                 if not ret:
                     break
-                frame_queue.put(frame)
-            frame_queue.put(None)
+                # ✅ resize here once
+                h, w = frame.shape[:2]
+                aspect_ratio = w / h
+                new_w = int(image_height * aspect_ratio)
+                frame_resized = cv2.resize(frame, (new_w, image_height), interpolation=cv2.INTER_AREA)
+                frame_queue.put(frame_resized)
+            frame_queue.put(None)  # sentinel
 
-        def resize_frame(frame, image_height):
-            original_height, original_width, _ = frame.shape if len(frame.shape) == 3 else (frame.shape[0], frame.shape[1])
-            aspect_ratio = original_width / original_height
-            image_width = int(image_height * aspect_ratio)
-            return cv2.resize(frame, (image_width, image_height), interpolation=cv2.INTER_AREA)
+        # Start producer in background
+        threading.Thread(target=producer, daemon=True).start()
 
-        def consumer():
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
-                with tqdm(total=total_frames, desc="Processing video frames") as pbar:
-                    while True:
-                        frame = frame_queue.get()
-                        if frame is None:
-                            break
-                        future = executor.submit(resize_frame, frame, image_height)
-                        futures.append(future)
+        # Consumer yields frames one by one
+        while True:
+            frame = frame_queue.get()
+            if frame is None:
+                break
+            yield frame
 
-                        for future in as_completed(futures):
-                            frames.append(future.result())
-                            pbar.update(1)
-                            futures.remove(future)
-
-
-        start_time = time.time()
-        producer_thread = threading.Thread(target=producer)
-        producer_thread.start()
-        consumer()
-        producer_thread.join()
         cap.release()
-        elapsed_time = time.time() - start_time
-        print(f"✅ Video frame loading completed in {elapsed_time:.2f} seconds.")
-
-        return frames
 
     def display_graphics(self, folder_path):
         """Display initial graphics and setup scenes."""
@@ -191,7 +173,9 @@ class LoadData:
         app.clustering_method = "SimpleContour"
         app.binary_method = "Adaptive"
         app.mnd = 3
-        app.reflect_brightness = 230
+        app.c_value = 5
+        app.block_size = 17
+        app.reflect_brightness = 985
         app.binary_threshold = 220
         app.frame = 0
         app.Image_loaded = False

@@ -40,7 +40,7 @@ def initialize_attributes(obj, image):
     obj.eye_corner_center = None
     obj.erased_pixels = None
     obj.mnd = 3
-    obj.reflect_brightness = 230
+    obj.reflect_brightness = 985
     obj.binary_threshold = 220
     obj.Show_binary = False
     obj.clustering_method = "SimpleContour"
@@ -67,7 +67,8 @@ class SaturationSettings:
         self.secondary_BrightGain = secondary_BrightGain
         self.saturation_ununiform = saturation_ununiform
 
-def change_Gradual_saturation(image_bgr: np.ndarray, settings: SaturationSettings):
+
+def change_Gradual_saturation(image_bgr: np.ndarray, settings: SaturationSettings, show = False):
     cv2.imwrite(r"C:\Users\faezeh.rabbani\FACEIT_DATA\Frames\output_image.png", image_bgr)
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
     cv2.imwrite(r"C:\Users\faezeh.rabbani\FACEIT_DATA\Frames\hsv.png", hsv)
@@ -91,7 +92,6 @@ def change_Gradual_saturation(image_bgr: np.ndarray, settings: SaturationSetting
         gradient *= get_direction_mask(settings.primary_direction,
          settings.brightness_curve, settings.brightness)
 
-
     def get_symmetric_concave_mask(h: int, w: int, direction="Horizontal", strength=2.0, power = 1.5):
         size = w if direction in ["Horizontal"] else h
         x = np.linspace(-1, 1, size)
@@ -105,6 +105,18 @@ def change_Gradual_saturation(image_bgr: np.ndarray, settings: SaturationSetting
     if settings.secondary_direction is not None:
         gradient *= get_symmetric_concave_mask(h, w, "Vertical",
           settings.secondary_BrightGain, settings.brightness_concave_power)
+        # Plot with x and y axis values shown
+    if show:
+        plt.figure(figsize=(8, 4))
+        plt.imshow(gradient, cmap='gray', aspect='auto')
+        plt.colorbar(label='Brightness Scaling Factor')
+        plt.title(f"h")
+        plt.xlabel("Width (pixels)")
+        plt.ylabel("Height (pixels)")
+        plt.xticks(np.linspace(0, w, 5, dtype=int))
+        plt.yticks(np.linspace(0, h, 5, dtype=int))
+        plt.tight_layout()
+        plt.show()
 
     # Apply gradient to brightness channel
     hsv[..., 2] *= gradient
@@ -147,7 +159,6 @@ def change_saturation_uniform(image, saturation=0, contrast=1.0):
     hsv_image = hsv_image.astype(np.uint8)
     image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
     image = cv2.convertScaleAbs(image, alpha=contrast, beta=brightness)
-
     return image
 
 
@@ -249,8 +260,6 @@ def show_ROI(ROI, image, ROI_type = "pupil"):
             raise ValueError("Unsupported processed image format")
     else:
         final_image = sub_region
-
-
     return final_image, frame
 def show_ROI2(sub_image, image):
 
@@ -259,7 +268,7 @@ def show_ROI2(sub_image, image):
     left = int(sub_image.left())*2
     right = int(sub_image.right())*2
     sub_region = image[top:bottom, left:right]
-    frame = [top,bottom, left,right]
+    frame_pos = [top,bottom, left,right]
     height, width = sub_region.shape[:2]
     mask = np.zeros((height, width), dtype=np.uint8)
     center = (width // 2, height // 2)
@@ -279,7 +288,7 @@ def show_ROI2(sub_image, image):
     else:
         raise ValueError("Unsupported processed image format")
 
-    return masked_processed, frame
+    return masked_processed, frame_pos, center, axes
 
 
 

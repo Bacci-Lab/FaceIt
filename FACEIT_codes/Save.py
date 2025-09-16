@@ -42,7 +42,7 @@ class SaveHandler:
         if not self.app_instance.pupil_check():
             attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
                           'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner',
-                          'width', 'height']
+                          'width', 'height', 'frame_pos', 'frame_center', 'frame_axes']
             for attr in attributes:
                 initialize_data(attr)
 
@@ -76,14 +76,20 @@ class SaveHandler:
             motion_energy_without_grooming = self.app_instance.facemotion_without_grooming,
             grooming_ids = self.app_instance.grooming_ids,
             grooming_threshold = self.app_instance.grooming_thr,
-            blinking_ids = self.app_instance.blinking_ids
+            blinking_ids = self.app_instance.blinking_ids,
+            frame_pos = self.app_instance.frame_pos,
+            frame_center = self.app_instance.frame_center,
+            frame_axes = self.app_instance.frame_axes
+
         )
+
 
     def save_data(self, **data_dict):
         """
         Saves data to a .npz file and includes a video file as binary data if 'save_video' is checked.
         """
         save_directory = os.path.join(self.save_directory, "faceit.npz")
+        save_position = os.path.join(self.save_directory, "pupil_frame_pos.npy")
 
         # Check if "save_video" is checked
         if self.app_instance.save_video_chack():
@@ -99,6 +105,8 @@ class SaveHandler:
 
         try:
             np.savez_compressed(save_directory, **data_dict)
+            frame_pos_arr = np.array(self.app_instance.frame_pos[0])
+            np.save(save_position, frame_pos_arr)
             logging.info(f"Data successfully saved to {save_directory}")
         except Exception as e:
             logging.error(f"Failed to save data: {e}")
@@ -111,7 +119,6 @@ class SaveHandler:
             self.save_fig()
         except Exception as e:
             logging.error(f"Failed to save image: {e}")
-
 
     def save_nwb(self, output_path):
         """
@@ -139,8 +146,8 @@ class SaveHandler:
             # Check and initialize pupil-related data
             if not self.app_instance.pupil_check():
                 attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
-                              'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner',
-                              'width', 'height']
+                              'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner','width', 'height',
+                              'frame_pos', 'frame_center', 'frame_axes']
 
                 for attr in attributes:
                     initialize_data(attr)
@@ -326,7 +333,7 @@ class SaveHandler:
         if saccade_data is not None:
             self._plot_saccade(ax, saccade_data, data)
         fig.savefig(save_path, dpi=300)
-        plt.close(fig)
+
 
     def _plot_data(self, ax: plt.Axes, data: np.ndarray, label: str, color: str):
         """

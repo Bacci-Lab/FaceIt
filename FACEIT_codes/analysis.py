@@ -9,7 +9,6 @@ import cv2
 import time
 from multiprocessing import cpu_count
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from FACEIT_codes.functions import (
     change_saturation_uniform,
     change_Gradual_saturation,
@@ -29,11 +28,11 @@ def process_single_frame(args):
         brightness, brightness_curve,
         secondary_BrightGain, brightness_concave_power,
         saturation_ununiform,
-        primary_direction, secondary_direction
+        primary_direction, secondary_direction, c_value,block_size
     ) = args
 
 
-    sub_region, _ = show_ROI2(sub_image, current_image)
+    sub_region,frame_pos, frame_center, frame_axes = show_ROI2(sub_image, current_image)
 
     # === Build saturation settings ===
     settings = SaturationSettings(
@@ -71,7 +70,7 @@ def process_single_frame(args):
     sub_region_rgba = cv2.cvtColor(processed, cv2.COLOR_BGR2BGRA)
 
     _, center, width, height, angle, current_area = pupil_detection.detect_pupil(
-        sub_region_rgba, erased_pixels, reflect_ellipse, mnd,reflect_brightness, clustering_method, binary_method, binary_threshold
+        sub_region_rgba, erased_pixels, reflect_ellipse, mnd,reflect_brightness, clustering_method, binary_method, binary_threshold,c_value,block_size
     )
 
     pupil_distance_from_corner = (
@@ -79,10 +78,10 @@ def process_single_frame(args):
         if eye_corner_center is not None else np.nan
     )
 
-    center = (int(center[0]), int(center[1]))
+    center = int(center[0]), int(center[1])
     width, height = int(width), int(height)
-
-    return current_area, center, center[0], center[1], width, height, pupil_distance_from_corner
+    current_area = np.pi * width * height
+    return current_area, center, center[0], center[1], width, height, pupil_distance_from_corner, frame_pos, frame_center, frame_axes
 
 
 
@@ -170,10 +169,10 @@ class ProcessHandler:
     def load_images_if_needed(self):
         """Loads images if they are not already loaded."""
         if not self.app_instance.Image_loaded:
-            if self.app_instance.NPY:
+            if self.app_instance.NPY == True:
                 # Load images from a directory of .npy files
                 self.app_instance.images = self.app_instance.load_handler.load_images_from_directory(self.app_instance.folder_path,self.app_instance.image_height)
-            elif self.app_instance.video:
+            elif self.app_instance.video == True:
                 # Load images from a video file
                 self.app_instance.images = self.app_instance.load_handler.load_frames_from_video(self.app_instance.folder_path, self.app_instance.image_height)
 
@@ -182,8 +181,6 @@ class ProcessHandler:
 
     def detect_blinking(self,
                         pupil,
-                        width,
-                        height,
                         x_saccade,
                         y_saccade,
                         win=15,
@@ -260,13 +257,14 @@ class ProcessHandler:
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
         return valid_ids
 
-    def pupil_dilation_comput(self, images, saturation, contrast, erased_pixels, reflect_ellipse,
-                              mnd,reflect_brightness, clustering_method, binary_method,binary_threshold,
+    def pupil_dilation_comput(self, images_iter, saturation, contrast, erased_pixels, reflect_ellipse,
+                              mnd, reflect_brightness, clustering_method, binary_method, binary_threshold,
                               saturation_method, brightness, brightness_curve,
                               secondary_BrightGain, brightness_concave_power,
-                              saturation_ununiform, primary_direction, secondary_direction, sub_image):
+                              saturation_ununiform, primary_direction, secondary_direction,c_value, block_size, sub_image):
         """
         Computes pupil dilation and related metrics from a series of images using parallel processing.
+        Uses a generator instead of building all frame_args in memory.
         """
         start_time = time.time()
 
@@ -274,30 +272,34 @@ class ProcessHandler:
             self.app_instance.eye_corner_center[0],
             self.app_instance.eye_corner_center[1]
         ) if self.app_instance.eye_corner_center is not None else None
+        def frame_arg_gen():
+            for current_image in images_iter:
+                yield (
+                    current_image, sub_image,
+                    saturation, contrast,
+                    erased_pixels, reflect_ellipse,
+                    eye_corner_center, mnd, reflect_brightness,
+                    clustering_method, binary_method, binary_threshold,
+                    saturation_method, brightness, brightness_curve,
+                    secondary_BrightGain, brightness_concave_power,
+                    saturation_ununiform, primary_direction, secondary_direction,c_value,block_size
+                )
 
-        # Build frame_args for parallel processing
-        frame_args = [
-            (
-                current_image, sub_image,
-                saturation, contrast,
-                erased_pixels, reflect_ellipse,
-                eye_corner_center, mnd,reflect_brightness,
-                clustering_method, binary_method,binary_threshold,
-                saturation_method, brightness, brightness_curve,
-                secondary_BrightGain, brightness_concave_power,
-                saturation_ununiform, primary_direction, secondary_direction
-            )
-            for current_image in images
-        ]
+
 
         num_workers = max(1, cpu_count() // 2)
         print(f"Using {num_workers} workers out of {cpu_count()} cores.")
 
         with Pool(processes=num_workers) as pool:
-            results = list(tqdm(pool.imap(process_single_frame, frame_args), total=len(frame_args)))
+            results = list(
+                tqdm(pool.imap(process_single_frame, frame_arg_gen()),
+                     total=self.app_instance.len_file)
+            )
 
-        pupil_dilation, pupil_center, pupil_center_X, pupil_center_y, pupil_width, pupil_height, pupil_distance_from_corner = zip(
-            *results)
+        # Unpack results
+        (pupil_dilation, pupil_center, pupil_center_X, pupil_center_y,
+         pupil_width, pupil_height, pupil_distance_from_corner,
+         frame_pos, frame_center, frame_axes) = zip(*results)
 
         elapsed_time = time.time() - start_time
         print(f"Time taken for pupil dilation computation: {elapsed_time:.2f} seconds")
@@ -310,15 +312,16 @@ class ProcessHandler:
         pupil_width = np.array(pupil_width)
         pupil_height = np.array(pupil_height)
         pupil_distance_from_corner = np.array(pupil_distance_from_corner)
+        frame_pos = np.array(frame_pos)
+        frame_center = np.array(frame_center)
+        frame_axes = np.array(frame_axes)
 
         X_saccade = self.Saccade(pupil_center_X)
         Y_saccade = self.Saccade(pupil_center_y)
 
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
-                X_saccade, Y_saccade, pupil_distance_from_corner, pupil_width, pupil_height)
-
-
-
+                X_saccade, Y_saccade, pupil_distance_from_corner,
+                pupil_width, pupil_height, frame_pos, frame_center, frame_axes)
 
     def Saccade(self, pupil_center_i):
         """

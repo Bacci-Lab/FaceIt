@@ -198,9 +198,7 @@ def find_cluster_simple(binary_image, show_plot=False):
       3) Largest contour    (only that one, on blank)
       4) Final convex‐hull mask
     """
-    contours, _ = cv2.findContours(
-        binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
+    contours, _ = cv2.findContours(binary_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     h_img, w_img = binary_image.shape
     filtered = []
@@ -468,33 +466,7 @@ def detect_blinking_ids_old(pupil_data, threshold_factor, window_size=8):
 
 
 
-def interpolate(blink_indices, data_series):
-    """
-    Interpolates missing or invalid data points in a data series at specified indices.
 
-    Parameters:
-    blink_indices (list or np.ndarray): Indices in the data_series that need interpolation.
-    data_series (np.ndarray): The original data series containing valid and invalid data points.
-
-    Returns:
-    np.ndarray: A data series with interpolated values at the specified indices.
-    """
-    # Create a mask array where True indicates valid data and False indicates indices to be interpolated
-    valid_mask = np.ones(len(data_series), dtype=bool)
-    valid_mask[blink_indices] = False  # Mark indices of blinking as False (invalid)
-
-    # Create an array of indices for the full length of the data series
-    all_indices = np.arange(len(data_series))
-
-    # Extract the indices and data values for valid data points
-    valid_indices = all_indices[valid_mask]
-    valid_data = data_series[valid_mask]
-
-    # Perform interpolation for the full index range using valid data points
-    interpolated_data_series = np.interp(all_indices, valid_indices, valid_data)
-
-    # Return the fully interpolated data series
-    return interpolated_data_series
 def remove_reflection_with_inpaint(gray_image, reflect_ellipses):
     mask = np.zeros_like(gray_image, dtype=np.uint8)
     for center, width, height in zip(*reflect_ellipses):
@@ -533,7 +505,7 @@ def erase_pixels(erased_pixels, binary_image):
 #             # Set those pixels to 0 in the binary image
 #             binary_image[erased_pixels[:, 1], erased_pixels[:, 0]] = 0
 #     return binary_image
-def Image_binarization_constant(chosen_frame_region,erased_pixels, binary_threshold = 220):
+def Image_binarization_constant(chosen_frame_region,erased_pixels, binary_threshold = 220, show_binary = False, show_original = False):
     if len(chosen_frame_region.shape) == 3:
         if chosen_frame_region.shape[2] == 4:
             sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGRA2GRAY)
@@ -543,6 +515,61 @@ def Image_binarization_constant(chosen_frame_region,erased_pixels, binary_thresh
             raise ValueError(f"Unsupported number of channels: {chosen_frame_region.shape[2]}")
     else:
         sub_region_2Dgray = chosen_frame_region.copy()
+    if show_original == True:
+        # Create X, Y grid
+        h, w = sub_region_2Dgray.shape
+        X, Y = np.meshgrid(np.arange(w), np.arange(h))
+        # Assume Z is already computed from sub_region_2Dgray
+        Z = sub_region_2Dgray.astype(np.float32)
+        Z_masked = np.ma.masked_where(Z == 0, Z)
+
+        # Get min and max from non-zero (masked) values
+        z_min = Z_masked.min()
+        z_max = Z_masked.max()
+
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Set color mapping range
+        surf = ax.plot_surface(X, Y, Z_masked, cmap='plasma', rstride=2, cstride=2,
+                               vmin=z_min, vmax=z_max)
+
+        # Colorbar scaled accordingly
+        cbar = fig.colorbar(surf, shrink=0.6, aspect=20)
+        cbar.ax.invert_yaxis()
+
+        # Invert 3D z-axis to match visual logic
+        ax.invert_zaxis()
+
+        # Label and ticks
+        ax.set_xlabel("Frame Width (pixels)", fontsize=20, labelpad=8)
+        ax.set_ylabel("Frame length (pixels)", fontsize=20, labelpad=8)
+        ax.set_zlabel("Brightness Intensity", fontsize=20, labelpad=8)
+
+        ax.set_title("3D Plot of Final Processed Image", fontsize=16)
+
+        ax.tick_params(axis='both', labelsize=16)
+        ax.tick_params(axis='z', labelsize=16)
+
+        # Use the actual range for ticks
+        # z_ticks = np.linspace(z_min, z_max, 5, dtype=int)
+        # ax.set_zticks(z_ticks)
+
+        # Transparent background
+        ax.xaxis.set_pane_color((1, 1, 1, 0))
+        ax.yaxis.set_pane_color((1, 1, 1, 0))
+        ax.zaxis.set_pane_color((1, 1, 1, 0))
+        ax.xaxis._axinfo['grid']['color'] = (1, 1, 1, 0)
+        ax.yaxis._axinfo['grid']['color'] = (1, 1, 1, 0)
+        ax.zaxis._axinfo['grid']['color'] = (1, 1, 1, 0)
+
+        plt.tight_layout()
+        plt.show()
+
+    if show_original == True:
+        plt.figure(figsize=(10, 8))
+        plt.imshow(sub_region_2Dgray, cmap='gray')
+        plt.show()
 
     _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
     binary_image = erase_pixels(erased_pixels, binary_image)
@@ -554,31 +581,39 @@ def Image_binarization_constant(chosen_frame_region,erased_pixels, binary_thresh
     axes = (width // 2, height // 2)
     cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
     binary_image = cv2.bitwise_and(binary_image, binary_image, mask=mask)
+    if show_binary == True:
+        plt.figure(figsize=(10, 8))
+        plt.imshow(binary_image, cmap='binary')
+        plt.show()
+
 
     return binary_image
 
 
 def detect_reflection_automatically(
     gray_image: np.ndarray,
-    bright_thresh: int ,
+    bright_thresh: int,
     min_area: int = 10,
     max_area: int = 500,
     circularity_thresh: float = 0.6,
-    dilation_radius: int = 5,
-    show: bool = False
+    dilation_factor: float = 4,   # target mask area = 300% (scalable)
+    show: bool = True
 ) -> tuple[np.ndarray, float]:
-    """
-    Automatically find small bright, roughly circular spots (reflections)
-    in a grayscale image and return a binary mask of them (dilated)
-    *and* the area of the chosen (primary) contour.
-    If show=True, plots the input, raw threshold, and final mask.
-    """
-    # 1) Threshold the brightest pixels
-    _, bw = cv2.threshold(gray_image, bright_thresh, 255, cv2.THRESH_BINARY)
 
-    # 2) Find contours on that threshold
+    # --- Step 1: Compute hybrid threshold ---
+    bright_thresh =bright_thresh /10
+
+    thresh_val = np.percentile(gray_image,bright_thresh)
+    # === EARLY EXIT IF TOO LOW ===
+    if thresh_val < 100:
+        print("[INFO] Reflection detection skipped — threshold too low.")
+        return np.zeros_like(gray_image, dtype=np.uint8)
+
+
+    _, bw = cv2.threshold(gray_image, thresh_val, 255, cv2.THRESH_BINARY)
+
+    # --- Step 2: Find contours ---
     contours, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
     primary_area = 0.0
     raw_mask = np.zeros_like(gray_image, dtype=np.uint8)
 
@@ -586,51 +621,62 @@ def detect_reflection_automatically(
         area = cv2.contourArea(cnt)
         if area < min_area or area > max_area:
             continue
-
-        # skip tiny sets of points
         if len(cnt) < 5:
             continue
 
-        # check ellipse circularity
+        # circularity check
         (_, _), (MA, ma), _ = cv2.fitEllipse(cnt)
         major, minor = max(MA, ma), min(MA, ma)
         circ = (4 * np.pi * area) / (cv2.arcLength(cnt, True) ** 2) if area > 0 else 0
 
         if minor > 0 and (minor / major) > circularity_thresh and circ > 0.5:
-            # this is our primary reflection contour:
             primary_area = area
             cv2.drawContours(raw_mask, [cnt], -1, 255, -1)
-            # break  # stop after first valid one
 
-    # 3) Dilate that region
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE,
-        (2 * dilation_radius + 1, 2 * dilation_radius + 1)
-    )
-    dilated_mask = cv2.dilate(raw_mask, kernel, iterations=1)
+    # --- Step 3: Dilate mask proportional to area ---
+    if primary_area > 0:
+        target_area = primary_area * dilation_factor
+        radius = np.sqrt(primary_area / np.pi)
+        target_radius = np.sqrt(target_area / np.pi)
+        extra_radius = int(round(target_radius - radius))
+        kernel_size = max(3, 2 * extra_radius + 1)  # odd kernel
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+        dilated_mask = cv2.dilate(raw_mask, kernel, iterations=1)
+    else:
+        dilated_mask = raw_mask.copy()
 
+    # --- Step 4: Visualization ---
     if show:
-        fig, axes = plt.subplots(2, 2, figsize=(8, 8))
-        axes[0,0].imshow(gray_image, cmap='gray')
-        axes[0,0].set_title("Input Grayscale")
-        axes[0,0].axis('off')
+        fig, axes = plt.subplots(2, 3, figsize=(12, 6))
 
-        axes[0,1].imshow(bw, cmap='gray')
-        axes[0,1].set_title(f"Threshold > {bright_thresh}")
-        axes[0,1].axis('off')
+        axes[0, 0].imshow(gray_image, cmap="gray")
+        axes[0, 0].set_title("Input Grayscale"); axes[0, 0].axis("off")
 
-        axes[1,0].imshow(raw_mask, cmap='gray')
-        axes[1,0].set_title(f"Raw Mask (area={primary_area:.1f})")
-        axes[1,0].axis('off')
+        axes[0, 1].imshow(bw, cmap="gray")
+        axes[0, 1].set_title(f"Hybrid Threshold > {thresh_val:.1f} (Otsu=)")
+        axes[0, 1].axis("off")
 
-        axes[1,1].imshow(dilated_mask, cmap='gray')
-        axes[1,1].set_title(f"Dilated Mask (r={dilation_radius})")
-        axes[1,1].axis('off')
+        axes[0, 2].imshow(raw_mask, cmap="gray")
+        axes[0, 2].set_title(f"Raw Mask (area={primary_area:.1f})"); axes[0, 2].axis("off")
+
+        axes[1, 0].imshow(dilated_mask, cmap="gray")
+        axes[1, 0].set_title("Dilated Mask"); axes[1, 0].axis("off")
+
+        overlay = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
+        dil_contours, _ = cv2.findContours(dilated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(overlay, dil_contours, -1, (0, 255, 0), 2)
+        axes[1, 1].imshow(overlay[..., ::-1]); axes[1, 1].set_title("Overlay"); axes[1, 1].axis("off")
+
+        comparison = cv2.addWeighted(gray_image, 0.7, dilated_mask, 0.3, 0)
+        axes[1, 2].imshow(comparison, cmap="gray")
+        axes[1, 2].set_title("Original + Dilated"); axes[1, 2].axis("off")
 
         plt.tight_layout()
         plt.show()
+
     return dilated_mask
-def Image_binarization(chosen_frame_region, reflect_brightness, erased_pixels=None, reflect_ellipse=None, show=False):
+
+def Image_binarization(chosen_frame_region, reflect_brightness, c_value,block_size, erased_pixels=None, reflect_ellipse=None, show=False):
     """
     Applies adaptive binary thresholding. Supports erasing specific pixels or known reflections.
     Also applies an elliptical mask to focus only on the pupil region.
@@ -659,11 +705,12 @@ def Image_binarization(chosen_frame_region, reflect_brightness, erased_pixels=No
 
     sub_region_2Dgray = np.clip(sub_region_2Dgray, 0, 255).astype(np.uint8)
 
-    # fig1, ax1 = plt.subplots()
-    # ax1.imshow(sub_region_2Dgray, cmap='gray')
-    # ax1.add_patch(plt.Rectangle((60 - (17 // 2), 80 - (17 // 2)), 17, 17, linewidth=2, edgecolor='red', facecolor='none'))
-    # ax1.set_title("Neighborhood Location in Image")
-    # ax1.axis('off')
+    if show:
+        fig1, ax1 = plt.subplots()
+        ax1.imshow(sub_region_2Dgray, cmap='gray')
+        ax1.add_patch(plt.Rectangle((60 - (17 // 2), 80 - (17 // 2)), 17, 17, linewidth=2, edgecolor='red', facecolor='none'))
+        ax1.set_title("Neighborhood Location in Image")
+        ax1.axis('off')
 
     if reflect_ellipse is not None and len(reflect_ellipse) > 0:
         sub_region_2Dgray = remove_reflection_with_inpaint(sub_region_2Dgray, reflect_ellipse)
@@ -674,62 +721,17 @@ def Image_binarization(chosen_frame_region, reflect_brightness, erased_pixels=No
             sub_region_2Dgray = cv2.inpaint(sub_region_2Dgray, refl_mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
     else:
         sub_region_2Dgray = remove_reflection_with_inpaint(sub_region_2Dgray, reflect_ellipse)
-
-    sub_region_2Dgray = cv2.medianBlur(sub_region_2Dgray, 7)
-
-    # === Show 17×17 Neighborhood context and thresholding details ===
-    center_x, center_y = 60, 80
-    half_block = 17 // 2
-    neighborhood = sub_region_2Dgray[center_y - half_block:center_y + half_block + 1,
-                                     center_x - half_block:center_x + half_block + 1]
-    local_mean = np.mean(neighborhood)
-    C = 5
-    threshold_val = local_mean - C
-    center_pixel_val = sub_region_2Dgray[center_y, center_x]
-
-    # Plot 1: Whole grayscale image with neighborhood box
-    # fig1, ax1 = plt.subplots()
-    # ax1.imshow(sub_region_2Dgray, cmap='gray')
-    # ax1.add_patch(plt.Rectangle((center_x - half_block, center_y - half_block), 17, 17, linewidth=2, edgecolor='red', facecolor='none'))
-    # ax1.set_title("Neighborhood Location in Image")
-    # ax1.axis('off')
-    #
-    # # Plot 2: Neighborhood with center pixel highlighted
-    # fig2, ax2 = plt.subplots()
-    # ax2.imshow(neighborhood, cmap='gray')
-    # ax2.add_patch(plt.Rectangle((half_block - 0.5, half_block - 0.5), 1, 1, edgecolor='red', facecolor='none', linewidth=1.5))
-    # ax2.set_title("17×17 Neighborhood with Center Pixel Highlighted")
-    # ax2.axis('off')
-    #
-    # # Plot 3: Histogram of pixel intensities
-    # fig3, ax3 = plt.subplots()
-    # ax3.hist(neighborhood.flatten(), bins=20, color='gray')
-    # ax3.axvline(local_mean, color='blue', label=f"Mean: {local_mean:.1f}")
-    # ax3.axvline(threshold_val, color='red', linestyle='--', label=f"Thresh (Mean - C): {threshold_val:.1f}")
-    # ax3.axvline(center_pixel_val, color='black', linestyle=':', label=f"Center Pixel: {center_pixel_val}")
-    # ax3.set_xlabel("Pixel Intensity")
-    # ax3.set_ylabel("Number of Pixels")
-    # ax3.set_title("Pixel Intensities in 17×17 Neighborhood")
-    # ax3.legend()
-    #
-    # # Plot 4: Final decision text
-    # fig4, ax4 = plt.subplots()
-    # ax4.text(0.1, 0.5, f"Center pixel value: {center_pixel_val}\nThreshold: {threshold_val:.1f}\n\n"
-    #                    f"Result: {'WHITE' if center_pixel_val < threshold_val else 'BLACK'}",
-    #          fontsize=14, verticalalignment='top')
-    # ax4.set_title("Thresholding Decision")
-    # ax4.axis('off')
-    #
-    # plt.show()
+    # sub_region_2Dgray = cv2.medianBlur(sub_region_2Dgray, 7)
 
     # === Adaptive Thresholding ===
+    block_size = ((block_size // 2) * 2) + 1
     binary_image = cv2.adaptiveThreshold(
         sub_region_2Dgray,
         255,
         cv2.ADAPTIVE_THRESH_MEAN_C,
         cv2.THRESH_BINARY_INV,
-        blockSize=17,
-        C=5
+        blockSize=block_size,
+        C= c_value
     )
 
     # === Apply Ellipse Mask ===
@@ -755,130 +757,25 @@ def Image_binarization(chosen_frame_region, reflect_brightness, erased_pixels=No
             valid = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
             good = arr[valid]
             binary_image[good[:, 1], good[:, 0]] = 0
-
-    # Final display
-    # fig, axes = plt.subplots(2, 1, figsize=(12, 10))
-    # axes[0].imshow(sub_region_2Dgray, cmap='gray')
-    # axes[0].set_title('Interpolated Light Reflection')
-    # axes[1].imshow(binary_image, cmap='gray')
-    # axes[1].set_title('Binary Output after Adaptive Thresholding')
-    # plt.tight_layout()
-    # plt.show()
+    if show:
+        # Final display
+        fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+        axes[0].imshow(sub_region_2Dgray, cmap='gray')
+        axes[0].set_title('Interpolated Light Reflection')
+        axes[1].imshow(binary_image, cmap='gray')
+        axes[1].set_title('Binary Output after Adaptive Thresholding')
+        plt.tight_layout()
+        plt.show()
 
     return binary_image
 
 
-# def Image_binarization(chosen_frame_region, reflect_brightness,erased_pixels=None, reflect_ellipse=None):
-#     """
-#     Applies adaptive binary thresholding. Supports erasing specific pixels or known reflections.
-#     Also applies an elliptical mask to focus only on the pupil region.
-#     """
-#     if len(chosen_frame_region.shape) == 3:
-#         if chosen_frame_region.shape[2] == 4:
-#             sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGRA2GRAY)
-#         elif chosen_frame_region.shape[2] == 3:
-#             sub_region_2Dgray = cv2.cvtColor(chosen_frame_region, cv2.COLOR_BGR2GRAY)
-#         else:
-#             raise ValueError(f"Unsupported number of channels: {chosen_frame_region.shape[2]}")
-#     else:
-#         sub_region_2Dgray = chosen_frame_region.copy()
-#
-#
-#     # # === Normalize non-erased pixels ===
-#     valid_pixels = sub_region_2Dgray[sub_region_2Dgray > 0]
-#     if valid_pixels.size > 0:
-#         min_val = np.min(valid_pixels)
-#         max_val = np.max(valid_pixels)
-#         if max_val > min_val:
-#             sub_region_2Dgray = (sub_region_2Dgray.astype(np.float32) - min_val) / (max_val - min_val) * 255
-#         else:
-#             sub_region_2Dgray = np.zeros_like(sub_region_2Dgray, dtype=np.float32)
-#     else:
-#         sub_region_2Dgray = np.zeros_like(sub_region_2Dgray, dtype=np.float32)
-#
-#     sub_region_2Dgray = np.clip(sub_region_2Dgray, 0, 255).astype(np.uint8)
-#
-#     if reflect_ellipse is not None and len(reflect_ellipse) > 0:
-#         sub_region_2Dgray = remove_reflection_with_inpaint(sub_region_2Dgray, reflect_ellipse)
-#
-#     # --- inpaint reflection ---
-#     if reflect_ellipse is None or reflect_ellipse == [[], [], []]:
-#         refl_mask = detect_reflection_automatically(sub_region_2Dgray,reflect_brightness, show= True)
-#         if refl_mask.max() > 0:
-#             sub_region_2Dgray = cv2.inpaint(sub_region_2Dgray, refl_mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
-#
-#
-#     else:
-#         sub_region_2Dgray = remove_reflection_with_inpaint(sub_region_2Dgray, reflect_ellipse)
-#
-#     sub_region_2Dgray = cv2.medianBlur(sub_region_2Dgray, 7)
-#
-#     fig, ax = plt.subplots()
-#     ax.imshow(sub_region_2Dgray, cmap='gray')
-#     rect = plt.Rectangle((60,80), 17, 17, linewidth=2, edgecolor='red', facecolor='none')
-#     ax.add_patch(rect)
-#     ax.set_title('17×17 Neighborhood Example')
-#     ax.axis('off')
-#
-#     # === Adaptive Thresholding ===
-#     binary_image = cv2.adaptiveThreshold(
-#         sub_region_2Dgray,
-#         255,
-#         cv2.ADAPTIVE_THRESH_MEAN_C,
-#         cv2.THRESH_BINARY_INV,
-#         blockSize=17,
-#         C=5
-#     )
-#
-#     #######################
-#     # === Apply Ellipse Mask ===
-#     height, width = binary_image.shape[:2]
-#     mask = np.zeros((height, width), dtype=np.uint8)
-#     center = (width // 2, height // 2)
-#     axes = (width // 2, height // 2)
-#     cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
-#     binary_image = cv2.bitwise_and(binary_image, binary_image, mask=mask)
-#     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
-#
-#     # 2. Close small gaps: dilate → erode
-#     binary_image = cv2.morphologyEx(binary_image,
-#                                     cv2.MORPH_CLOSE,
-#                                     kernel,
-#                                     iterations=2)
-#
-#     # === Erase specific pixels ===
-#     if erased_pixels is not None and len(erased_pixels) > 0:
-#         if not isinstance(erased_pixels, np.ndarray):
-#             erased_pixels = np.array(erased_pixels)
-#         if erased_pixels.ndim == 2 and erased_pixels.shape[1] == 2:
-#             # === Erase specific pixels ===
-#             if erased_pixels is not None and len(erased_pixels) > 0:
-#                 arr = np.array(erased_pixels, dtype=int)
-#                 if arr.ndim == 2 and arr.shape[1] == 2:
-#                     h, w = binary_image.shape[:2]
-#                     xs, ys = arr[:, 0], arr[:, 1]
-#                     # keep only those within [0,w)×[0,h)
-#                     valid = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
-#                     good = arr[valid]
-#                     # now safely zero them out
-#                     binary_image[good[:, 1], good[:, 0]] = 0
-#     fig, axes = plt.subplots(2, 1, figsize=(12, 10))
-#     axes[0].imshow(sub_region_2Dgray, cmap = 'gray')
-#     axes[0].set_title('interpolated light reflection')
-#     axes[1].imshow(binary_image, cmap='gray')
-#     axes[1].set_title('binary')
-#     plt.show()
-#
-#     return binary_image
-
-
-
-def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd,reflect_brightness,clustering_method, binary_method,binary_threshold ):
+def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd,reflect_brightness,clustering_method, binary_method,binary_threshold,c_value, block_size ):
 
     if binary_method == "Adaptive":
-        binary_image = Image_binarization(chosen_frame_region, reflect_brightness,erased_pixels=erased_pixels, reflect_ellipse =reflect_ellipse)
+        binary_image = Image_binarization(chosen_frame_region, reflect_brightness,c_value,block_size, erased_pixels=erased_pixels, reflect_ellipse =reflect_ellipse)
     elif binary_method == "Constant":
-        binary_image = Image_binarization_constant(chosen_frame_region,erased_pixels, binary_threshold)
+        binary_image = Image_binarization_constant(chosen_frame_region,erased_pixels, binary_threshold, show_binary = False, show_original = False)
 
     if clustering_method == "DBSCAN":
         binary_image = find_cluster_DBSCAN(binary_image, mnd, show_cluster=False)

@@ -81,6 +81,7 @@ class ROIHandler:
         - QtWidgets.QGraphicsItem: The ROI item.
         - dict: A dictionary containing handles for the ROI.
         """
+
         color2 = 'teal' if roi_type in ['pupil', 'face'] else 'gray'
         ROI = (QtWidgets.QGraphicsEllipseItem if roi_type in ['pupil', 'reflection', 'pupil_detection'] else QtWidgets.QGraphicsRectItem)(
             center[0] - width / 2, center[1] - height / 2, width, height

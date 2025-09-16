@@ -113,7 +113,11 @@ class PlotHandler:
         ax.set_facecolor(background_color)
         ax.set_yticks([])
         ax.set_xlim(0, len(data))
-        ax.set_ylim(data_min, data_max + range_val / 4)
+        try:
+            ax.set_ylim(data_min, data_max + range_val / 4)
+        except ValueError as e:
+            print("[WARNING] Failed to set ylim. Falling back to default 0-1.")
+            ax.set_ylim(0, 1)
 
         # Customize axes and ticks
         for spine in ['top', 'right', 'left']:
@@ -130,31 +134,29 @@ class PlotHandler:
         # Add zoom and pan interactions
         self._setup_interaction_events(fig, ax)
 
-    def _integrate_canvas_into_view(self, graphics_view: QtWidgets.QGraphicsView, fig: plt.Figure):
-        """Integrates the Matplotlib canvas into the provided PyQt graphics view."""
+    def _integrate_canvas_into_view(self, graphics_view, fig):
         canvas = FigureCanvas(fig)
         canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         canvas.updateGeometry()
 
-        layout = QtWidgets.QVBoxLayout(graphics_view)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout = graphics_view.layout()
+        if layout is None:
+            layout = QtWidgets.QVBoxLayout()
+            graphics_view.setLayout(layout)
+
         layout.addWidget(canvas)
-        graphics_view.setLayout(layout)
 
         fig.tight_layout(pad=0)
         fig.subplots_adjust(left=0.01, right=1, top=0.95, bottom=0.25)
         canvas.draw()
 
-    def _clear_graphics_view(self, graphics_view: QtWidgets.QGraphicsView):
-        """Clears the given graphics view layout."""
-        if graphics_view.layout() is not None:
-            old_layout = graphics_view.layout()
-            while old_layout.count():
-                child = old_layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
-            QtWidgets.QWidget().setLayout(old_layout)
+    def _clear_graphics_view(self, graphics_view):
+        layout = graphics_view.layout()
+        if layout:
+            while layout.count():
+                item = layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
 
     def _setup_interaction_events(self, fig, ax):
         """Sets up basic zoom and pan events for the plot."""
@@ -305,11 +307,11 @@ class Display:
                 raise ValueError("sub_region is None. Cannot apply uniform saturation.")
         else:
             processed = sub_region.copy()
-
         # === Apply binarization ===
         if self.app_instance.Show_binary:
             if self.app_instance.binary_method == "Adaptive":
-                binary = pupil_detection.Image_binarization(processed,self.app_instance.reflect_brightness,self.app_instance.erased_pixels, self.app_instance.reflect_ellipse)
+                binary = pupil_detection.Image_binarization(processed,self.app_instance.reflect_brightness,self.app_instance.c_value,
+                                                            self.app_instance.block_size, self.app_instance.erased_pixels, self.app_instance.reflect_ellipse)
             elif self.app_instance.binary_method == "Constant":
                 binary = pupil_detection.Image_binarization_constant(processed,self.app_instance.erased_pixels, self.app_instance.binary_threshold )
 
@@ -353,7 +355,9 @@ class Display:
                 self.app_instance.reflect_brightness,
                 self.app_instance.clustering_method,
                 self.app_instance.binary_method,
-                self.app_instance.binary_threshold
+                self.app_instance.binary_threshold,
+                self.app_instance.c_value,
+                self.app_instance.block_size
             )
             ellipse_item = QtWidgets.QGraphicsEllipseItem(
                 int(center[0] - w), int(center[1] - h), w * 2, h * 2
@@ -362,31 +366,28 @@ class Display:
             ellipse_item.setRotation(np.degrees(angle))
             ellipse_item.setPen(QtGui.QPen(QtGui.QColor("purple"), 1))
             self.app_instance.scene2.addItem(ellipse_item)
-            r = 3  # radius in pixels
-            cx, cy = int(center[0]), int(center[1])
-            center_circle = QtWidgets.QGraphicsEllipseItem(cx - r, cy - r, 2 * r, 2 * r)
-            center_circle.setPen(QtGui.QPen(QtGui.QColor("yellow"), 1))
-            center_circle.setBrush(QtGui.QBrush(QtGui.QColor("yellow")))
-            self.app_instance.scene2.addItem(center_circle)
+            # r = 3
+            # cx, cy = int(center[0]), int(center[1])
+            # center_circle = QtWidgets.QGraphicsEllipseItem(cx - r, cy - r, 2 * r, 2 * r)
+            # center_circle.setPen(QtGui.QPen(QtGui.QColor("yellow"), 1))
+            # center_circle.setBrush(QtGui.QBrush(QtGui.QColor("yellow")))
+            # self.app_instance.scene2.addItem(center_circle)
 
             # keep references if you need to remove later
-            self.app_instance.pupil_ellipse_items = (ellipse_item, center_circle)
+            self.app_instance.pupil_ellipse_items = ellipse_item
 
             ###################
             # === Show as a popped-up OpenCV image ===
             show_img = processed.copy()
-            # if len(show_img.shape) == 2:  # grayscale
-            #     show_img = cv2.cvtColor(show_img, cv2.COLOR_GRAY2BGR)
+            if len(show_img.shape) == 2:  # grayscale
+                show_img = cv2.cvtColor(show_img, cv2.COLOR_GRAY2BGR)
 
-            # # Show in popup
-            # plt.figure(figsize=(10, 8))
-            # if len(show_img.shape) == 3 and show_img.shape[2] == 3:
-            #     imgGray = cv2.cvtColor(show_img, cv2.COLOR_BGR2GRAY)
-            # else:
-            #     imgGray = show_img.copy()
-            #
-            # plt.imshow(imgGray, cmap='gray')
-            # plt.show()
+            # Show in popup
+            plt.figure(figsize=(10, 8))
+            if len(show_img.shape) == 3 and show_img.shape[2] == 3:
+                imgGray = cv2.cvtColor(show_img, cv2.COLOR_BGR2GRAY)
+            else:
+                imgGray = show_img.copy()
 
             # Draw the ellipse on a copy
             ellipse_center = (int(center[0]), int(center[1]))
@@ -394,17 +395,18 @@ class Display:
             ellipse_angle = np.degrees(angle)
 
             cv2.ellipse(show_img, ellipse_center, ellipse_axes, ellipse_angle, 0, 360, (255, 0, 255), 2)  # purple
+            # # Show in popup
+            plt.figure(figsize=(5, 4))
+            plt.imshow(show_img)
+            plt.show()
             cv2.circle(show_img, ellipse_center, 3, (0, 255, 255), -1)  # yellow center
             if len(show_img.shape) == 3 and show_img.shape[2] == 3:
                 show_imgGray = cv2.cvtColor(show_img, cv2.COLOR_BGR2GRAY)
             else:
                 show_imgGray = show_img.copy()
 
-            # # # Show in popup
-            # plt.figure(figsize=(10, 8))
-            # plt.imshow(show_imgGray, cmap='gray')
-            # plt.show()
-            #
+
+
 
             ###############################
 
@@ -483,15 +485,15 @@ class Display:
         ellipse_item.setPen(QtGui.QPen(QtGui.QColor("purple"), 1))
         self.app_instance.scene2.addItem(ellipse_item)
 
-        r = 24  # radius in pixels
-        cx, cy = int(P_detected_center[0]), int(P_detected_center[1])
-        center_circle = QtWidgets.QGraphicsEllipseItem(cx - r, cy - r, 2 * r, 2 * r)
-        center_circle.setPen(QtGui.QPen(QtGui.QColor("yellow"), 1))
-        center_circle.setBrush(QtGui.QBrush(QtGui.QColor("yellow")))
-        self.app_instance.scene2.addItem(center_circle)
-
-        # keep references if you need to remove later
-        self.app_instance.pupil_ellipse_items = (ellipse_item, center_circle)
+        # r = 24  # radius in pixels
+        # cx, cy = int(P_detected_center[0]), int(P_detected_center[1])
+        # center_circle = QtWidgets.QGraphicsEllipseItem(cx - r, cy - r, 2 * r, 2 * r)
+        # center_circle.setPen(QtGui.QPen(QtGui.QColor("yellow"), 1))
+        # center_circle.setBrush(QtGui.QBrush(QtGui.QColor("yellow")))
+        # self.app_instance.scene2.addItem(center_circle)
+        #
+        # # keep references if you need to remove later
+        # self.app_instance.pupil_ellipse_items = (ellipse_item, center_circle)
 
         self.app_instance.pupil_ellipse_items = ellipse_item
 

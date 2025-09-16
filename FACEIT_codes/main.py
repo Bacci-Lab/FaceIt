@@ -47,7 +47,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.erase_size = 20
         self.ratio = 2
         self.mnd = 3
-        self.reflect_brightness = 230
+        self.reflect_brightness = 985
+        self.c_value = 5
+        self.block_size = 17
         self.clustering_method = "SimpleContour"
         self.binary_method = "Adaptive"
         self.binary_threshold = 220
@@ -172,25 +174,55 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.mnd_slider.setMaximum(30)
         self.mnd_slider.setValue(self.mnd)
         self.mnd_slider.valueChanged.connect(self.get_cluster_pixel_value)
-        #####################
+        #--------------------------------------- Reflect Bar ------------------------#
         br_reflect_layout = QtWidgets.QHBoxLayout()
         br_reflect_label = QtWidgets.QLabel("Reflect br:")
         self.reflect_brightness_edit = QtWidgets.QLineEdit(str(self.reflect_brightness))
         self.reflect_brightness_edit.setReadOnly(True)
         self.reflect_brightness_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.reflect_brightness_slider.setMinimum(1)
-        self.reflect_brightness_slider.setMaximum(255)
+        self.reflect_brightness_slider.setMinimum(10)
+        self.reflect_brightness_slider.setMaximum(999)
+        self.reflect_brightness_slider.setSingleStep(1)
         self.reflect_brightness_slider.setValue(self.reflect_brightness)
         self.reflect_brightness_slider.valueChanged.connect(self.get_reflect_brightness_value)
-        ########################################
+        #------------------------------------  C ---------------------------------------#
+        C_layout = QtWidgets.QHBoxLayout()
+        C_label = QtWidgets.QLabel("C")
+        self.C_edit = QtWidgets.QLineEdit(str(self.c_value))
+        self.C_edit.setReadOnly(True)
+        self.C_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.C_slider.setMinimum(1)
+        self.C_slider.setMaximum(20)
+        self.C_slider.setValue(self.c_value)
+        self.C_slider.valueChanged.connect(self.get_c_value)
+        #------------------------------------ bllock_size ---------------------------------------#
+        block_size_layout = QtWidgets.QHBoxLayout()
+        block_size_label = QtWidgets.QLabel("block size")
+        self.block_size_edit = QtWidgets.QLineEdit(str(self.block_size))
+        self.block_size_edit.setReadOnly(True)
+        self.block_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.block_size_slider.setMinimum(1)
+        self.block_size_slider.setMaximum(40)
+        self.block_size_slider.setValue(self.block_size)
+        self.block_size_slider.valueChanged.connect(self.get_block_value)
+        #-----------------------------------------------------------------------------------#
         cluster_pixel_layout.addWidget(cluster_pixel_label)
         cluster_pixel_layout.addWidget(self.mnd_slider)
         cluster_pixel_layout.addWidget(self.mnd_edit)
         br_reflect_layout.addWidget(br_reflect_label)
         br_reflect_layout.addWidget(self.reflect_brightness_slider)
         br_reflect_layout.addWidget(self.reflect_brightness_edit)
+        #-------------------------------------
+        C_layout.addWidget(C_label)
+        C_layout.addWidget(self.C_slider)
+        C_layout.addWidget(self.C_edit)
+        block_size_layout.addWidget(block_size_label)
+        block_size_layout.addWidget(self.block_size_slider)
+        block_size_layout.addWidget(self.block_size_edit)
         main_layout.addLayout(cluster_pixel_layout)
         main_layout.addLayout(br_reflect_layout)
+        main_layout.addLayout(C_layout)
+        main_layout.addLayout(block_size_layout)
         self.settings_window.setLayout(main_layout)
         self.settings_window.show()
 
@@ -200,9 +232,21 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         return self.erase_size
 
     def get_reflect_brightness_value(self):
-        self.reflect_brightness = self.reflect_brightness_slider.value()
-        self.reflect_brightness_edit.setText((str(self.reflect_brightness)))
+        slider_value = self.reflect_brightness_slider.value()
+        self.reflect_brightness = slider_value
+        self.reflect_brightness_edit.setText(f"{self.reflect_brightness:.1f}")  # format with 1 decimal
         return self.reflect_brightness
+
+    def get_c_value(self):
+        self.c_value = self.C_slider.value()
+        self.C_edit.setText((str(self.c_value)))
+        return self.c_value
+
+    def get_block_value(self):
+        self.block_size = self.block_size_slider.value()
+        self.block_size_edit.setText((str(self.block_size)))
+        return self.block_size
+
 
     def get_cluster_pixel_value(self):
         self.mnd = self.mnd_slider.value()
@@ -838,7 +882,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             images, self.process_handler, self.saturation, self.contrast,
             self.erased_pixels,self.brightness_concave_power,self.secondary_direction, self.reflect_ellipse, self.mnd, self.reflect_brightness,
             self.clustering_method, self.binary_method, self.binary_threshold, self.saturation_method, self.saturation_ununiform, self.primary_direction,
-            self.brightness, self.brightness_curve, self.secondary_BrightGain, self.sub_image)
+            self.brightness, self.brightness_curve, self.secondary_BrightGain, self.c_value, self.block_size, self.sub_image)
         self.worker.moveToThread(self.thread)
 
         self.thread.started.connect(self.worker.run)
@@ -858,7 +902,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
          self.Y_saccade,
          self.pupil_distance_from_corner,
          self.width,
-         self.height) = result
+         self.height,
+         self.frame_pos,
+         self.frame_center,
+         self.frame_axes
+         ) = result
 
         self.final_pupil_area = self.pupil_dilation
         self.X_saccade_updated = self.X_saccade
@@ -877,7 +925,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):
-            self.blinking_ids = self.process_handler.detect_blinking(self.pupil_dilation, self.width, self.height, self.X_saccade, self.Y_saccade)
+            self.blinking_ids = self.process_handler.detect_blinking(self.pupil_dilation, self.X_saccade, self.Y_saccade)
         else:
             self.warning("Process Pupil first")
 
