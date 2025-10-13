@@ -905,7 +905,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
          self.height,
          self.frame_pos,
          self.frame_center,
-         self.frame_axes
+         self.frame_axes,
+         self.angle
          ) = result
 
         self.final_pupil_area = self.pupil_dilation
@@ -925,10 +926,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):
-            self.blinking_ids = self.process_handler.detect_blinking(self.pupil_dilation, self.X_saccade, self.Y_saccade)
+            # self.blinking_ids = self.process_handler.detect_blinking(self.pupil_dilation, self.X_saccade, self.Y_saccade)
+            self.blinking_ids = self.process_handler.detect_blinking(self.width, self.height, self.pupil_dilation, self.X_saccade,
+                                                                     self.Y_saccade)
         else:
             self.warning("Process Pupil first")
-
 
 
     def display_removed_grooming(self, grooming_thr, facemotion ):
@@ -938,6 +940,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def undo_grooming(self):
         if hasattr(self, 'motion_energy'):
             self.plot_handler.plot_result(self.motion_energy, self.graphicsView_whisker, "motion")
+            self.facemotion_without_grooming = self.motion_energy
 
     def init_undo_blinking(self):
         if hasattr(self, 'pupil_dilation'):
@@ -957,7 +960,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.plot_handler.plot_result(self.pupil_dilation, self.graphicsView_pupil, "pupil", color="palegreen",
                          saccade=self.X_saccade)
     def Manual_pupil_detection(self):
-        print("frame number is: ")
+        pass
     def eyecorner_clicked(self):
         self.eye_corner_mode = True
         self.Eraser_active = False
@@ -994,24 +997,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-#############################
-# import cProfile
-# import pstats
-# import io
-# from PyQt5 import QtWidgets
-#
-# def main():
-#     app = QtWidgets.QApplication(sys.argv)
-#     window = MainWindow()
-#     window.show()
-#     app.exec_()
-#
-# if __name__ == "__main__":
-#     pr = cProfile.Profile()
-#     pr.enable()
-#     main()
-#     pr.disable()
-#     s = io.StringIO()
-#     ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
-#     ps.print_stats()
-#     print(s.getvalue())

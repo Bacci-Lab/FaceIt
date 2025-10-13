@@ -55,37 +55,6 @@ def find_ellipse(binary_image, show=False):
 
     ellipse = (int(mean[0]), int(mean[1])), (int(width * 2), int(height * 2)), np.degrees(angle)
 
-    # === Optional plot ===
-    if show:
-        import matplotlib.pyplot as plt
-        from matplotlib.patches import Ellipse
-
-        fig, ax = plt.subplots(figsize=(6, 6), facecolor='white')
-        ax.set_facecolor('white')
-        ax.imshow(binary_image, cmap='binary_r')
-        ax.set_title("Fitted Ellipse with Eigenvectors")
-
-        # Draw ellipse
-        ellipse_patch = Ellipse(xy=mean, width=2 * width, height=2 * height,
-                                angle=np.degrees(angle), edgecolor='red',
-                                facecolor='none', linewidth=2)
-        ax.add_patch(ellipse_patch)
-
-        # Draw eigenvectors
-        for i in range(2):
-            vec = eigenvectors[:, i]
-            length = np.sqrt(eigenvalues[i]) * 2
-            end = mean + vec * length
-            ax.plot([mean[0], end[0]], [mean[1], end[1]],
-                    color='blue' if i == 0 else 'green', linewidth=2,
-                    label=f"Eigenvector {i + 1}")
-
-        ax.scatter(mean[0], mean[1], color='yellow', s=40, label='Center')
-        ax.axis('off')
-        ax.legend()
-        plt.tight_layout()
-        plt.show()
-
     return ellipse, (float(mean[0]), float(mean[1])), width, height, angle
 
 
@@ -216,46 +185,6 @@ def find_cluster_simple(binary_image, show_plot=False):
     else:
         largest = None
         final_mask = np.zeros_like(binary_image)
-
-    if show_plot:
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-        axes = axes.ravel()
-
-        # Panel 1: All contours overlaid on the mask
-        axes[0].imshow(binary_image, cmap='gray')
-        for cnt in contours:
-            pts = cnt.reshape(-1, 2)
-            axes[0].plot(pts[:, 0], pts[:, 1], linewidth=1)
-        axes[0].set_title("1) All Contours")
-        axes[0].axis('off')
-
-        # Prepare a blank background
-        blank = np.zeros_like(binary_image)
-
-        # Panel 2: ONLY filtered contours on blank
-        axes[1].imshow(blank, cmap='gray')
-        for cnt in filtered:
-            pts = cnt.reshape(-1, 2)
-            axes[1].plot(pts[:, 0], pts[:, 1], linewidth=1, color='cyan')
-        axes[1].set_title("2) Filtered Contours")
-        axes[1].axis('off')
-
-        # Panel 3: ONLY the largest contour on blank
-        axes[2].imshow(blank, cmap='gray')
-        if largest is not None:
-            pts = largest.reshape(-1, 2)
-            axes[2].plot(pts[:, 0], pts[:, 1], linewidth=1, color='lime')
-        axes[2].set_title("3) Largest Contour")
-        axes[2].axis('off')
-
-        # Panel 4: Final Mask (Convex Hull)
-        axes[3].imshow(final_mask, cmap='gray')
-        axes[3].set_title("4) Convex‐Hull Mask")
-        axes[3].axis('off')
-
-        plt.tight_layout()
-        plt.show()
-
     return final_mask
 
 
@@ -505,6 +434,34 @@ def erase_pixels(erased_pixels, binary_image):
 #             # Set those pixels to 0 in the binary image
 #             binary_image[erased_pixels[:, 1], erased_pixels[:, 0]] = 0
 #     return binary_image
+
+def interpolate(blink_indices, data_series):
+    """
+    Interpolates missing or invalid data points in a data series at specified indices.
+
+    Parameters:
+    blink_indices (list or np.ndarray): Indices in the data_series that need interpolation.
+    data_series (np.ndarray): The original data series containing valid and invalid data points.
+
+    Returns:
+    np.ndarray: A data series with interpolated values at the specified indices.
+    """
+    # Create a mask array where True indicates valid data and False indicates indices to be interpolated
+    valid_mask = np.ones(len(data_series), dtype=bool)
+    valid_mask[blink_indices] = False  # Mark indices of blinking as False (invalid)
+
+    # Create an array of indices for the full length of the data series
+    all_indices = np.arange(len(data_series))
+
+    # Extract the indices and data values for valid data points
+    valid_indices = all_indices[valid_mask]
+    valid_data = data_series[valid_mask]
+
+    # Perform interpolation for the full index range using valid data points
+    interpolated_data_series = np.interp(all_indices, valid_indices, valid_data)
+
+    # Return the fully interpolated data series
+    return interpolated_data_series
 def Image_binarization_constant(chosen_frame_region,erased_pixels, binary_threshold = 220, show_binary = False, show_original = False):
     if len(chosen_frame_region.shape) == 3:
         if chosen_frame_region.shape[2] == 4:
@@ -515,62 +472,6 @@ def Image_binarization_constant(chosen_frame_region,erased_pixels, binary_thresh
             raise ValueError(f"Unsupported number of channels: {chosen_frame_region.shape[2]}")
     else:
         sub_region_2Dgray = chosen_frame_region.copy()
-    if show_original == True:
-        # Create X, Y grid
-        h, w = sub_region_2Dgray.shape
-        X, Y = np.meshgrid(np.arange(w), np.arange(h))
-        # Assume Z is already computed from sub_region_2Dgray
-        Z = sub_region_2Dgray.astype(np.float32)
-        Z_masked = np.ma.masked_where(Z == 0, Z)
-
-        # Get min and max from non-zero (masked) values
-        z_min = Z_masked.min()
-        z_max = Z_masked.max()
-
-        fig = plt.figure(figsize=(10, 6))
-        ax = fig.add_subplot(111, projection='3d')
-
-        # Set color mapping range
-        surf = ax.plot_surface(X, Y, Z_masked, cmap='plasma', rstride=2, cstride=2,
-                               vmin=z_min, vmax=z_max)
-
-        # Colorbar scaled accordingly
-        cbar = fig.colorbar(surf, shrink=0.6, aspect=20)
-        cbar.ax.invert_yaxis()
-
-        # Invert 3D z-axis to match visual logic
-        ax.invert_zaxis()
-
-        # Label and ticks
-        ax.set_xlabel("Frame Width (pixels)", fontsize=20, labelpad=8)
-        ax.set_ylabel("Frame length (pixels)", fontsize=20, labelpad=8)
-        ax.set_zlabel("Brightness Intensity", fontsize=20, labelpad=8)
-
-        ax.set_title("3D Plot of Final Processed Image", fontsize=16)
-
-        ax.tick_params(axis='both', labelsize=16)
-        ax.tick_params(axis='z', labelsize=16)
-
-        # Use the actual range for ticks
-        # z_ticks = np.linspace(z_min, z_max, 5, dtype=int)
-        # ax.set_zticks(z_ticks)
-
-        # Transparent background
-        ax.xaxis.set_pane_color((1, 1, 1, 0))
-        ax.yaxis.set_pane_color((1, 1, 1, 0))
-        ax.zaxis.set_pane_color((1, 1, 1, 0))
-        ax.xaxis._axinfo['grid']['color'] = (1, 1, 1, 0)
-        ax.yaxis._axinfo['grid']['color'] = (1, 1, 1, 0)
-        ax.zaxis._axinfo['grid']['color'] = (1, 1, 1, 0)
-
-        plt.tight_layout()
-        plt.show()
-
-    if show_original == True:
-        plt.figure(figsize=(10, 8))
-        plt.imshow(sub_region_2Dgray, cmap='gray')
-        plt.show()
-
     _, binary_image = cv2.threshold(sub_region_2Dgray, binary_threshold, 255, cv2.THRESH_BINARY_INV)
     binary_image = erase_pixels(erased_pixels, binary_image)
 
@@ -606,7 +507,6 @@ def detect_reflection_automatically(
     thresh_val = np.percentile(gray_image,bright_thresh)
     # === EARLY EXIT IF TOO LOW ===
     if thresh_val < 100:
-        print("[INFO] Reflection detection skipped — threshold too low.")
         return np.zeros_like(gray_image, dtype=np.uint8)
 
 

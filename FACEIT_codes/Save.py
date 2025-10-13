@@ -42,7 +42,7 @@ class SaveHandler:
         if not self.app_instance.pupil_check():
             attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
                           'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner',
-                          'width', 'height', 'frame_pos', 'frame_center', 'frame_axes']
+                          'width', 'height', 'frame_pos', 'frame_center', 'frame_axes', 'angle']
             for attr in attributes:
                 initialize_data(attr)
 
@@ -50,7 +50,9 @@ class SaveHandler:
         if not self.app_instance.face_check():
             self.app_instance.motion_energy = np.full((len_data,), np.nan)
             self.app_instance.facemotion_without_grooming = np.full((len_data,), np.nan)
-        if not hasattr(self, 'facemotion_without_grooming') or self.facemotion_without_grooming is None:
+            self.app_instance.grooming_ids = np.full((len_data,), np.nan)
+            self.app_instance.grooming_thr = np.full(1, np.nan)
+        if not hasattr(self.app_instance, 'facemotion_without_grooming') or self.app_instance.facemotion_without_grooming is None:
             self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
             self.app_instance.grooming_ids = np.full((len_data,), np.nan)
             self.app_instance.grooming_thr = np.full(1, np.nan)
@@ -79,7 +81,9 @@ class SaveHandler:
             blinking_ids = self.app_instance.blinking_ids,
             frame_pos = self.app_instance.frame_pos,
             frame_center = self.app_instance.frame_center,
-            frame_axes = self.app_instance.frame_axes
+            frame_axes = self.app_instance.frame_axes,
+            angle = self.app_instance.angle
+
 
         )
 
@@ -147,7 +151,7 @@ class SaveHandler:
             if not self.app_instance.pupil_check():
                 attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
                               'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner','width', 'height',
-                              'frame_pos', 'frame_center', 'frame_axes']
+                              'frame_pos', 'frame_center', 'frame_axes', 'angle']
 
                 for attr in attributes:
                     initialize_data(attr)
@@ -156,7 +160,7 @@ class SaveHandler:
             if not self.app_instance.face_check():
                 self.app_instance.motion_energy = np.full((len_data,), np.nan)
                 self.app_instance.facemotion_without_grooming = np.full((len_data,), np.nan)
-            if not hasattr(self, 'facemotion_without_grooming') or self.facemotion_without_grooming is None:
+            if not hasattr(self.app_instance, 'facemotion_without_grooming') or self.app_instance.facemotion_without_grooming is None:
                 self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
 
             time_stamps = np.arange(0, len_data, 1)
@@ -295,12 +299,22 @@ class SaveHandler:
         Saves figures for pupil dilation and motion energy data.
 
         """
-        # Check and save pupil dilation data
+
+        if hasattr(self.app_instance, 'final_pupil_area') and self.app_instance.final_pupil_area is not None:
+            self._save_single_fig(
+                data=self.app_instance.final_pupil_area,
+                label='blinking corrected',
+                color='firebrick',
+                filename="blinking_corrected.png",
+                saccade_data=self.app_instance.X_saccade_updated
+            )
+
+
         if hasattr(self.app_instance, 'pupil_dilation') and self.app_instance.pupil_dilation is not None:
             self._save_single_fig(
                 data=self.app_instance.pupil_dilation,
                 label='pupil_dilation',
-                color='palegreen',
+                color='olive',
                 filename="pupil_area.png",
                 saccade_data=self.app_instance.X_saccade_updated
             )
@@ -313,27 +327,69 @@ class SaveHandler:
                 color='salmon',
                 filename="motion_energy.png"
             )
+        if hasattr(self.app_instance, 'facemotion_without_grooming') and self.app_instance.facemotion_without_grooming is not None:
+            self._save_single_fig(
+                data=self.app_instance.facemotion_without_grooming,
+                label='facemotion without grooming',
+                color='grey',
+                filename="facemotion_without_grooming.png"
+            )
+        # --- NEW: Save pupil center X and Y plots ---
+        if hasattr(self.app_instance, 'pupil_center_X') and hasattr(self.app_instance, 'pupil_center_y'):
+            x_data = np.array(self.app_instance.pupil_center_X)
+            y_data = np.array(self.app_instance.pupil_center_y)
+            if x_data.size > 0 and y_data.size > 0:
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+                x_vals = np.arange(len(x_data))
 
-    def _save_single_fig(self, data, label, color, filename, saccade_data = None):
+                ax1.plot(x_vals, x_data, color='teal', label='Pupil center X')
+                ax1.set_ylabel('X position')
+                ax1.set_title('Pupil center X over time')
+
+                ax2.plot(x_vals, y_data, color='darkorange', label='Pupil center Y')
+                ax2.set_ylabel('Y position')
+                ax2.set_xlabel('Frame')
+                ax2.set_title('Pupil center Y over time')
+
+                for ax in (ax1, ax2):
+                    ax.legend()
+                    ax.grid(alpha=0.3)
+
+                fig.tight_layout()
+                save_path_xy = os.path.join(self.save_directory, "pupil_center_xy.png")
+                fig.savefig(save_path_xy, dpi=300)
+                plt.close(fig)
+
+    def _save_single_fig(self, data, label, color, filename, saccade_data=None):
         """
         Helper function to plot data and save a figure.
-
-        Parameters:
-        data (np.ndarray): The main data to plot.
-        label (str): The label for the plot.
-        color (str): The color of the plot line.
-        filename (str): The name of the file to save the plot as.
-        saccade_data (np.ndarray, optional): Saccade data to overlay on the plot.
         """
         fig, ax = plt.subplots()
         save_path = os.path.join(self.save_directory, filename)
+
         self._plot_data(ax, data, label, color)
+
+        # Add title
+        ax.set_title(label.replace("_", " ").capitalize(), fontsize=12, fontweight="bold")
+        ax.set_xlabel("Frame")
+        ax.set_ylabel("Value")
+        ax.legend()
 
         # Plot saccade data if provided
         if saccade_data is not None:
             self._plot_saccade(ax, saccade_data, data)
-        fig.savefig(save_path, dpi=300)
 
+        # --- NEW: Add grooming threshold line if applicable ---
+        if "motion_energy" in filename.lower():
+            thr = getattr(self.app_instance, "grooming_thr", None)
+            if thr is not None and np.isfinite(thr).any():
+                thr_val = float(np.nanmean(thr))
+                ax.axhline(y=thr_val, color="black", linestyle="--", linewidth=1.2, label="Grooming threshold")
+                ax.legend()
+
+        fig.tight_layout()
+        fig.savefig(save_path, dpi=300)
+        plt.close(fig)
 
     def _plot_data(self, ax: plt.Axes, data: np.ndarray, label: str, color: str):
         """

@@ -1,20 +1,30 @@
-
-from PyQt5.QtCore import  QThread
+from PyQt5.QtCore import QThread
 from FACEIT_codes import pupil_detection
 from FACEIT_codes.Workers import MotionWorker
-from multiprocessing import Pool
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+import os, time, math, logging
 import numpy as np
-import math
 import cv2
-import time
-from multiprocessing import cpu_count
-from tqdm import tqdm
+import logging
+from multiprocessing import cpu_count  # keep if you still use elsewhere
+from concurrent.futures import ThreadPoolExecutor, as_completed
+try:
+    cv2.setNumThreads(0)
+except Exception:
+    pass
+
 from FACEIT_codes.functions import (
     change_saturation_uniform,
     change_Gradual_saturation,
     apply_intensity_gradient_gray,
     SaturationSettings, show_ROI2
 )
+
+def _fmt_secs(s):
+    m, s = divmod(int(s), 60)
+    h, m = divmod(m, 60)
+    return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
 
 def process_single_frame(args):
     (
@@ -104,6 +114,124 @@ def create_roi(x, y, width, height):
         'width': width,
         'height': height
     }
+def _make_roi_slicer(sub_image, first_frame):
+    if isinstance(sub_image, tuple):
+        x, y, w, h = map(int, sub_image)
+        return lambda frame: frame[y:y+h, x:x+w]
+    else:
+        sub_region, ROI_pos, frame_center, frame_axes = show_ROI2(sub_image, first_frame)
+        if isinstance(ROI_pos, tuple):
+            x, y, w, h = map(int, ROI_pos)
+            return lambda frame: frame[y:y+h, x:x+w]
+        return lambda frame: show_ROI2(sub_image, frame)[0]
+def _detect_frame(i, frame, roi_slice, cfg):
+    # slice ROI (zero-copy)
+    roi = roi_slice(frame)
+
+    # saturation / brightness
+    processed, is_gray = _apply_saturation_fast(
+        roi,
+        cfg["saturation_method"],
+        cfg["settings"],
+        cfg["saturation"],
+        cfg["contrast"]
+    )
+
+    # choose detector input format
+    if cfg["needs_bgra"]:
+        if is_gray:
+            bgr = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
+            img_for_det = cv2.cvtColor(bgr, cv2.COLOR_BGR2BGRA)
+        else:
+            img_for_det = cv2.cvtColor(processed, cv2.COLOR_BGR2BGRA)
+    else:
+        img_for_det = processed  # pass GRAY or BGR
+
+    _, center, width, height, angle, _ = pupil_detection.detect_pupil(
+        img_for_det,
+        cfg["erased_pixels"], cfg["reflect_ellipse"], cfg["mnd"],
+        cfg["reflect_brightness"], cfg["clustering_method"], cfg["binary_method"],
+        cfg["binary_threshold"], cfg["c_value"], cfg["block_size"]
+    )
+
+    cx, cy = int(center[0]), int(center[1])
+    w, h = int(width), int(height)
+    area = math.pi * w * h
+
+    if cfg["eye_corner_center"] is not None:
+        ex, ey = cfg["eye_corner_center"]
+        dist = math.hypot(cx - ex, cy - ey)
+    else:
+        dist = float("nan")
+
+    return (i, area, cx, cy, w, h, dist,
+            cfg["frame_pos"], cfg["frame_center"], cfg["frame_axes"], angle)
+def _apply_saturation_fast(bgr_roi, saturation_method, settings, saturation, contrast):
+    if saturation_method == "Gradual":
+        if bgr_roi.ndim == 2 or (
+            bgr_roi.ndim == 3 and
+            np.allclose(bgr_roi[...,0], bgr_roi[...,1]) and
+            np.allclose(bgr_roi[...,1], bgr_roi[...,2])
+        ):
+            gray = cv2.cvtColor(bgr_roi, cv2.COLOR_BGR2GRAY) if bgr_roi.ndim == 3 else bgr_roi
+            return apply_intensity_gradient_gray(gray, settings), True
+        else:
+            out = change_Gradual_saturation(bgr_roi, settings)
+            return cv2.cvtColor(out, cv2.COLOR_RGB2BGR), False
+    elif saturation_method == "Uniform":
+        if bgr_roi.ndim == 2:
+            bgr_roi = cv2.cvtColor(bgr_roi, cv2.COLOR_GRAY2BGR)
+        return change_saturation_uniform(bgr_roi, saturation=saturation, contrast=contrast), False
+    return bgr_roi, (bgr_roi.ndim == 2)
+
+
+
+def _detect_one(i, images, roi_slice, cfg):
+    frame = images[i]
+    roi = roi_slice(frame)
+
+    processed, is_gray = _apply_saturation_fast(
+        roi,
+        cfg["saturation_method"],
+        cfg["settings"],
+        cfg["saturation"],
+        cfg["contrast"]
+    )
+
+    if cfg["needs_bgra"]:
+        if is_gray:
+            bgr = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
+            img_for_det = cv2.cvtColor(bgr, cv2.COLOR_BGR2BGRA)
+        else:
+            img_for_det = cv2.cvtColor(processed, cv2.COLOR_BGR2BGRA)
+    else:
+        img_for_det = processed  # pass GRAY or BGR as your detector supports
+
+    _, center, width, height, angle, _ = pupil_detection.detect_pupil(
+        img_for_det,
+        cfg["erased_pixels"],
+        cfg["reflect_ellipse"],
+        cfg["mnd"],
+        cfg["reflect_brightness"],
+        cfg["clustering_method"],
+        cfg["binary_method"],
+        cfg["binary_threshold"],
+        cfg["c_value"],
+        cfg["block_size"]
+    )
+
+    cx, cy = int(center[0]), int(center[1])
+    width, height = int(width), int(height)
+    area = math.pi * width * height
+
+    if cfg["eye_corner_center"] is not None:
+        ex, ey = cfg["eye_corner_center"]
+        dist = math.hypot(cx - ex, cy - ey)
+    else:
+        dist = float("nan")
+
+    return (area, (cx, cy), cx, cy, width, height, dist,
+            cfg["frame_pos"], cfg["frame_center"], cfg["frame_axes"])
 
 class ProcessHandler:
     def __init__(self, app_instance):
@@ -135,19 +263,34 @@ class ProcessHandler:
             self.app_instance.warning("NO Face ROI is chosen!")
             return
 
-        self.load_images_if_needed()
+        # --- Make sure frames are loaded at least once ---
+        if not hasattr(self.app_instance, "images") or self.app_instance.images is None:
+            self.load_images_if_needed()
 
-        # Setup threading
+        # --- Load frames only now (when Process is pressed) ---
+        if self.app_instance.video:
+            # fresh generator each time Process is pressed
+            loader = self.app_instance.load_handler
+            images = loader.load_frames_from_video(
+                self.app_instance.folder_path,
+                self.app_instance.image_height
+            )
+        elif self.app_instance.NPY:
+            # .npy mode: already preloaded into memory
+            images = self.app_instance.images
+        else:
+            self.app_instance.warning("No video or image source loaded.")
+            return
+
+        # --- Start motion analysis ---
         self.motion_thread = QThread()
-        self.motion_worker = MotionWorker(self.app_instance.images, self.app_instance.Face_frame)
-
+        self.motion_worker = MotionWorker(images, self.app_instance.Face_frame)
         self.motion_worker.moveToThread(self.motion_thread)
 
         # Signals
         self.motion_thread.started.connect(self.motion_worker.run)
         self.motion_worker.finished.connect(self.handle_motion_result)
         self.motion_worker.error.connect(self.handle_worker_error)
-
 
         # Cleanup
         self.motion_worker.finished.connect(self.motion_thread.quit)
@@ -157,6 +300,9 @@ class ProcessHandler:
 
     def handle_motion_result(self, result):
         self.app_instance.motion_energy = result
+        if result is None or len(result) == 0:
+            print("[DEBUG] Motion result is empty – skipping plot")
+            return
         self.app_instance.plot_handler.plot_result(
             result,
             self.app_instance.graphicsView_whisker,
@@ -179,7 +325,59 @@ class ProcessHandler:
             # Mark images as loaded
             self.app_instance.Image_loaded = True
 
-    def detect_blinking(self,
+    def detect_blinking(self, pupil, width, height, x_saccade, y_saccade):
+        """
+        Detects and processes blinking events based on pupil data, width, and height ratios.
+
+        Parameters:
+            pupil (array): Array of pupil data.
+            width (array): Array of pupil width data.
+            height (array): Array of pupil height data.
+            x_saccade (array): Array of X-axis saccade data.
+            y_saccade (array): Array of Y-axis saccade data.
+        """
+
+        # Convert width, height, and saccade data to numpy arrays
+        width = np.array(width)
+        height = np.array(height)
+        self.app_instance.X_saccade_updated = np.array(x_saccade)
+        self.app_instance.Y_saccade_updated = np.array(y_saccade)
+
+        # Calculate the width-to-height ratio to identify potential blinking
+        ratio = width / height
+
+        # Detect blinking based on the ratio and pupil data using defined thresholds
+        blinking_id_ratio = pupil_detection.detect_blinking_ids_old(ratio, 20)
+        blinking_id_area = pupil_detection.detect_blinking_ids_old(pupil, 10)
+
+        # Combine the detected blinking indices and remove duplicates
+        combined_blinking_ids = list(set(blinking_id_ratio + blinking_id_area))
+
+        # Ensure indices do not exceed the length of the saccade data
+        combined_blinking_ids = [x for x in combined_blinking_ids if x < len(self.app_instance.X_saccade_updated[0])]
+        combined_blinking_ids.sort()
+
+        # Replace the detected blinking indices with NaNs in the updated saccade arrays
+        self.app_instance.X_saccade_updated[0][combined_blinking_ids] = np.nan
+        self.app_instance.Y_saccade_updated[0][combined_blinking_ids] = np.nan
+
+        # Interpolate the pupil data to handle the blinking periods smoothly
+        self.app_instance.interpolated_pupil = pupil_detection.interpolate(combined_blinking_ids, pupil)
+
+        # Plot the interpolated pupil data with the detected saccade events
+        self.app_instance.plot_handler.plot_result(
+            self.app_instance.interpolated_pupil,
+            self.app_instance.graphicsView_pupil,
+            "pupil",
+            color="palegreen",
+            saccade=self.app_instance.X_saccade
+        )
+
+        # Store the final pupil area as the interpolated result
+        self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
+        return combined_blinking_ids
+
+    def detect_blinking2(self,
                         pupil,
                         x_saccade,
                         y_saccade,
@@ -261,67 +459,171 @@ class ProcessHandler:
                               mnd, reflect_brightness, clustering_method, binary_method, binary_threshold,
                               saturation_method, brightness, brightness_curve,
                               secondary_BrightGain, brightness_concave_power,
-                              saturation_ununiform, primary_direction, secondary_direction,c_value, block_size, sub_image):
+                              saturation_ununiform, primary_direction, secondary_direction,
+                              c_value, block_size, sub_image):
         """
-        Computes pupil dilation and related metrics from a series of images using parallel processing.
-        Uses a generator instead of building all frame_args in memory.
+        Fast, bounded-thread streaming compute with 10% progress logs (single 0% line).
         """
-        start_time = time.time()
+        t0 = time.perf_counter()
+        verbose = getattr(self.app_instance, "verbose", False)
+
+        # ---- 1) Build a streaming iterator and get N if known ----
+        if isinstance(images_iter, np.ndarray):
+            images = images_iter
+            n = int(images.shape[0])
+            # first frame
+            i0, first_frame = 0, images[0]
+            # the rest
+            frame_iter = ((i, images[i]) for i in range(1, n))
+        else:
+            n = int(getattr(self.app_instance, "len_file", 0)) or 0
+            frame_iter = enumerate(images_iter)
+            try:
+                i0, first_frame = next(frame_iter)  # peek one
+            except StopIteration:
+                return tuple([np.array([])] * 13)  # empty
+
+        if n == 0:
+            return tuple([np.array([])] * 13)
+
+        # ---- 2) ROI slicer and frame-invariant geometry from first frame ----
+        roi_slice = _make_roi_slicer(sub_image, first_frame)
+        _, frame_pos, frame_center, frame_axes = show_ROI2(sub_image, first_frame)
+
+        # ---- 3) Settings/config (once) ----
+        settings = SaturationSettings(
+            primary_direction=primary_direction,
+            brightness_curve=brightness_curve,
+            brightness=brightness,
+            secondary_direction=secondary_direction,
+            brightness_concave_power=brightness_concave_power,
+            secondary_BrightGain=secondary_BrightGain,
+            saturation_ununiform=saturation_ununiform
+        )
+        needs_bgra = True  # set False if your detector accepts BGR/GRAY
 
         eye_corner_center = (
-            self.app_instance.eye_corner_center[0],
-            self.app_instance.eye_corner_center[1]
-        ) if self.app_instance.eye_corner_center is not None else None
-        def frame_arg_gen():
-            for current_image in images_iter:
-                yield (
-                    current_image, sub_image,
-                    saturation, contrast,
-                    erased_pixels, reflect_ellipse,
-                    eye_corner_center, mnd, reflect_brightness,
-                    clustering_method, binary_method, binary_threshold,
-                    saturation_method, brightness, brightness_curve,
-                    secondary_BrightGain, brightness_concave_power,
-                    saturation_ununiform, primary_direction, secondary_direction,c_value,block_size
-                )
+            (self.app_instance.eye_corner_center[0], self.app_instance.eye_corner_center[1])
+            if getattr(self.app_instance, "eye_corner_center", None) is not None else None
+        )
 
+        cfg = dict(
+            saturation_method=saturation_method,
+            settings=settings,
+            saturation=saturation,
+            contrast=contrast,
+            erased_pixels=erased_pixels,
+            reflect_ellipse=reflect_ellipse,
+            mnd=mnd,
+            reflect_brightness=reflect_brightness,
+            clustering_method=clustering_method,
+            binary_method=binary_method,
+            binary_threshold=binary_threshold,
+            c_value=c_value,
+            block_size=block_size,
+            needs_bgra=needs_bgra,
+            eye_corner_center=eye_corner_center,
+            frame_pos=frame_pos,
+            frame_center=frame_center,
+            frame_axes=frame_axes
+        )
 
+        # ---- 4) Preallocate outputs ----
+        pupil_dilation = np.empty(n, dtype=np.float32)
+        pupil_center_X = np.empty(n, dtype=np.int32)
+        pupil_center_y = np.empty(n, dtype=np.int32)
+        pupil_center = np.empty((n, 2), dtype=np.int32)
+        pupil_width = np.empty(n, dtype=np.int32)
+        pupil_height = np.empty(n, dtype=np.int32)
+        pupil_distance = np.empty(n, dtype=np.float32)
+        frame_pos_arr = np.empty(n, dtype=np.float32)
+        frame_center_arr = np.empty((n, 2), dtype=np.float32)
+        frame_axes_arr = np.empty((n, 2), dtype=np.float32)
+        angle = np.empty(n, dtype=np.float32)
 
-        num_workers = max(1, cpu_count() // 2)
-        print(f"Using {num_workers} workers out of {cpu_count()} cores.")
+        # ---- 5) Thread pool with bounded in-flight futures ----
+        workers = min(4, os.cpu_count() or 4)
+        max_inflight = workers * 4
+        if verbose:
+            logging.info(f"[FaceIt] Threaded pupil compute with {workers} workers for {n} frames")
 
-        with Pool(processes=num_workers) as pool:
-            results = list(
-                tqdm(pool.imap(process_single_frame, frame_arg_gen()),
-                     total=self.app_instance.len_file)
-            )
+        start_loop = time.perf_counter()
+        done = 0
 
-        # Unpack results
-        (pupil_dilation, pupil_center, pupil_center_X, pupil_center_y,
-         pupil_width, pupil_height, pupil_distance_from_corner,
-         frame_pos, frame_center, frame_axes) = zip(*results)
+        # Print 0% ONCE (before loop), then lock progress to 10% buckets
+        logging.info(f"[FaceIt] 0% (0/{n}) | elapsed 00:00 | ETA --:--")
+        if hasattr(self.app_instance, "progress_signal"):
+            self.app_instance.progress_signal.emit(0, 0, n, 0.0, 0.0)
+        last_bucket = 0
 
-        elapsed_time = time.time() - start_time
-        print(f"Time taken for pupil dilation computation: {elapsed_time:.2f} seconds")
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            inflight = set()
 
-        # Convert to numpy arrays
-        pupil_dilation = np.array(pupil_dilation)
-        pupil_center = np.array(pupil_center)
-        pupil_center_X = np.array(pupil_center_X)
-        pupil_center_y = np.array(pupil_center_y)
-        pupil_width = np.array(pupil_width)
-        pupil_height = np.array(pupil_height)
-        pupil_distance_from_corner = np.array(pupil_distance_from_corner)
-        frame_pos = np.array(frame_pos)
-        frame_center = np.array(frame_center)
-        frame_axes = np.array(frame_axes)
+            # submit first frame immediately
+            inflight.add(ex.submit(_detect_frame, i0, first_frame, roi_slice, cfg))
 
+            # prime the pump
+            while len(inflight) < min(max_inflight, max(1, n - 1)):
+                try:
+                    i, frame = next(frame_iter)
+                except StopIteration:
+                    break
+                inflight.add(ex.submit(_detect_frame, i, frame, roi_slice, cfg))
+
+            # consume and refill
+            while inflight:
+                done_set, inflight = wait(inflight, return_when=FIRST_COMPLETED)
+
+                for fut in done_set:
+                    (i, area, cx, cy, w, h, dist, fpos, fcenter, faxes, fangle) = fut.result()
+
+                    pupil_dilation[i] = area
+                    pupil_center[i, 0] = cx
+                    pupil_center[i, 1] = cy
+                    pupil_center_X[i] = cx
+                    pupil_center_y[i] = cy
+                    pupil_width[i] = w
+                    pupil_height[i] = h
+                    pupil_distance[i] = dist
+                    frame_pos_arr[i] = fpos if np.isscalar(fpos) else 0.0
+                    frame_center_arr[i] = fcenter if hasattr(fcenter, "__len__") else (0.0, 0.0)
+                    frame_axes_arr[i] = faxes if hasattr(faxes, "__len__") else (0.0, 0.0)
+                    angle[i] = fangle
+
+                    # progress every 10%
+                    done += 1
+                    if n:  # avoid div-by-zero
+                        pct = int((done * 100) // n)  # 0..100
+                        bucket = max(0, min(100, (pct // 10) * 10))  # 0,10,20,...,100
+                        if bucket > last_bucket:
+                            last_bucket = bucket
+                            elapsed = time.perf_counter() - start_loop
+                            fps = (done / elapsed) if elapsed > 0 else 0.0
+                            eta = ((n - done) / fps) if fps > 0 else 0.0
+                            logging.info(
+                                f"[FaceIt] {bucket}% ({done}/{n}) | {fps:.1f} fps | "
+                                f"elapsed {_fmt_secs(elapsed)} | ETA {_fmt_secs(eta)}"
+                            )
+                            if hasattr(self.app_instance, "progress_signal"):
+                                self.app_instance.progress_signal.emit(int(bucket), done, n, float(fps), float(eta))
+
+                while len(inflight) < max_inflight:
+                    try:
+                        i, frame = next(frame_iter)
+                    except StopIteration:
+                        break
+                    inflight.add(ex.submit(_detect_frame, i, frame, roi_slice, cfg))
+
+        # ---- 6) Saccades ----
         X_saccade = self.Saccade(pupil_center_X)
         Y_saccade = self.Saccade(pupil_center_y)
 
+        if verbose:
+            logging.info(f"[FaceIt] pupil_dilation_comput done in {time.perf_counter() - t0:.2f}s")
+
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
-                X_saccade, Y_saccade, pupil_distance_from_corner,
-                pupil_width, pupil_height, frame_pos, frame_center, frame_axes)
+                X_saccade, Y_saccade, pupil_distance,
+                pupil_width, pupil_height, frame_pos_arr, frame_center_arr, frame_axes_arr, angle)
 
     def Saccade(self, pupil_center_i):
         """

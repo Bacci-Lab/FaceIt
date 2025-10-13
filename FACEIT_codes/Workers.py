@@ -62,38 +62,61 @@ class MotionWorker(QObject):
         self.face_frame = face_frame
         self._is_running = True
 
-    from tqdm import tqdm
-    import numpy as np
-
     def run(self):
         try:
             y1, y2, x1, x2 = self.face_frame
 
+            # Case 1: 3D ndarray (n_frames, H, W) — vectorized fast path
             if isinstance(self.images, np.ndarray) and self.images.ndim == 3:
-                # (n_frames, H, W)
                 roi_stack = self.images[:, y1:y2, x1:x2].astype(np.float32)
 
                 diffs = np.diff(roi_stack, axis=0)
                 motion_energy_values = np.mean(diffs ** 2, axis=(1, 2))
                 motion_energy_values = np.insert(motion_energy_values, 0, motion_energy_values[0])
 
+                # Emit 100% once
+                if hasattr(self, "progress"):
+                    self.progress.emit(100)
+
                 self.finished.emit(motion_energy_values)
+                return
 
-            else:
-                previous_ROI = None
-                motion_energy_values = []
+            # Case 2: iterable/stream of frames — streaming path (no tqdm)
+            previous_ROI = None
+            motion_energy_values = []
 
-                for frame in tqdm(self.images, desc="Facemotion (streaming)"):
-                    roi = frame[y1:y2, x1:x2].astype(np.float32)
-                    if previous_ROI is not None:
-                        diff = cv2.absdiff(roi, previous_ROI)
-                        motion_energy_values.append(np.mean(diff * diff))
-                    previous_ROI = roi
+            # progress control
+            total = len(self.images) if hasattr(self.images, "__len__") else None
+            done = 0
+            last_bucket = -10  # so first bucket 0/10 can pass if desired
 
-                if motion_energy_values:
-                    motion_energy_values.insert(0, motion_energy_values[0])
+            for frame in self.images:
+                if not self._is_running:
+                    break
 
-                self.finished.emit(np.array(motion_energy_values))
+                roi = frame[y1:y2, x1:x2].astype(np.float32)
+                if previous_ROI is not None:
+                    diff = cv2.absdiff(roi, previous_ROI)
+                    motion_energy_values.append(np.mean(diff * diff))
+                previous_ROI = roi
+
+                # progress every 10% if total is known
+                done += 1
+                if total:
+                    pct = (done * 100) // total  # 0..100
+                    bucket = (pct // 10) * 10  # 0,10,20,...,100
+                    if bucket > last_bucket and hasattr(self, "progress"):
+                        last_bucket = bucket
+                        self.progress.emit(int(bucket))
+
+            if motion_energy_values:
+                motion_energy_values.insert(0, motion_energy_values[0])
+
+            # If total was unknown, send 100% at the end
+            if not total and hasattr(self, "progress"):
+                self.progress.emit(100)
+
+            self.finished.emit(np.array(motion_energy_values))
 
         except Exception as e:
             self.error.emit(str(e))

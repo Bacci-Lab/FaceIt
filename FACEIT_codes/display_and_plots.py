@@ -83,19 +83,65 @@ class PlotHandler:
         if frame_index is not None and 0 <= frame_index < len(data):
             self.vertical_line = ax.axvline(x=frame_index, color='blue', linewidth=2)
 
-
     def _plot_saccade(self, ax: plt.Axes, saccade: np.ndarray, data: np.ndarray):
-        """Plots the saccade data as a colormap if provided."""
-        if saccade is not None:
-            if saccade.shape[1] == len(data):
-                saccade = saccade[:, 1:]  # Trim the first column to match the length
+        """Plots the saccade data as a colormap band above the trace (original style, NaN/shape safe)."""
+        if saccade is None:
+            return
 
-            data_max = np.max(data)
-            range_val = np.max(data) - np.min(data)
-            y_min = data_max + range_val / 10
-            y_max = data_max + range_val / 5
-            x_values = np.arange(len(data))
-            ax.pcolormesh(x_values, [y_min, y_max], saccade, cmap='RdYlGn', shading='flat')
+        # Ensure 1×N
+        S = np.asarray(saccade)
+        if S.ndim == 1:
+            S = S[np.newaxis, :]
+
+        # === Match sizes required by shading='flat' ===
+        # With X length = len(data), C (S) must have N = len(data)-1 columns.
+        target_N = max(0, len(data) - 1)
+        cur_N = S.shape[1]
+
+        # Your original behavior: if equal to len(data), drop the first column.
+        if cur_N == len(data):
+            S = S[:, 1:]
+            cur_N = S.shape[1]
+
+        # Trim/pad to exactly len(data)-1
+        if cur_N > target_N:
+            S = S[:, :target_N]
+        elif cur_N < target_N:
+            pad = np.full((1, target_N - cur_N), np.nan, dtype=S.dtype)
+            S = np.concatenate([S, pad], axis=1)
+
+        # If nothing to draw (e.g., len(data) < 2), bail out gracefully
+        if S.shape[1] == 0:
+            return
+
+        # === Robust Y placement above data (ignore NaNs; ensure finite & non-zero band height) ===
+        d = np.asarray(data, dtype=float)
+        finite = np.isfinite(d)
+        if not finite.any():
+            dmin, dmax = 0.0, 1.0
+        else:
+            dmin = float(np.nanmin(d[finite]))
+            dmax = float(np.nanmax(d[finite]))
+            if not np.isfinite(dmin) or not np.isfinite(dmax):
+                dmin, dmax = 0.0, 1.0
+
+        range_val = dmax - dmin
+        if not np.isfinite(range_val) or range_val == 0.0:
+            range_val = 1.0  # avoid zero/NaN height
+
+        y_min = dmax + range_val / 10.0
+        y_max = dmax + range_val / 5.0
+
+        # === Build finite X/Y as plain ndarrays (C may be masked; X/Y must NOT) ===
+        x_values = np.arange(len(data), dtype=float)  # length len(data)
+        y_vals = [float(y_min), float(y_max)]  # two y rows
+
+        # Only mask C (allowed by pcolormesh). Do NOT mask x/y.
+        C = np.ma.masked_invalid(S)
+
+        # === Draw exactly like your original ===
+        ax.pcolormesh(x_values, y_vals, C, cmap='RdYlGn', shading='flat')
+
     def _customize_plot(
             self,
             fig: plt.Figure,
@@ -366,14 +412,6 @@ class Display:
             ellipse_item.setRotation(np.degrees(angle))
             ellipse_item.setPen(QtGui.QPen(QtGui.QColor("purple"), 1))
             self.app_instance.scene2.addItem(ellipse_item)
-            # r = 3
-            # cx, cy = int(center[0]), int(center[1])
-            # center_circle = QtWidgets.QGraphicsEllipseItem(cx - r, cy - r, 2 * r, 2 * r)
-            # center_circle.setPen(QtGui.QPen(QtGui.QColor("yellow"), 1))
-            # center_circle.setBrush(QtGui.QBrush(QtGui.QColor("yellow")))
-            # self.app_instance.scene2.addItem(center_circle)
-
-            # keep references if you need to remove later
             self.app_instance.pupil_ellipse_items = ellipse_item
 
             ###################
@@ -382,12 +420,7 @@ class Display:
             if len(show_img.shape) == 2:  # grayscale
                 show_img = cv2.cvtColor(show_img, cv2.COLOR_GRAY2BGR)
 
-            # Show in popup
-            plt.figure(figsize=(10, 8))
-            if len(show_img.shape) == 3 and show_img.shape[2] == 3:
-                imgGray = cv2.cvtColor(show_img, cv2.COLOR_BGR2GRAY)
-            else:
-                imgGray = show_img.copy()
+
 
             # Draw the ellipse on a copy
             ellipse_center = (int(center[0]), int(center[1]))
@@ -395,10 +428,6 @@ class Display:
             ellipse_angle = np.degrees(angle)
 
             cv2.ellipse(show_img, ellipse_center, ellipse_axes, ellipse_angle, 0, 360, (255, 0, 255), 2)  # purple
-            # # Show in popup
-            plt.figure(figsize=(5, 4))
-            plt.imshow(show_img)
-            plt.show()
             cv2.circle(show_img, ellipse_center, 3, (0, 255, 255), -1)  # yellow center
             if len(show_img.shape) == 3 and show_img.shape[2] == 3:
                 show_imgGray = cv2.cvtColor(show_img, cv2.COLOR_BGR2GRAY)

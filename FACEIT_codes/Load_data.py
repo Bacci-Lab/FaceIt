@@ -8,6 +8,16 @@ from tqdm import tqdm
 from PyQt5 import QtWidgets
 from FACEIT_codes import functions
 import threading
+
+import logging, time
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+def _fmt_secs(s):
+    m, s = divmod(int(s), 60)
+    h, m = divmod(m, 60)
+    return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
 class LoadData:
     def __init__(self, app_instance):
         # Store a reference to the main app instance
@@ -51,12 +61,35 @@ class LoadData:
             directory_path = os.path.dirname(self.app_instance.folder_path)
             self.app_instance.save_path = directory_path
             self.reset_GUI()
-            self.app_instance.cap = cv2.VideoCapture(self.app_instance.folder_path)
-            self.app_instance.len_file = int(self.app_instance.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.app_instance.Slider_frame.setMaximum(self.app_instance.len_file - 1)
+
+            t0 = time.perf_counter()
+            logging.info(f"[Video] Opening: {self.app_instance.folder_path}")
+
+            cap = cv2.VideoCapture(self.app_instance.folder_path)
+            if not cap.isOpened():
+                logging.error(f"[Video] Cannot open {self.app_instance.folder_path}")
+                return
+            self.app_instance.cap = cap
+
+            # Probe props (cheap) — helpful in logs
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+            fps_src = cap.get(cv2.CAP_PROP_FPS) or 0
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+            logging.info(f"[Video] Probed props: {total_frames} frames, {fps_src:.2f} fps, {w}x{h}")
+
+            self.app_instance.len_file = total_frames
+            self.app_instance.Slider_frame.setMaximum(max(0, total_frames - 1))
             self.app_instance.video = True
             self.app_instance.NPY = False
+
+            # First frame display/setup
             self.display_graphics(self.app_instance.folder_path)
+
+            dt = time.perf_counter() - t0
+            logging.info(f"✅ [Video] Prepared UI & metadata in {_fmt_secs(dt)}")
+
+            # Enable UI
             self.app_instance.FaceROIButton.setEnabled(True)
             self.app_instance.PlayPause_Button.setEnabled(True)
             self.app_instance.PupilROIButton.setEnabled(True)
@@ -77,17 +110,20 @@ class LoadData:
 
     def load_images_from_directory(self, directory, image_height, max_workers=8):
         """Load images from a directory using multithreading while preserving order and improving performance."""
-        start_time = time.time()
+        t0 = time.perf_counter()
         file_list = sorted([os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')])
-        images = [None] * len(file_list)  # Preallocate the list to maintain order
+        n = len(file_list)
+        logging.info(f"[Load] Start loading {n} .npy images from {directory}")
 
+        images = [None] * n  # Preallocate to maintain order
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(self.load_image, file, image_height): i
                 for i, file in enumerate(file_list)
             }
 
-            with tqdm(total=len(file_list), desc="Loading .npy images") as pbar:
+            # Optional: tqdm (kept as-is). It won’t impact data.
+            with tqdm(total=n, desc="Loading .npy images") as pbar:
                 for future in as_completed(futures):
                     index = futures[future]
                     image = future.result()
@@ -95,47 +131,74 @@ class LoadData:
                         images[index] = image
                     pbar.update(1)
 
-        elapsed_time = time.time() - start_time
-        print(f"✅ Image loading completed in {elapsed_time:.2f} seconds.")
+        dt = time.perf_counter() - t0
+        fps = (n / dt) if dt > 0 else float("inf")
+        logging.info(f"✅ [Load] Images ready: {n} frames in {_fmt_secs(dt)} (~{fps:.1f} fps)")
         return images
 
-    def load_frames_from_video(self, video_path, image_height, buffer_size=64):
-        """Stream frames from a video file using a background thread and buffer (fast + memory-safe)."""
+    def load_frames_from_video(self, video_path, image_height, buffer_size=256):
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            print(f"Error: Cannot open video file {video_path}.")
+            logging.error(f"[Video] Cannot open {video_path}")
             return
 
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
         frame_queue = queue.Queue(maxsize=buffer_size)
 
-        def producer():
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                # ✅ resize here once
-                h, w = frame.shape[:2]
-                aspect_ratio = w / h
-                new_w = int(image_height * aspect_ratio)
-                frame_resized = cv2.resize(frame, (new_w, image_height), interpolation=cv2.INTER_AREA)
-                frame_queue.put(frame_resized)
-            frame_queue.put(None)  # sentinel
+        t0 = time.perf_counter()
+        produced = 0
 
-        # Start producer in background
+        logging.info(f"[Stream] Start decoding {total_frames} frames from {video_path}")
+
+        # progress bucket state for stream logging
+        last_bucket = -1  # so first 0% can show if you want; keep -1 to start at 0->10 quickly
+
+        def producer():
+            nonlocal produced, last_bucket
+            try:
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    h, w = frame.shape[:2]
+                    aspect_ratio = w / h if h else 1.0
+                    new_w = int(image_height * aspect_ratio)
+                    frame_resized = cv2.resize(frame, (new_w, image_height), interpolation=cv2.INTER_AREA)
+                    frame_queue.put(frame_resized)
+                    produced += 1
+
+                    # --- log every 10% instead of every 500 frames ---
+                    if total_frames:
+                        pct = int((produced * 100) // total_frames)
+                        bucket = max(0, min(100, (pct // 10) * 10))
+                        if bucket > last_bucket:
+                            last_bucket = bucket
+                            dt = time.perf_counter() - t0
+                            fps = produced / dt if dt > 0 else 0.0
+                            logging.info(f"[Stream] {bucket}% ({produced}/{total_frames}) "
+                                         f"({_fmt_secs(dt)} @ {fps:.1f} fps)")
+            finally:
+                frame_queue.put(None)  # sentinel
+
         threading.Thread(target=producer, daemon=True).start()
 
-        # Consumer yields frames one by one
+        consumed = 0
         while True:
             frame = frame_queue.get()
             if frame is None:
                 break
+            consumed += 1
             yield frame
 
         cap.release()
+        dt_all = time.perf_counter() - t0
+        fps_all = produced / dt_all if dt_all > 0 else float("inf")
+        logging.info(f"✅ [Stream] Finished. Produced={produced}, Consumed={consumed}, "
+                     f"Total {_fmt_secs(dt_all)} (~{fps_all:.1f} fps)")
 
     def display_graphics(self, folder_path):
         """Display initial graphics and setup scenes."""
+        t0 = time.perf_counter()
         self.app_instance.frame = 0
         if self.app_instance.NPY:
             self.app_instance.image = functions.load_npy_by_index(folder_path, self.app_instance.frame)
@@ -153,6 +216,8 @@ class LoadData:
             self.app_instance.image_width,
             self.app_instance.image_height
         )
+        dt = time.perf_counter() - t0
+        logging.info(f"✅ [UI] First frame displayed in {_fmt_secs(dt)}")
 
     def reset_GUI(self):
         app = self.app_instance
