@@ -335,11 +335,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.groupBoxLayout.addWidget(QtWidgets.QLabel("Post processing"))
         self.groupBoxLayout.addLayout(self.detectionLayout)
 
-        self.detect_blinking_Button = QtWidgets.QPushButton("Filter pupil")
+        self.detect_blinking_Button = QtWidgets.QPushButton("Detect blinking")
         self.detectionLayout.addWidget(self.detect_blinking_Button, 0, 0)
 
-        self.Undo_blinking_Button = QtWidgets.QPushButton("Undo Filtering pupil")
-        self.detectionLayout.addWidget(self.Undo_blinking_Button, 0, 1)
+        self.Filtering_pupil_Button = QtWidgets.QPushButton("Filtering pupil")
+        self.detectionLayout.addWidget(self.Filtering_pupil_Button, 0, 1)
 
         self.grooming_Button = QtWidgets.QPushButton("Define Grooming threshold")
         self.detectionLayout.addWidget(self.grooming_Button, 1, 0)
@@ -347,8 +347,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Undo_grooming_Button = QtWidgets.QPushButton("Undo Grooming")
         self.detectionLayout.addWidget(self.Undo_grooming_Button, 1, 1)
 
-        self.manual_pupil_detection_Button = QtWidgets.QPushButton("Manual pupil detection")
-        self.detectionLayout.addWidget(self.manual_pupil_detection_Button, 0, 2)
+        self.Undo_blinking_Button = QtWidgets.QPushButton("Undo blinking\Filtering detection")
+        self.detectionLayout.addWidget(self.Undo_blinking_Button, 0, 2)
 
         # === File Operations ===
         self.fileOpsLayout = QtWidgets.QVBoxLayout()
@@ -612,7 +612,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Undo_blinking_Button.clicked.connect(self.init_undo_blinking)
         self.checkBox_binary.stateChanged.connect(self.update_binary_flag)
         self.detect_blinking_Button.clicked.connect(self.start_blinking_detection)
-        self.manual_pupil_detection_Button.clicked.connect(self.Manual_pupil_detection)
+        self.Filtering_pupil_Button.clicked.connect(self.Filtering_pupil)
         self.Save_Button.clicked.connect(self.save_handler.init_save_data)
         self.grooming_Button.clicked.connect(self.change_cursor_color)
         self.Undo_grooming_Button.clicked.connect(self.undo_grooming)
@@ -902,6 +902,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.worker.error.connect(self.handle_worker_error)
         self.thread.start()
 
+
+
     def handle_pupil_results(self, result):
         (self.pupil_dilation,
          self.pupil_center_X,
@@ -935,7 +937,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
 
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):
-            # self.blinking_ids = self.process_handler.detect_blinking(self.pupil_dilation, self.X_saccade, self.Y_saccade)
             self.blinking_ids = self.process_handler.detect_blinking(self.width, self.height, self.pupil_dilation, self.X_saccade,
                                                                      self.Y_saccade)
         else:
@@ -968,8 +969,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.Y_saccade_updated = np.array(self.Y_saccade)
         self.plot_handler.plot_result(self.pupil_dilation, self.graphicsView_pupil, "pupil", color="palegreen",
                          saccade=self.X_saccade)
-    def Manual_pupil_detection(self):
-        pass
+    def Filtering_pupil(self):
+        if hasattr(self, 'pupil_dilation'):
+            self.blinking_ids = self.process_handler.Pupil_Filtering(self.pupil_dilation, self.X_saccade, self.Y_saccade)
+        else:
+            self.warning("Process Pupil first")
     def eyecorner_clicked(self):
         self.eye_corner_mode = True
         self.Eraser_active = False

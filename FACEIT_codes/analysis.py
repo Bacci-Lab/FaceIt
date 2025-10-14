@@ -377,7 +377,7 @@ class ProcessHandler:
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
         return combined_blinking_ids
 
-    def detect_blinking2(self,
+    def Pupil_Filtering(self,
                         pupil,
                         x_saccade,
                         y_saccade,

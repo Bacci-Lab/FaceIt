@@ -21,7 +21,6 @@ class PlotHandler:
         self.fig, self.ax = plt.subplots()
         self.canvas = FigureCanvas(self.fig)
 
-
     def plot_result(
             self,
             data: np.ndarray,

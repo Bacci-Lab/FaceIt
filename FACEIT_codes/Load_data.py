@@ -32,8 +32,10 @@ class LoadData:
         logging.error("[Video] Cannot open None")
         return None
 
+
     def open_image_folder(self):
         """Open a folder dialog to select a directory containing .npy image files."""
+        self.reset_GUI()
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         default_path = os.path.join(project_root, "test_data", "test_images")
 
@@ -49,7 +51,7 @@ class LoadData:
             import threading
             self.stream_stop = threading.Event()
 
-        self.reset_GUI()
+
 
         # --- Switch to NPY mode, clear video state ---
         app = self.app_instance
@@ -102,7 +104,8 @@ class LoadData:
         app.Slider_frame.setEnabled(True)
 
     def load_video(self):
-        # NOTE: include *.mp4 (with dot)
+        self.reset_GUI()
+
         selected_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.app_instance, "Load Video", "", "Video Files (*.avi *.wmv *.mp4)"
         )
@@ -114,8 +117,6 @@ class LoadData:
             self.stream_stop.set()
             import threading
             self.stream_stop = threading.Event()
-
-        self.reset_GUI()
 
         # --- VIDEO mode ON, NPY mode OFF ---
         app = self.app_instance
