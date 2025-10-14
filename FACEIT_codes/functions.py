@@ -289,7 +289,6 @@ def show_ROI2(sub_image, image):
         masked_processed = cv2.merge(channels)
     else:
         raise ValueError("Unsupported processed image format")
-
     return masked_processed, frame_pos, center, axes
 
 

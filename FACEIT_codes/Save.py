@@ -41,7 +41,7 @@ class SaveHandler:
         if not self.app_instance.pupil_check():
             attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
                           'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner',
-                          'width', 'height', 'frame_pos', 'frame_center', 'frame_axes', 'angle']
+                          'width', 'height', 'frame_pos', 'frame_axes', 'angle']
             for attr in attributes:
                 initialize_data(attr)
 
@@ -79,7 +79,6 @@ class SaveHandler:
             grooming_threshold = self.app_instance.grooming_thr,
             blinking_ids = self.app_instance.blinking_ids,
             frame_pos = self.app_instance.frame_pos,
-            frame_center = self.app_instance.frame_center,
             frame_axes = self.app_instance.frame_axes,
             angle = self.app_instance.angle
 
@@ -150,7 +149,7 @@ class SaveHandler:
             if not self.app_instance.pupil_check():
                 attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
                               'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner','width', 'height',
-                              'frame_pos', 'frame_center', 'frame_axes', 'angle']
+                              'frame_pos', 'frame_axes', 'angle']
 
                 for attr in attributes:
                     initialize_data(attr)

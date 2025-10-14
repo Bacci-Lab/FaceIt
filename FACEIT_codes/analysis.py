@@ -42,7 +42,7 @@ def process_single_frame(args):
     ) = args
 
 
-    sub_region,frame_pos, frame_center, frame_axes = show_ROI2(sub_image, current_image)
+    sub_region,frame_pos, pupil_frame_center, frame_axes = show_ROI2(sub_image, current_image)
 
     # === Build saturation settings ===
     settings = SaturationSettings(
@@ -91,7 +91,7 @@ def process_single_frame(args):
     center = int(center[0]), int(center[1])
     width, height = int(width), int(height)
     current_area = np.pi * width * height
-    return current_area, center, center[0], center[1], width, height, pupil_distance_from_corner, frame_pos, frame_center, frame_axes
+    return current_area, center, center[0], center[1], width, height, pupil_distance_from_corner, frame_pos, pupil_frame_center, frame_axes
 
 
 
@@ -119,7 +119,7 @@ def _make_roi_slicer(sub_image, first_frame):
         x, y, w, h = map(int, sub_image)
         return lambda frame: frame[y:y+h, x:x+w]
     else:
-        sub_region, ROI_pos, frame_center, frame_axes = show_ROI2(sub_image, first_frame)
+        sub_region, ROI_pos, pupil_frame_center, frame_axes = show_ROI2(sub_image, first_frame)
         if isinstance(ROI_pos, tuple):
             x, y, w, h = map(int, ROI_pos)
             return lambda frame: frame[y:y+h, x:x+w]
@@ -165,7 +165,7 @@ def _detect_frame(i, frame, roi_slice, cfg):
         dist = float("nan")
 
     return (i, area, cx, cy, w, h, dist,
-            cfg["frame_pos"], cfg["frame_center"], cfg["frame_axes"], angle)
+            cfg["frame_pos"], cfg["pupil_frame_center"], cfg["frame_axes"], angle)
 def _apply_saturation_fast(bgr_roi, saturation_method, settings, saturation, contrast):
     if saturation_method == "Gradual":
         if bgr_roi.ndim == 2 or (
@@ -231,7 +231,7 @@ def _detect_one(i, images, roi_slice, cfg):
         dist = float("nan")
 
     return (area, (cx, cy), cx, cy, width, height, dist,
-            cfg["frame_pos"], cfg["frame_center"], cfg["frame_axes"])
+            cfg["frame_pos"], cfg["pupil_frame_center"], cfg["frame_axes"])
 
 class ProcessHandler:
     def __init__(self, app_instance):
@@ -488,7 +488,7 @@ class ProcessHandler:
 
         # ---- 2) ROI slicer and frame-invariant geometry from first frame ----
         roi_slice = _make_roi_slicer(sub_image, first_frame)
-        _, frame_pos, frame_center, frame_axes = show_ROI2(sub_image, first_frame)
+        _, frame_pos, pupil_frame_center, frame_axes = show_ROI2(sub_image, first_frame)
 
         # ---- 3) Settings/config (once) ----
         settings = SaturationSettings(
@@ -524,7 +524,7 @@ class ProcessHandler:
             needs_bgra=needs_bgra,
             eye_corner_center=eye_corner_center,
             frame_pos=frame_pos,
-            frame_center=frame_center,
+            pupil_frame_center=pupil_frame_center,
             frame_axes=frame_axes
         )
 
@@ -536,8 +536,8 @@ class ProcessHandler:
         pupil_width = np.empty(n, dtype=np.int32)
         pupil_height = np.empty(n, dtype=np.int32)
         pupil_distance = np.empty(n, dtype=np.float32)
-        frame_pos_arr = np.empty(n, dtype=np.float32)
-        frame_center_arr = np.empty((n, 2), dtype=np.float32)
+        frame_pos_arr = np.empty(n, dtype=object)
+        pupil_frame_center_arr = np.empty((n, 2), dtype=np.float32)
         frame_axes_arr = np.empty((n, 2), dtype=np.float32)
         angle = np.empty(n, dtype=np.float32)
 
@@ -585,8 +585,8 @@ class ProcessHandler:
                     pupil_width[i] = w
                     pupil_height[i] = h
                     pupil_distance[i] = dist
-                    frame_pos_arr[i] = fpos if np.isscalar(fpos) else 0.0
-                    frame_center_arr[i] = fcenter if hasattr(fcenter, "__len__") else (0.0, 0.0)
+                    frame_pos_arr[i] = fpos
+                    pupil_frame_center_arr[i] = fcenter if hasattr(fcenter, "__len__") else (0.0, 0.0)
                     frame_axes_arr[i] = faxes if hasattr(faxes, "__len__") else (0.0, 0.0)
                     angle[i] = fangle
 
@@ -623,7 +623,7 @@ class ProcessHandler:
 
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
                 X_saccade, Y_saccade, pupil_distance,
-                pupil_width, pupil_height, frame_pos_arr, frame_center_arr, frame_axes_arr, angle)
+                pupil_width, pupil_height, frame_pos_arr, pupil_frame_center_arr, frame_axes_arr, angle)
 
     def Saccade(self, pupil_center_i):
         """
