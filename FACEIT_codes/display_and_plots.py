@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+import os
 import matplotlib.pyplot as plt
 from FACEIT_codes.functions import SaturationSettings, apply_intensity_gradient_gray
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -438,23 +439,49 @@ class Display:
 
         return self.app_instance.pupil_ellipse_items
 
-    def update_frame_view(self, frame):
+    def update_frame_view(self, frame: int):
         """
-        Updates the displayed frame in the graphics view and
-        handles the display of the pupil and face regions of interest (ROIs).
+        Updates the displayed frame and associated plots/ROIs safely for both NPY and Video sources.
+        """
 
-        Parameters:
-        - frame (int): The frame index to be displayed.
-        """
+        # Must have total length
+        total = getattr(self.app_instance, "len_file", 0) or 0
+        if total <= 0:
+            return
+
+        # Clamp index to [0, total-1]
+        max_idx = total - 1
+        if frame < 0:
+            frame = 0
+        elif frame > max_idx:
+            frame = max_idx
+
+        # Keep GUI elements in sync (avoid recursive valueChanged)
+        from PyQt5.QtCore import QSignalBlocker
+        blocker = QSignalBlocker(self.app_instance.Slider_frame)
+        if self.app_instance.Slider_frame.value() != frame:
+            self.app_instance.Slider_frame.setValue(frame)
+        self.app_instance.lineEdit_frame_number.setText(str(frame))
 
         self.app_instance.frame = frame
-        if self.app_instance.NPY:
-            self.app_instance.image = functions.load_npy_by_index(self.app_instance.folder_path, frame)
-        elif self.app_instance.video:
-            self.app_instance.image = functions.load_frame_by_index(self.app_instance.cap, frame)
 
-        # Update the displayed frame number
-        self.app_instance.lineEdit_frame_number.setText(str(self.app_instance.Slider_frame.value()))
+        # Load current frame depending on mode (with guards)
+        if self.app_instance.NPY:
+            if not (self.app_instance.folder_path and os.path.isdir(self.app_instance.folder_path)):
+                # stale state (e.g., switched to video but flags wrong)
+                return
+            self.app_instance.image = functions.load_npy_by_index(
+                self.app_instance.folder_path, frame
+            )
+        elif self.app_instance.video:
+            if not getattr(self.app_instance, "cap", None):
+                return
+            self.app_instance.image = functions.load_frame_by_index(
+                self.app_instance.cap, frame
+            )
+        else:
+            # no source
+            return
 
         # Display the main image and update the scene
         self.app_instance.graphicsView_MainFig, self.app_instance.scene = functions.display_region(
@@ -462,13 +489,14 @@ class Display:
             self.app_instance.image_width, self.app_instance.image_height, self.app_instance.scene
         )
 
-        # Check if a pupil ROI exists and update its display if present
+        # ROIs
         if self.app_instance.current_ROI == "pupil":
             self._display_pupil_roi()
         elif self.app_instance.current_ROI == "face":
             self._display_face_roi()
-        #################################################
-        if hasattr(self.app_instance, 'final_pupil_area') and self.app_instance.final_pupil_area is not None:
+
+        # Plots (safe if arrays are longer than frame; your plot handler handles cursor)
+        if getattr(self.app_instance, 'final_pupil_area', None) is not None:
             plot_handler = PlotHandler(self.app_instance)
             plot_handler.plot_result(
                 self.app_instance.final_pupil_area,
@@ -479,7 +507,7 @@ class Display:
                 Cursor=True
             )
 
-        if hasattr(self.app_instance, 'motion_energy') and self.app_instance.motion_energy is not None:
+        if getattr(self.app_instance, 'motion_energy', None) is not None:
             plot_handler = PlotHandler(self.app_instance)
             plot_handler.plot_result(
                 self.app_instance.motion_energy,

@@ -35,15 +35,22 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         else:
             print(f"Logo not found at {logo_path}")
 
+        # --- source & processing state ---
         self.Eraser_active = False
         self.NPY = False
         self.video = False
+
+        self.folder_path = None
+        self.video_path = None
+        self.cap = None
+
         self.find_grooming_threshold = False
         self.contrast = 1
         self.brightness = 1
         self.brightness_curve = 1
         self.brightness_concave_power = 1.5
-        self.len_file = 1
+
+        self.len_file = 0
         self.erase_size = 20
         self.ratio = 2
         self.mnd = 3
@@ -54,7 +61,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.binary_method = "Adaptive"
         self.binary_threshold = 220
         self.saturation_method = "None"
-        self.Show_binary =  False
+        self.Show_binary = False
+
         self.cap = None
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.Main_V_Layout = QtWidgets.QVBoxLayout(self.centralwidget)
@@ -632,6 +640,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.lineEdit_contrast_value.setStyleSheet("background-color: #999999")
         self.lineEdit_grooming_y.setStyleSheet("background-color: #999999")
         self.lineEdit_satur_ununiform_value.setStyleSheet("background-color: #999999")
+
 
     def toggle_play_pause(self):
         if not self.is_playing:

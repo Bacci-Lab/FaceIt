@@ -3,6 +3,8 @@ import os.path
 import numpy as np
 from PyQt5 import QtWidgets, QtGui, QtCore
 import matplotlib.pyplot as plt
+import re
+
 def initialize_attributes(obj, image):
     if len(image.shape) == 3:
         obj.image_height, obj.image_width, _ = image.shape
@@ -331,13 +333,37 @@ def display_region(image, graphicsView_MainFig, image_width, image_height, scene
     return graphicsView_MainFig, scene
 
 
-def load_npy_by_index(folder_path, index):
-    npy_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.npy')])
-    if index < 0 or index >= len(npy_files):
-        raise IndexError("Index out of range")
-    file_path = os.path.join(folder_path, npy_files[index])
-    image = np.load(file_path)
-    return image
+def _natural_key(s):
+    # Natural sort if your files are like frame_1.npy, frame_2.npy, ...
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', s)]
+
+def list_npy_files(folder_path):
+    if not os.path.isdir(folder_path):
+        raise ValueError(f"Expected a directory, got: {folder_path!r}")
+    files = [f for f in os.listdir(folder_path) if f.lower().endswith('.npy')]
+    files.sort(key=_natural_key)  # natural sort; use .sort() if you prefer simple lexicographic
+    if not files:
+        raise ValueError(f"No .npy files found in: {folder_path!r}")
+    return files
+
+
+def load_npy_by_index(folder_path, index, *, allow_pickle=False, mmap_mode=None):
+    if not os.path.isdir(folder_path):
+        raise ValueError(f"load_npy_by_index expects a directory, got: {folder_path!r}")
+
+    files = [f for f in os.listdir(folder_path) if f.lower().endswith('.npy')]
+    files.sort()  # simple lexicographic sort; see natural sort below if needed
+    if not files:
+        raise ValueError(f"No .npy files found in: {folder_path!r}")
+
+    if index < 0 or index >= len(files):
+        raise IndexError(f"Index {index} out of range (0..{len(files)-1})")
+
+    path = os.path.join(folder_path, files[index])
+    try:
+        return np.load(path, allow_pickle=allow_pickle, mmap_mode=mmap_mode)
+    except Exception as e:
+        raise IOError(f"Failed to load {path}: {e}") from e
 
 def load_frame_by_index(cap, index):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))

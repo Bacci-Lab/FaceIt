@@ -5,8 +5,7 @@ from pynwb.base import TimeSeries
 import os
 import logging
 import matplotlib.pyplot as plt
-from pynwb.image import ImageSeries
-# Set up logging for better traceability
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class SaveHandler:

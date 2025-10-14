@@ -2,7 +2,7 @@ import os
 import numpy as np
 import cv2
 import queue
-import time
+from PyQt5.QtCore import QSignalBlocker
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from PyQt5 import QtWidgets
@@ -22,78 +22,165 @@ class LoadData:
     def __init__(self, app_instance):
         # Store a reference to the main app instance
         self.app_instance = app_instance
+        self.stream_stop = threading.Event()
+
+    def _resolve_video_path(self, explicit_path=None):
+        """Return a valid video path string or None."""
+        path = explicit_path if explicit_path else getattr(self.app_instance, "video_path", None)
+        if isinstance(path, str) and path.strip():
+            return path
+        logging.error("[Video] Cannot open None")
+        return None
+
     def open_image_folder(self):
         """Open a folder dialog to select a directory containing .npy image files."""
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         default_path = os.path.join(project_root, "test_data", "test_images")
 
-        # Open folder selection dialog
-        folder_path = QtWidgets.QFileDialog.getExistingDirectory(self.app_instance, "Select Folder", default_path)
-
+        folder_path = QtWidgets.QFileDialog.getExistingDirectory(
+            self.app_instance, "Select Folder", default_path
+        )
         if not folder_path:
             return
 
-        self.app_instance.folder_path = folder_path
-        self.app_instance.save_path = folder_path
-        npy_files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
+        # --- Cancel any background stream and reset UI ---
+        if hasattr(self, "stream_stop") and self.stream_stop is not None:
+            self.stream_stop.set()
+            import threading
+            self.stream_stop = threading.Event()
 
-
-        # Configure application settings if valid .npy files are found
         self.reset_GUI()
-        self.app_instance.len_file = len(npy_files)
-        self.app_instance.Slider_frame.setMaximum(self.app_instance.len_file - 1)
-        self.app_instance.NPY = True
-        self.app_instance.video = False
-        self.display_graphics(folder_path)
 
-        # Enable buttons after successful file check
-        self.app_instance.FaceROIButton.setEnabled(True)
-        self.app_instance.PlayPause_Button.setEnabled(True)
-        self.app_instance.PupilROIButton.setEnabled(True)
-        self.app_instance.Slider_frame.setEnabled(True)
+        # --- Switch to NPY mode, clear video state ---
+        app = self.app_instance
+        app.NPY = True
+        app.video = False
+        app.folder_path = folder_path
+        app.video_path = None
+        app.save_path = folder_path
+
+        # Release any previous capture cleanly
+        try:
+            if getattr(app, "cap", None):
+                app.cap.release()
+        except Exception:
+            pass
+        app.cap = None
+
+        # --- List .npy files (natural sort) and handle empty/invalid folder ---
+        try:
+            npy_files = functions.list_npy_files(folder_path)  # raises if invalid/empty
+        except Exception as e:
+            if hasattr(app, "warning"):
+                app.warning(str(e))
+            return  # keep slider disabled; nothing to load
+
+        # Optional cache for faster per-frame loads
+        app.npy_cache = {"dir": folder_path, "files": npy_files}
+        app.npy_files = npy_files
+
+        total = len(npy_files)
+        app.len_file = total
+
+        # --- Bound slider safely & sync the line edit ---
+        blocker = QSignalBlocker(app.Slider_frame)
+        app.Slider_frame.setMinimum(0)
+        app.Slider_frame.setMaximum(max(0, total - 1))
+        app.Slider_frame.setValue(0)
+        del blocker
+        app.lineEdit_frame_number.setText("0")
+        if hasattr(app, "update_frame_validator"):
+            app.update_frame_validator()
+
+        # --- First frame display/setup ---
+        self.display_graphics(None)
+
+        # --- Enable UI after success ---
+        app.FaceROIButton.setEnabled(True)
+        app.PlayPause_Button.setEnabled(True)
+        app.PupilROIButton.setEnabled(True)
+        app.Slider_frame.setEnabled(True)
 
     def load_video(self):
-        """Load video and prepare for processing."""
-        self.app_instance.folder_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self.app_instance, "Load Video", "", "Video Files (*.avi *.wmv *mp4)"
+        # NOTE: include *.mp4 (with dot)
+        selected_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self.app_instance, "Load Video", "", "Video Files (*.avi *.wmv *.mp4)"
         )
-        if self.app_instance.folder_path:
-            directory_path = os.path.dirname(self.app_instance.folder_path)
-            self.app_instance.save_path = directory_path
-            self.reset_GUI()
+        if not selected_path:
+            return
 
-            t0 = time.perf_counter()
-            logging.info(f"[Video] Opening: {self.app_instance.folder_path}")
+        # --- Cancel any background stream and reset UI ---
+        if hasattr(self, "stream_stop") and self.stream_stop is not None:
+            self.stream_stop.set()
+            import threading
+            self.stream_stop = threading.Event()
 
-            cap = cv2.VideoCapture(self.app_instance.folder_path)
-            if not cap.isOpened():
-                logging.error(f"[Video] Cannot open {self.app_instance.folder_path}")
-                return
-            self.app_instance.cap = cap
+        self.reset_GUI()
 
-            # Probe props (cheap) — helpful in logs
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
-            fps_src = cap.get(cv2.CAP_PROP_FPS) or 0
-            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-            logging.info(f"[Video] Probed props: {total_frames} frames, {fps_src:.2f} fps, {w}x{h}")
+        # --- VIDEO mode ON, NPY mode OFF ---
+        app = self.app_instance
+        app.video = True
+        app.NPY = False
 
-            self.app_instance.len_file = total_frames
-            self.app_instance.Slider_frame.setMaximum(max(0, total_frames - 1))
-            self.app_instance.video = True
-            self.app_instance.NPY = False
+        # keep paths separate
+        app.video_path = selected_path
+        app.folder_path = None  # IMPORTANT: clear old NPY dir
+        app.save_path = os.path.dirname(selected_path)
 
-            # First frame display/setup
-            self.display_graphics(self.app_instance.folder_path)
+        # clear any old NPY cache
+        app.npy_cache = None
+        app.npy_files = None
 
-            dt = time.perf_counter() - t0
-            logging.info(f"✅ [Video] Prepared UI & metadata in {_fmt_secs(dt)}")
+        # close previous capture if any
+        try:
+            if getattr(app, "cap", None):
+                app.cap.release()
+        except Exception:
+            pass
 
-            # Enable UI
-            self.app_instance.FaceROIButton.setEnabled(True)
-            self.app_instance.PlayPause_Button.setEnabled(True)
-            self.app_instance.PupilROIButton.setEnabled(True)
-            self.app_instance.Slider_frame.setEnabled(True)
+        t0 = time.perf_counter()
+        logging.info(f"[Video] Opening: {selected_path}")
+        cap = cv2.VideoCapture(selected_path)
+        if not cap.isOpened():
+            logging.error(f"[Video] Cannot open {selected_path}")
+            return
+        app.cap = cap
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+        fps_src = cap.get(cv2.CAP_PROP_FPS) or 0
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        logging.info(f"[Video] Probed props: {total_frames} frames, {fps_src:.2f} fps, {w}x{h}")
+
+        if total_frames <= 0:
+            logging.error(f"[Video] No frames in {selected_path}")
+            cap.release()
+            app.cap = None
+            return
+
+        app.len_file = total_frames
+
+        # bound the slider safely without emitting signals
+        blocker = QSignalBlocker(app.Slider_frame)
+        app.Slider_frame.setMinimum(0)
+        app.Slider_frame.setMaximum(max(0, total_frames - 1))
+        app.Slider_frame.setValue(0)
+        del blocker
+        app.lineEdit_frame_number.setText("0")
+        if hasattr(app, "update_frame_validator"):
+            app.update_frame_validator()
+
+        # First frame display/setup
+        self.display_graphics(None)
+
+        dt = time.perf_counter() - t0
+        logging.info(f"✅ [Video] Prepared UI & metadata in {_fmt_secs(dt)}")
+
+        # Enable UI
+        app.FaceROIButton.setEnabled(True)
+        app.PlayPause_Button.setEnabled(True)
+        app.PupilROIButton.setEnabled(True)
+        app.Slider_frame.setEnabled(True)
 
     def load_image(self, filepath, image_height):
         """Load and resize a single image from the given file path."""
@@ -136,38 +223,73 @@ class LoadData:
         logging.info(f"✅ [Load] Images ready: {n} frames in {_fmt_secs(dt)} (~{fps:.1f} fps)")
         return images
 
-    def load_frames_from_video(self, video_path, image_height, buffer_size=256):
+    def load_frames_from_video(self, video_path=None, image_height=480, buffer_size=256, stop_event=None):
+        """
+        Stream frames from a video in a background thread.
+
+        - If video_path is None, uses self.app_instance.video_path.
+        - Always opens its own cv2.VideoCapture (no racing with UI 'cap').
+        - Seeks to frame 0 before reading.
+        - If stop_event (threading.Event) is set during streaming, exits cleanly.
+        """
+        # ---- Resolve path safely ----
+        if video_path is None:
+            video_path = getattr(self.app_instance, "video_path", None)
+        if not isinstance(video_path, str) or not video_path.strip():
+            logging.error("[Stream] Cannot open None")
+            return
+
+        # ---- Open a private capture and seek to 0 ----
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            logging.error(f"[Video] Cannot open {video_path}")
+            logging.error(f"[Stream] Cannot open {video_path}")
+            return
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+        # ---- Basic guards ----
+        if not image_height or image_height <= 0:
+            logging.error(f"[Stream] Invalid image_height={image_height}")
+            cap.release()
             return
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
-        frame_queue = queue.Queue(maxsize=buffer_size)
+        frame_queue = queue.Queue(maxsize=max(2, buffer_size))
 
         t0 = time.perf_counter()
         produced = 0
-
+        last_bucket = -1
         logging.info(f"[Stream] Start decoding {total_frames} frames from {video_path}")
-
-        # progress bucket state for stream logging
-        last_bucket = -1  # so first 0% can show if you want; keep -1 to start at 0->10 quickly
 
         def producer():
             nonlocal produced, last_bucket
             try:
                 while True:
+                    if stop_event is not None and stop_event.is_set():
+                        break
+
                     ret, frame = cap.read()
                     if not ret:
                         break
+
                     h, w = frame.shape[:2]
-                    aspect_ratio = w / h if h else 1.0
-                    new_w = int(image_height * aspect_ratio)
+                    if h <= 0 or w <= 0:
+                        continue
+
+                    aspect = w / float(h)
+                    new_w = max(1, int(image_height * aspect))
                     frame_resized = cv2.resize(frame, (new_w, image_height), interpolation=cv2.INTER_AREA)
-                    frame_queue.put(frame_resized)
+
+                    # avoid deadlock if consumer stalls
+                    try:
+                        frame_queue.put(frame_resized, timeout=0.5)
+                    except queue.Full:
+                        if stop_event is not None and stop_event.is_set():
+                            break
+                        continue
+
                     produced += 1
 
-                    # --- log every 10% instead of every 500 frames ---
+                    # progress log every 10%
                     if total_frames:
                         pct = int((produced * 100) // total_frames)
                         bucket = max(0, min(100, (pct // 10) * 10))
@@ -178,47 +300,69 @@ class LoadData:
                             logging.info(f"[Stream] {bucket}% ({produced}/{total_frames}) "
                                          f"({_fmt_secs(dt)} @ {fps:.1f} fps)")
             finally:
-                frame_queue.put(None)  # sentinel
+                # always signal consumer to stop and release cap
+                try:
+                    frame_queue.put_nowait(None)
+                except queue.Full:
+                    try:
+                        frame_queue.get_nowait()
+                    except Exception:
+                        pass
+                    frame_queue.put_nowait(None)
+                cap.release()
 
         threading.Thread(target=producer, daemon=True).start()
 
         consumed = 0
         while True:
-            frame = frame_queue.get()
-            if frame is None:
+            fr = frame_queue.get()
+            if fr is None:
                 break
             consumed += 1
-            yield frame
+            yield fr
 
-        cap.release()
         dt_all = time.perf_counter() - t0
         fps_all = produced / dt_all if dt_all > 0 else float("inf")
         logging.info(f"✅ [Stream] Finished. Produced={produced}, Consumed={consumed}, "
                      f"Total {_fmt_secs(dt_all)} (~{fps_all:.1f} fps)")
 
-    def display_graphics(self, folder_path):
+    def display_graphics(self, _unused):
         """Display initial graphics and setup scenes."""
         t0 = time.perf_counter()
         self.app_instance.frame = 0
+
         if self.app_instance.NPY:
-            self.app_instance.image = functions.load_npy_by_index(folder_path, self.app_instance.frame)
+            if not (self.app_instance.folder_path and os.path.isdir(self.app_instance.folder_path)):
+                logging.error("[UI] NPY mode but folder_path is not a directory")
+                return
+            self.app_instance.image = functions.load_npy_by_index(self.app_instance.folder_path, 0)
+
         elif self.app_instance.video:
-            self.app_instance.image = functions.load_frame_by_index(self.app_instance.cap, self.app_instance.frame)
+            if not getattr(self.app_instance, "cap", None):
+                logging.error("[UI] Video mode but cap is None")
+                return
+            self.app_instance.image = functions.load_frame_by_index(self.app_instance.cap, 0)
+
+        else:
+            logging.error("[UI] No source loaded")
+            return
 
         functions.initialize_attributes(self.app_instance, self.app_instance.image)
+
         self.app_instance.scene2 = functions.second_region(
             self.app_instance.graphicsView_subImage,
             self.app_instance.graphicsView_MainFig,
         )
+
         self.app_instance.graphicsView_MainFig, self.app_instance.scene = functions.display_region(
             self.app_instance.image,
             self.app_instance.graphicsView_MainFig,
             self.app_instance.image_width,
             self.app_instance.image_height
         )
+
         dt = time.perf_counter() - t0
         logging.info(f"✅ [UI] First frame displayed in {_fmt_secs(dt)}")
-
     def reset_GUI(self):
         app = self.app_instance
 
