@@ -6,7 +6,7 @@ The FaceIt pipeline generates multiple outputs stored in `.npz` and `.nwb` files
 Outputs Overview
 ----------------
 
-1. `.npz` file (compressed data archive)
+`.npz` file (compressed data archive)
 -------------------------------------
 
 Saved as ``faceit.npz``. It may include the following arrays (keys):
@@ -31,7 +31,7 @@ Saved as ``faceit.npz``. It may include the following arrays (keys):
 
 
 
-2. `.nwb` file (Neurodata Without Borders)
+`.nwb` file (Neurodata Without Borders)
 --------------------------------------
 
 Saved as ``faceit.nwb`` if the "Save NWB" option is checked. TimeSeries are stored under a
@@ -66,63 +66,97 @@ The pipeline saves quick-look plots in the save directory:
 
 Access to data
 --------------
-- Example of reading the `.nwb` file:
+
+**Example: read ``.nwb`` (and list available series)**
 
 .. code:: python
 
-     from pynwb import NWBHDF5IO
+    from pathlib import Path
+    import numpy as np
+    from pynwb import NWBHDF5IO
 
-     with NWBHDF5IO('path/to/faceit.nwb', 'r') as io:
-         nwbfile = io.read()
-         processing = nwbfile.processing['eye facial movement']
-         pupil_dialtion = processing.data_interfaces['pupil_dilation'].data[:]
-         pupil_dilation_blinking_corrected = processing.data_interfaces['pupil_dilation_blinking_corrected'].data[:]
-         blinking_ids = processing.data_interfaces['blinking ids'].data[:]
-         pupil_center = processing.data_interfaces['pupil_center'].data[:]
-         pupil_center_X = processing.data_interfaces['pupil_center_X'].data[:]
-         pupil_center_Y = processing.data_interfaces['pupil_center_Y'].data[:]
-         X_saccade = processing.data_interfaces['X_saccade'].data[:]
-         Y_saccade = processing.data_interfaces['Y_saccade'].data[:]
-         pupil_width = processing.data_interfaces['width'].data[:]
-         pupil_height = processing.data_interfaces['height'].data[:]
-         motion_energy = processing.data_interfaces['motion_energy'].data[:]
-         motion_energy_without_grooming = processing.data_interfaces['motion_energy_without_grooming'].data[:]
-         grooming_ids = processing.data_interfaces['grooming ids'].data[:]
-         grooming_threshold = processing.data_interfaces['grooming_threshold'].data[:]
-         pupil_distance_from_corner = processing.data_interfaces['pupil_distance_from_corner'].data[:]
+    nwb_path = Path("path/to/faceit.nwb")
+
+    with NWBHDF5IO(str(nwb_path), "r") as io:
+        nwb = io.read()
+        mod = nwb.processing["eye_facial_movement"]
+
+        # List series names:
+        print(list(mod.data_interfaces.keys()))
+
+        # Read common series
+        pupil_dilation = np.asarray(mod.data_interfaces["pupil_dilation"].data)
+        pupil_dilation_blinking_corrected = np.asarray(
+            mod.data_interfaces["pupil_dilation_blinking_corrected"].data
+        )
+        blinking_ids = np.asarray(mod.data_interfaces["blinking_ids"].data)
+        pupil_center = np.asarray(mod.data_interfaces["pupil_center"].data)
+        pupil_center_X = np.asarray(mod.data_interfaces["pupil_center_X"].data)
+        pupil_center_y = np.asarray(mod.data_interfaces["pupil_center_y"].data)
+        X_saccade = np.asarray(mod.data_interfaces["X_saccade"].data)
+        Y_saccade = np.asarray(mod.data_interfaces["Y_saccade"].data)
+        pupil_width = np.asarray(mod.data_interfaces["width"].data)
+        pupil_height = np.asarray(mod.data_interfaces["height"].data)
+        motion_energy = np.asarray(mod.data_interfaces["motion_energy"].data)
+        motion_energy_without_grooming = np.asarray(
+            mod.data_interfaces["motion_energy_without_grooming"].data
+        )
+        grooming_ids = np.asarray(mod.data_interfaces["grooming_ids"].data)
+        grooming_threshold = np.asarray(mod.data_interfaces["grooming_threshold"].data)
+        pupil_distance_from_corner = np.asarray(
+            mod.data_interfaces["pupil_distance_from_corner"].data
+        )
+        pupil_angle = np.asarray(mod.data_interfaces["pupil_angle"].data)
 
 
-- Example of reading data in .npz file:
-
+**Example: read ``.npz`` (and handle optional embedded video)**
 
 .. code:: python
 
-     import numpy as np
-     data = np.load('path/to/faceit.npz')
-     pupil_center = data['pupil_center']
-     motion_energy = data['motion_energy']
-     pupil_dialtion = data['pupil_dilation']
-     pupil_dilation_blinking_corrected = data['pupil_dilation_blinking_corrected']
-     pupil_center_X = data['pupil_center_X']
-     pupil_center_Y = data['pupil_center_Y']
-     X_saccade = data['X_saccade']
-     Y_saccade = data['Y_saccade']
-     pupil_width = data['width']
-     pupil_height = data['height']
-     motion_energy = data['motion_energy']
-     motion_energy_without_grooming = data['motion_energy_without_grooming']
-     grooming_ids = data['grooming ids']
-     grooming_threshold = data['grooming_threshold']
-     pupil_distance_from_corner = data['pupil_distance_from_corner']
+    from pathlib import Path
+    import numpy as np
+
+    npz_path = Path("path/to/faceit.npz")
+
+    # allow_pickle=True is needed if the file contains object arrays (e.g., 'video_file')
+    with np.load(npz_path, allow_pickle=True) as z:
+        print("Keys:", list(z.files))
+
+        pupil_center = z["pupil_center"]
+        motion_energy = z["motion_energy"]
+        pupil_dilation = z["pupil_dilation"]
+        pupil_dilation_blinking_corrected = z["pupil_dilation_blinking_corrected"]
+        pupil_center_X = z["pupil_center_X"]
+        pupil_center_y = z["pupil_center_y"]
+        X_saccade = z["X_saccade"]
+        Y_saccade = z["Y_saccade"]
+        pupil_width = z["width"]
+        pupil_height = z["height"]
+        motion_energy_without_grooming = z["motion_energy_without_grooming"]
+        grooming_ids = z["grooming_ids"]
+        grooming_threshold = z["grooming_threshold"]
+        blinking_ids = z["blinking_ids"]
+        pupil_distance_from_corner = z["pupil_distance_from_corner"]
+        angle = z["angle"]
+        Face_frame = z["Face_frame"]
+        Pupil_frame = z["Pupil_frame"]
+
+        # Optional: extract embedded video if present
+        if "video_file" in z.files:
+            video_bytes = z["video_file"][0]
+            out_vid = npz_path.with_suffix("").parent / (npz_path.stem + "_embedded_video.wmv")
+            with open(out_vid, "wb") as f:
+                f.write(video_bytes)
+            print(f"Extracted video to: {out_vid}")
 
 
-Details and Requirements
-------------------------
-To use the output generated by the FaceIt pipeline, you can easily access and load the data using Python. This guide explains how to read both the ``'.npz'`` and ``'.nwb'`` file formats, which are produced by the pipeline.
+Tips & Requirements
+-------------------
 
-Ensure that the following Python packages are installed:
+- Install:
+  - **NumPy** to read ``.npz``.
+  - **PyNWB** (and dependencies like **h5py**) to read ``.nwb``.
 
-NumPy: To read .npz files.
-
-PyNWB: To read .nwb files.
-
+- Keys and names are **case- and underscore-sensitive**:
+  - Use ``pupil_center_y`` (lowercase ``y``), not ``pupil_center_Y``.
+  - Use ``grooming_ids`` / ``blinking_ids``, not names with spaces.
