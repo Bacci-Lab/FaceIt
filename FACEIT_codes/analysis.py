@@ -164,8 +164,7 @@ def _detect_frame(i, frame, roi_slice, cfg):
     else:
         dist = float("nan")
 
-    return (i, area, cx, cy, w, h, dist,
-            cfg["frame_pos"], cfg["pupil_frame_center"], cfg["frame_axes"], angle)
+    return (i, area, cx, cy, w, h, dist, angle)
 def _apply_saturation_fast(bgr_roi, saturation_method, settings, saturation, contrast):
     if saturation_method == "Gradual":
         if bgr_roi.ndim == 2 or (
@@ -230,8 +229,7 @@ def _detect_one(i, images, roi_slice, cfg):
     else:
         dist = float("nan")
 
-    return (area, (cx, cy), cx, cy, width, height, dist,
-            cfg["frame_pos"], cfg["pupil_frame_center"], cfg["frame_axes"])
+    return (area, (cx, cy), cx, cy, width, height, dist, cfg["pupil_frame_center"])
 
 class ProcessHandler:
     def __init__(self, app_instance):
@@ -523,9 +521,6 @@ class ProcessHandler:
             block_size=block_size,
             needs_bgra=needs_bgra,
             eye_corner_center=eye_corner_center,
-            frame_pos=frame_pos,
-            pupil_frame_center=pupil_frame_center,
-            frame_axes=frame_axes
         )
 
         # ---- 4) Preallocate outputs ----
@@ -536,9 +531,6 @@ class ProcessHandler:
         pupil_width = np.empty(n, dtype=np.int32)
         pupil_height = np.empty(n, dtype=np.int32)
         pupil_distance = np.empty(n, dtype=np.float32)
-        frame_pos_arr = np.empty(n, dtype=object)
-        pupil_frame_center_arr = np.empty((n, 2), dtype=np.float32)
-        frame_axes_arr = np.empty((n, 2), dtype=np.float32)
         angle = np.empty(n, dtype=np.float32)
 
         # ---- 5) Thread pool with bounded in-flight futures ----
@@ -575,7 +567,7 @@ class ProcessHandler:
                 done_set, inflight = wait(inflight, return_when=FIRST_COMPLETED)
 
                 for fut in done_set:
-                    (i, area, cx, cy, w, h, dist, fpos, fcenter, faxes, fangle) = fut.result()
+                    (i, area, cx, cy, w, h, dist, fangle) = fut.result()
 
                     pupil_dilation[i] = area
                     pupil_center[i, 0] = cx
@@ -585,9 +577,6 @@ class ProcessHandler:
                     pupil_width[i] = w
                     pupil_height[i] = h
                     pupil_distance[i] = dist
-                    frame_pos_arr[i] = fpos
-                    pupil_frame_center_arr[i] = fcenter if hasattr(fcenter, "__len__") else (0.0, 0.0)
-                    frame_axes_arr[i] = faxes if hasattr(faxes, "__len__") else (0.0, 0.0)
                     angle[i] = fangle
 
                     # progress every 10%
@@ -623,7 +612,7 @@ class ProcessHandler:
 
         return (pupil_dilation, pupil_center_X, pupil_center_y, pupil_center,
                 X_saccade, Y_saccade, pupil_distance,
-                pupil_width, pupil_height, frame_pos_arr, pupil_frame_center_arr, frame_axes_arr, angle)
+                pupil_width, pupil_height,  angle)
 
     def Saccade(self, pupil_center_i):
         """

@@ -914,9 +914,6 @@ class FaceMotionApp(QtWidgets.QMainWindow):
          self.pupil_distance_from_corner,
          self.width,
          self.height,
-         self.frame_pos,
-         self.frame_center,
-         self.frame_axes,
          self.angle
          ) = result
 

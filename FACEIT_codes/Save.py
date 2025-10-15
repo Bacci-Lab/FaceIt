@@ -41,7 +41,7 @@ class SaveHandler:
         if not self.app_instance.pupil_check():
             attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
                           'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner',
-                          'width', 'height', 'frame_pos', 'frame_axes', 'angle']
+                          'width', 'height', 'angle']
             for attr in attributes:
                 initialize_data(attr)
 
@@ -51,6 +51,7 @@ class SaveHandler:
             self.app_instance.facemotion_without_grooming = np.full((len_data,), np.nan)
             self.app_instance.grooming_ids = np.full((len_data,), np.nan)
             self.app_instance.grooming_thr = np.full(1, np.nan)
+            self.app_instance.Face_frame = np.full(1, np.nan)
         if not hasattr(self.app_instance, 'facemotion_without_grooming') or self.app_instance.facemotion_without_grooming is None:
             self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
             self.app_instance.grooming_ids = np.full((len_data,), np.nan)
@@ -78,9 +79,9 @@ class SaveHandler:
             grooming_ids = self.app_instance.grooming_ids,
             grooming_threshold = self.app_instance.grooming_thr,
             blinking_ids = self.app_instance.blinking_ids,
-            frame_pos = self.app_instance.frame_pos,
-            frame_axes = self.app_instance.frame_axes,
-            angle = self.app_instance.angle
+            angle = self.app_instance.angle,
+            Face_frame = self.app_instance.Face_frame,
+            Pupil_frame = self.app_instance.Pupil_frame
 
 
         )
@@ -107,8 +108,6 @@ class SaveHandler:
 
         try:
             np.savez_compressed(save_directory, **data_dict)
-            frame_pos_arr = np.array(self.app_instance.frame_pos[0])
-            np.save(save_position, frame_pos_arr)
             logging.info(f"Data successfully saved to {save_directory}")
         except Exception as e:
             logging.error(f"Failed to save data: {e}")
@@ -148,8 +147,7 @@ class SaveHandler:
             # Check and initialize pupil-related data
             if not self.app_instance.pupil_check():
                 attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
-                              'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner','width', 'height',
-                              'frame_pos', 'frame_axes', 'angle']
+                              'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner','width', 'height', 'angle', 'Pupil_frame']
 
                 for attr in attributes:
                     initialize_data(attr)
@@ -158,8 +156,18 @@ class SaveHandler:
             if not self.app_instance.face_check():
                 self.app_instance.motion_energy = np.full((len_data,), np.nan)
                 self.app_instance.facemotion_without_grooming = np.full((len_data,), np.nan)
-            if not hasattr(self.app_instance, 'facemotion_without_grooming') or self.app_instance.facemotion_without_grooming is None:
+                self.app_instance.grooming_ids = np.full((len_data,), np.nan)
+                self.app_instance.grooming_thr = np.full(1, np.nan)
+                self.app_instance.Face_frame = np.full(1, np.nan)
+            if not hasattr(self.app_instance,
+                           'facemotion_without_grooming') or self.app_instance.facemotion_without_grooming is None:
                 self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
+                self.app_instance.grooming_ids = np.full((len_data,), np.nan)
+                self.app_instance.grooming_thr = np.full(1, np.nan)
+            if not hasattr(self.app_instance, 'blinking_ids'):
+                self.app_instance.blinking_ids = np.full((len_data,), np.nan)
+            else:
+                pass
 
             time_stamps = np.arange(0, len_data, 1)
 
@@ -259,6 +267,28 @@ class SaveHandler:
                 timestamps=time_stamps
             )
 
+            angle = TimeSeries(
+                name='pupil angle',
+                data=self.app_instance.angle,
+                unit='frame',
+                timestamps=time_stamps
+            )
+
+
+            Face_frame = TimeSeries(
+                name='Face motion frame',
+                data=self.app_instance.Face_frame,
+                unit='frame',
+                timestamps=time_stamps
+            )
+
+            Pupil_frame = TimeSeries(
+                name='Pupil frame',
+                data=self.app_instance.Pupil_frame,
+                unit='frame',
+                timestamps=time_stamps
+            )
+
 
             processing_module = ProcessingModule(
                 name='eye facial movement',
@@ -283,6 +313,9 @@ class SaveHandler:
             processing_module.add_data_interface(motion_energy_without_grooming_series)
             processing_module.add_data_interface(grooming_id_series)
             processing_module.add_data_interface(grooming_threshold)
+            processing_module.add_data_interface(angle)
+            processing_module.add_data_interface(Face_frame)
+            processing_module.add_data_interface(Pupil_frame)
 
 
             with NWBHDF5IO(output_path, 'w') as io:
