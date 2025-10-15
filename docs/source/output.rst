@@ -1,25 +1,34 @@
 Outputs
 ========
 
-The FaceIt pipeline generates multiple outputs that are stored in different formats, including `.npz` and `.nwb` files, as well as visualization images.
+The FaceIt pipeline generates multiple outputs stored in `.npz` and `.nwb` files, plus visualization images. This page describes what each file contains and how to read them safely.
 
 Outputs Overview
 ----------------
 
-1. **.npz File (Compressed Data Archive)**
-   - The `.npz` file is saved as `faceit.npz` and contains the following key data arrays:
-     - **pupil_center**: Coordinates of the pupil center across frames.
-     - **pupil_center_X** and **pupil_center_y**: X and Y coordinates of the pupil center.
-     - **pupil_dilation_blinking_corrected**: Corrected pupil dilation values, accounting for blinking artifacts.
-     - **blinking ids**: Indices indicating frames where blinking activities were detected.
-     - **pupil_dilation**: Raw pupil dilation data.
-     - **X_saccade** and **Y_saccade**: Saccadic movements in the X and Y directions.
-     - **pupil_distance_from_corner**: Distance of the pupil center from eye corner.
-     - **width** and **height**: Dimensions of the detected pupil.
-     - **motion_energy**: Motion energy values computed across frames.
-     - **motion_energy_without_grooming**: Motion energy data with grooming movements filtered out.
-     - **grooming_ids**: Indices indicating frames where grooming activities were detected.
-     - **grooming_threshold**: Threshold value determined by user for identifying grooming activities.
+`.npz` file (compressed data archive)
+-------------------------------------
+
+Saved as ``faceit.npz``. It may include the following arrays (keys):
+
+- ``pupil_center``: Pupil center (per-frame; typically 1D or structured).
+- ``pupil_center_X``, ``pupil_center_y``: X and Y coordinates of the pupil center.
+- ``pupil_dilation_blinking_corrected``: Pupil area/dilation after blink correction.
+- ``pupil_dilation``: Raw pupil area/dilation.
+- ``X_saccade``, ``Y_saccade``: Saccade matrices (often ``2×T`` or heatmap-like overlays).
+- ``pupil_distance_from_corner``: Distance of pupil center to eye corner (per frame).
+- ``width``, ``height``: Fitted ellipse dimensions (per frame).
+- ``motion_energy``: Whisker pad (face) motion energy (per frame).
+- ``motion_energy_without_grooming``: Motion energy with grooming filtered out.
+- ``grooming_ids``: Frame indices flagged as grooming.
+- ``grooming_threshold``: Grooming threshold value(s).
+- ``blinking_ids``: Frame indices flagged as blinks.
+- ``angle``: Fitted pupil ellipse angle (per frame).
+- ``Face_frame``, ``Pupil_frame``: Frame reference values (scalar/short arrays).
+- ``video_file`` *(optional)*: If enabled, an object array with embedded video bytes.
+
+.. note::
+   Keys are snake_case with underscores (e.g., ``grooming_ids``, not ``"grooming ids"``).
 
 
 
