@@ -6,7 +6,7 @@ The FaceIt pipeline generates multiple outputs stored in `.npz` and `.nwb` files
 Outputs Overview
 ----------------
 
-`.npz` file (compressed data archive)
+1. `.npz` file (compressed data archive)
 -------------------------------------
 
 Saved as ``faceit.npz``. It may include the following arrays (keys):
@@ -25,34 +25,44 @@ Saved as ``faceit.npz``. It may include the following arrays (keys):
 - ``blinking_ids``: Frame indices flagged as blinks.
 - ``angle``: Fitted pupil ellipse angle (per frame).
 - ``Face_frame``, ``Pupil_frame``: Frame reference values (scalar/short arrays).
-- ``video_file`` *(optional)*: If enabled, an object array with embedded video bytes.
 
 .. note::
    Keys are snake_case with underscores (e.g., ``grooming_ids``, not ``"grooming ids"``).
 
 
 
-2. **.nwb File (Neurodata Without Borders)**
-   - If you check "Save nwb" check box a `.nwb` file will be saved as `faceit.nwb`, contains structured time-series data for advanced data handling and analysis:
-     - **TimeSeries Data**:
-       - **`pupil_center`**, **`pupil_center_X`**, **`pupil_center_y`**
-       - **`pupil_dilation_blinking_corrected`**, **`pupil_dilation`**
-       - **`X_saccade`**, **`Y_saccade`**
-       - **`pupil_distance_from_corner`**, **blinking ids**
-       - **`width`**, **`height`**
-       - **`motion_energy`**, **`motion_energy_without_grooming`**
-       - **`grooming ids`**, **`grooming_threshold`**
+2. `.nwb` file (Neurodata Without Borders)
+--------------------------------------
 
-   - These data series are stored within a `ProcessingModule` labeled **"eye facial movement"**, which includes attributes relevant to pupil and facial motion analysis. The content of each time series is the same as **".npz"** file.
+Saved as ``faceit.nwb`` if the "Save NWB" option is checked. TimeSeries are stored under a
+``ProcessingModule`` named ``eye_facial_movement``. The series mirror the ``.npz`` content:
+
+**TimeSeries (typical keys):**
+- ``pupil_center``, ``pupil_center_X``, ``pupil_center_y``
+- ``pupil_dilation_blinking_corrected``, ``pupil_dilation``
+- ``X_saccade``, ``Y_saccade``
+- ``pupil_distance_from_corner``
+- ``width``, ``height``
+- ``motion_energy``, ``motion_energy_without_grooming``
+- ``grooming_ids``, ``grooming_threshold``
+- ``blinking_ids``
+- ``pupil_angle``
+- ``Face_frame``, ``Pupil_frame``
+
+.. note::
+   Each TimeSeries uses timestamps sized to its own length.
 
 
+Visualization images (``.png``)
+-------------------------------
 
+The pipeline saves quick-look plots in the save directory:
 
-3. **Visualization Images**
-   - The pipeline generates visual plots that are saved as `.png` images in the designated directory:
-     - **`pupil_area.png`**: A plot showing the pupil dilation data over the frame sequence.
-     - **`motion_energy.png`**: A plot representing the motion energy over the frame sequence.
-   - These images provide quick visual references for understanding data trends.
+- ``blinking_corrected.png`` — blink-corrected pupil area
+- ``pupil_area.png`` — raw pupil area/dilation
+- ``motion_energy.png`` — motion energy (with grooming threshold line if available)
+- ``facemotion_without_grooming.png`` — motion energy with grooming removed
+
 
 Access to data
 --------------
