@@ -120,10 +120,8 @@ Tips
 
 - The **Show_binary** checkbox controls **visualization**. The chosen **Binarization method** controls **how** the mask is computed.
 
-.. _reflection-handling:
-
 Reflection Correction
-=====================
+--------------------
 
 Bright corneal reflections can fragment the pupil mask and bias ellipse fitting. FaceIt
 handles reflections in two ways:
@@ -132,14 +130,14 @@ handles reflections in two ways:
 - **Manual reflection ellipses** (available with *Adaptive* **and** *Constant/Global*)
 
 Defaults
---------
+~~~~~~~~
 
 - The default **Binarization method** is **Adaptive**.
 - In **Adaptive** mode, the pipeline applies **automatic reflection detection + inpainting**
   unless you provide manual ellipses.
 
 Behavior by binarization method
--------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 +--------------------+---------------------------+-------------------------------+
 | Thresholding mode  | Auto detect + inpaint     | Manual ellipses               |
@@ -150,7 +148,7 @@ Behavior by binarization method
 +--------------------+---------------------------+-------------------------------+
 
 How it works
-------------
+~~~~~~~~~~~~
 
 **Automatic (Adaptive only)**
 
@@ -166,7 +164,7 @@ How it works
   the pupil mask (no inpainting).
 
 Controls & parameters
----------------------
+~~~~~~~~~~~~~~~~~~~~~
 
 - **Binarization method**
   - **Adaptive** (default): uses **Block size** (odd) and **C** (subtractive constant).
