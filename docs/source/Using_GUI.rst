@@ -120,76 +120,62 @@ Tips
 
 - The **Show_binary** checkbox controls **visualization**. The chosen **Binarization method** controls **how** the mask is computed.
 
+.. _reflection-handling:
+
 Reflection Correction
----------------------
+=====================
 
-Bright corneal reflections can fragment the pupil mask and bias ellipse fitting.
-FaceIt mitigates this with two complementary strategies:
+Bright corneal reflections can fragment the pupil mask and bias ellipse fitting. FaceIt
+handles reflections in two ways:
 
-1. **Automatic reflection detection + inpainting** (default when adaptive thresholding is applied)
-2. **Manual reflection masks**
+- **Automatic detection + inpainting** (available **only** with *Adaptive* binarization; **default**)
+- **Manual reflection ellipses** (available with *Adaptive* **and** *Constant/Global*)
 
-
-Reflection Handling
-===================
-
-Default
--------
+Defaults
+--------
 
 - The default **Binarization method** is **Adaptive**.
-- In **Adaptive** mode, **automatic reflection detection + inpainting** is applied
-  (unless you provide manual reflection ellipses).
+- In **Adaptive** mode, the pipeline applies **automatic reflection detection + inpainting**
+  unless you provide manual ellipses.
 
 Behavior by binarization method
 -------------------------------
 
-**Adaptive (default)**
++--------------------+---------------------------+-------------------------------+
+| Thresholding mode  | Auto detect + inpaint     | Manual ellipses               |
++====================+===========================+===============================+
+| **Adaptive**       | **Yes** (default)         | Inpaint using ellipses        |
++--------------------+---------------------------+-------------------------------+
+| **Constant/Global**| **No**                    | Overlap fix (no inpainting)   |
++--------------------+---------------------------+-------------------------------+
 
-- If *no* manual reflection ellipses are provided:
-  - The pipeline runs **automatic reflection detection** (bright-percentile threshold,
-    area/circularity filtering, proportional dilation) and then **inpaints** glare regions
-    before adaptive thresholding.
-- If manual reflection ellipses *are* provided:
-  - The pipeline **skips auto-detect** and **inpaints** using the provided ellipses.
-- Result: cleaner pupil masks under uneven lighting or strong glints.
+How it works
+------------
 
-**Constant / Global**
+**Automatic (Adaptive only)**
 
-- No **automatic detection** or **inpainting** step is applied.
-- If manual reflection ellipses are provided, after thresholding/clustering the pipeline
-  uses an **overlap fix**: pixels where the fitted **pupil ellipse** overlaps a **reflection
-  ellipse** are restored to the pupil mask (prevents holes), but **no inpainting** occurs.
+1. Detect bright regions using a percentile threshold controlled by **Reflect br**;
+   filter by area/circularity; dilate proportionally to glare size.
+2. **Inpaint** the detected mask (TELEA) to remove glare before adaptive thresholding.
 
-Quick summary
--------------
+**Manual ellipses (both modes)**
 
-+--------------------+-------------------------------+-------------------------+
-| Mode               | Auto detect + inpaint         | Manual ellipses effect  |
-+====================+===============================+=========================+
-| **Adaptive**       | **Yes** (default)             | Inpaint using ellipses  |
-+--------------------+-------------------------------+-------------------------+
-| **Constant/Global**| **No**                        | Overlap fix (no inpaint)|
-+--------------------+-------------------------------+-------------------------+
+- **Adaptive**: skip auto-detect and **inpaint** directly using the provided ellipses.
+- **Constant/Global**: after thresholding/clustering, apply an **overlap fix**—pixels
+  where the fitted **pupil ellipse** overlaps a **reflection ellipse** are restored to
+  the pupil mask (no inpainting).
 
 Controls & parameters
 ---------------------
 
-- **Reflect br** (slider): controls the percentile used in automatic detection
-  (higher → stricter, fewer pixels marked as reflections). *Adaptive only*.
-- **Binarization method**:
+- **Binarization method**
   - **Adaptive** (default): uses **Block size** (odd) and **C** (subtractive constant).
-  - **Constant**: uses a single **Binary threshold**; enables overlap fix if ellipses given.
-- **Manual reflection ellipses** (optional): when provided,
-  - **Adaptive** → inpaint by ellipses,
-  - **Constant** → apply overlap fix with the fitted pupil ellipse.
+  - **Constant/Global**: uses one **Binary threshold**.
+- **Reflect br** (slider, *Adaptive only*): sets the brightness percentile for
+  automatic detection (higher → stricter, fewer pixels marked as reflections).
+- **Manual reflection ellipses** (optional): user-specified ellipse masks used as above.
 
-Tips
-----
 
-- If the binary mask is punctured by glints in **Adaptive** mode, increase **Reflect br**
-  or fine-tune **Block size** / **C**.
-- If **Constant** mode chops the pupil around highlights, provide reflection ellipses
-  or switch to **Adaptive**.
 
 .. figure:: _static/reflection_added.png
    :alt: Image reflection_added
