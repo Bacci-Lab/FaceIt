@@ -67,7 +67,7 @@ The pipeline saves quick-look plots in the save directory:
 Access to data
 --------------
 
-**Example: read ``.nwb`` (and list available series)**
+**Example: read ``.nwb``**
 
 .. code:: python
 
@@ -109,7 +109,7 @@ Access to data
         pupil_angle = np.asarray(mod.data_interfaces["pupil_angle"].data)
 
 
-**Example: read ``.npz`` (and handle optional embedded video)**
+**Example: read ``.npz``**
 
 .. code:: python
 
@@ -118,7 +118,6 @@ Access to data
 
     npz_path = Path("path/to/faceit.npz")
 
-    # allow_pickle=True is needed if the file contains object arrays (e.g., 'video_file')
     with np.load(npz_path, allow_pickle=True) as z:
         print("Keys:", list(z.files))
 
@@ -140,14 +139,6 @@ Access to data
         angle = z["angle"]
         Face_frame = z["Face_frame"]
         Pupil_frame = z["Pupil_frame"]
-
-        # Optional: extract embedded video if present
-        if "video_file" in z.files:
-            video_bytes = z["video_file"][0]
-            out_vid = npz_path.with_suffix("").parent / (npz_path.stem + "_embedded_video.wmv")
-            with open(out_vid, "wb") as f:
-                f.write(video_bytes)
-            print(f"Extracted video to: {out_vid}")
 
 
 Tips & Requirements

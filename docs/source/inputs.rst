@@ -11,7 +11,7 @@ Input Overview
    - The pipeline supports directories containing ``.npy`` image files. Each ``.npy`` file should represent a single image or frame to be processed.
 
 
-2. **Video Files (.avi)**
+2. **Video Files (.avi , .wmv , .mp4)**
 
    - The pipeline also accepts ``.avi`` video files as input.
 

@@ -48,7 +48,73 @@ After selecting and adjusting the Eyeball ROI, you can use the **Eraser** option
    <div style="margin-bottom: 20px;"></div>
 
 .. important::
-    Avoid using the Eraser on the interior of the eyeball.
+    Don’t erase regions the pupil might cross.
+
+Pupil Area Visualization Modes
+------------------------------
+
+FaceIt provides two ways to visualize the pupil area:
+
+- **Normal preview** — continuous/raw pupil area trace.
+- **Binary preview** — area estimated from a thresholded (binary) pupil mask.
+
+Toggling the view
+~~~~~~~~~~~~~~~~~
+
+Use the **``Show_binary``** checkbox to switch between modes.
+
+Binarization methods
+--------------------
+
+You can choose how the binary mask is created. Two methods are available:
+
+- **Global (constant) binarization**
+  Applies a single threshold to the whole image.
+
+- **Adaptive binarization**
+  Computes a local threshold per neighborhood (robust to uneven illumination).
+
+Selecting the method
+--------------------
+
+By default, **Adaptive binarization** is used.
+
+To switch methods, use the **``Constant Binary``** checkbox:
+
+- **Unchecked (default)** → **Adaptive** binarization.
+- **Checked** → **Global (constant)** binarization.
+
+When **``Constant Binary``** is checked, a **threshold slider** becomes active so you can set the
+global threshold used for the constant method.
+
+.. note::
+   - In **Adaptive** mode, the global threshold slider is disabled; instead, tune
+     **``Block size``** and **``C``** under *Adaptive thresholding settings*.
+   - In **Constant** mode, adjust the **threshold slider** to control the binary mask.
+
+Parameters
+~~~~~~~~~~
+
+- **Global (constant)**:
+  - **``Binary threshold``**: the global threshold value applied to all pixels.
+
+- **Adaptive** (see **Adaptive thresholding settings**):
+  - **``Block size``**: odd window size for local statistics (larger → smoother, less detail).
+  - **``C``**: constant subtracted from the local mean/weighted mean (higher ``C`` → stricter threshold).
+
+When to use which
+~~~~~~~~~~~~~~~~~
+
+- Use **Global** when lighting is uniform and the pupil/eyeball contrast is stable.
+- Use **Adaptive** when lighting is uneven, there are vignetting, or contrast varies across the frame.
+
+Tips
+~~~~
+
+- If the binary mask looks noisy or fragmented, try:
+  - adjusting **``Block size``** or  **``C``** (Adaptive).
+  - Tweaking **``Binary threshold``** (Global).
+- The **``Show_binary``** checkbox controls **visualization**. The chosen **Binarization method** controls **how** the mask is computed.
 
 
 If the recorded video contains light reflections in the pupil area, use the **Add Reflection** button to mask the reflective section. The size and position of the Reflection ellipse can be adjusted as needed.
