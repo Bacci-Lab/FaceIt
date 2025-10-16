@@ -121,7 +121,7 @@ Tips
 - The **Show_binary** checkbox controls **visualization**. The chosen **Binarization method** controls **how** the mask is computed.
 
 Reflection Correction
---------------------
+---------------------
 
 Bright corneal reflections can fragment the pupil mask and bias ellipse fitting. FaceIt
 handles reflections in two ways:
@@ -167,7 +167,7 @@ Controls & parameters
 ~~~~~~~~~~~~~~~~~~~~~
 
 - **Binarization method**
-  - **Adaptive** (default): uses **Block size** (odd) and **C** (subtractive constant).
+  - **Adaptive** (default): uses **Block size** and **C** (subtractive constant).
   - **Constant/Global**: uses one **Binary threshold**.
 - **Reflect br** (slider, *Adaptive only*): sets the brightness percentile for
   automatic detection (higher → stricter, fewer pixels marked as reflections).
@@ -185,6 +185,100 @@ Controls & parameters
 .. raw:: html
 
    <div style="margin-bottom: 20px;"></div>
+
+Light Adjustment
+---------------------
+
+Uneven illumination and low contrast can break the pupil mask. FaceIt provides two
+complementary tools to precondition frames **before** binarization:
+
+- **Uniform Image Adjustment** — apply the same saturation/contrast everywhere.
+- **Gradual Image Adjustment** — apply a spatial brightness/saturation gradient to
+  compensate vignetting or directional lighting.
+
+Both tools operate on the ROI display panel and are purely **visual/photometric**
+preprocessing; they do not change geometry.
+
+At a glance
+~~~~~~~~~~~
+
++---------------------------+--------------------------+----------------------------------+
+| Tool                      | What it fixes            | Typical use                      |
++===========================+==========================+==================================+
+| **Uniform**               | Low contrast overall     | Quick global boost for dark ROI  |
++---------------------------+--------------------------+----------------------------------+
+| **Gradual**               | Uneven lighting/vignet.  | Brighten one side / center edges |
++---------------------------+--------------------------+----------------------------------+
+
+Uniform Image Adjustment
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Enable with the **``Uniform Image Adjustments``** checkbox.
+
+Controls
+~~~~~~~~
+
+- **Saturation**: percentage change to color saturation and value (brightness) uniformly.
+- **Contrast**: multiplies contrast uniformly (e.g., ``1.3`` = +30%).
+
+Behavior
+~~~~~~~~
+
+Internally, images are converted to **HSV**. The ``S`` and ``V`` channels are scaled by
+the selected **Saturation**, then a simple **contrast** gain is applied on the BGR image.
+
+When to use
+~~~~~~~~~~~
+
+- The whole ROI is too flat/dim, but illumination is roughly uniform.
+- You want a quick global boost before trying more advanced correction.
+
+Gradual Image Adjustment
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Enable with the **``Gradual Image Adjustments``** checkbox.
+
+This mode builds a **brightness weight mask** (a 2-D gradient) and multiplies it with
+the image brightness. Optionally, it can also adjust saturation non-uniformly.
+
+Primary controls
+~~~~~~~~~~~~~~~~
+
+- **Primary Light Direction** (radio buttons): ``Up``, ``Down``, ``Left``, ``Right``
+  Chooses the direction along which brightness increases.
+- **Primary Brightness Curve**: curvature of the gradient (≥ 1).
+  Higher values make the ramp more curved (stronger bias at the bright end).
+- **Primary Brightness Gain**: final multiplicative gain at the bright end (≥ 1).
+
+Secondary controls
+~~~~~~~~~~~~~~~~~~
+
+- **Secondary Light Direction**: ``None``, ``Horizontal``, ``Vertical``
+  Adds a **symmetric concave** gain (brighter toward edges) along the chosen axis.
+- **Secondary Brightness Concave Power**: shape of the concave curve (≥ 1).
+  Higher = steeper towards edges.
+- **Secondary Brightness Gain**: how much the edges are boosted (≥ 1).
+- **Saturation**: optional multiplicative factor for saturation in Gradual mode.
+
+Behavior
+~~~~~~~~
+
+- Builds a **primary directional mask** (linear ramp raised to *Primary Brightness Curve*).
+- Optionally multiplies a **symmetric concave mask** (edges brighter) controlled by
+  *Secondary* settings.
+- Multiplies the HSV **V** channel by the combined mask; clamps into ``[0, 255]``.
+- If *Saturation* is given, scales the HSV **S** channel as well.
+
+Relation to binarization
+~~~~~~~~~~~~~~~~~~~~
+
+- Both **Uniform** and **Gradual** adjustments are applied **before** binarization
+  (Adaptive or Constant). The goal is to present a cleaner, more separable histogram
+  to the thresholding stage.
+- For **Adaptive** binarization, Gradual adjustment often reduces the load on
+  ``Block size`` and ``C`` by flattening large-scale illumination differences.
+- For **Constant/Global** binarization, Gradual adjustment helps meet a single
+  threshold across the ROI.
 
 Use the **Saturation Slider** to adjust the eyeball's saturation and achieve the optimal contrast between the pupil and the eyeball.
 After completing the previous steps, use the frame slider to review the quality of pupil detection throughout your data and make any necessary adjustments. Once satisfied, select the **Pupil** checkbox and click **Process** to begin the analysis.
