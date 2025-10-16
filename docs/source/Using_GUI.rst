@@ -96,7 +96,7 @@ Parameters
 ~~~~~~~~~~
 
 - **Global (constant)**:
-  - **``Binary threshold``**: the global threshold value applied to all pixels.
+  - **Binary threshold**: the global threshold value applied to all pixels.
 
 - **Adaptive** (see **Adaptive thresholding settings**):
   - **Block size**: odd window size for local statistics (larger → smoother, less detail).
@@ -112,9 +112,10 @@ Tips
 ~~~~
 
 - If the binary mask looks noisy or fragmented, try:
-adjusting **``Block size``** or  **``C``** (Adaptive).
-Tweaking **``Binary threshold``** (Global).
-- The **``Show_binary``** checkbox controls **visualization**. The chosen **Binarization method** controls **how** the mask is computed.
+  - adjusting **Block size** (Adaptive)
+  - adjusting **C** (Adaptive)
+
+- The **Show_binary** checkbox controls **visualization**. The chosen **Binarization method** controls **how** the mask is computed.
 
 
 If the recorded video contains light reflections in the pupil area, use the **Add Reflection** button to mask the reflective section. The size and position of the Reflection ellipse can be adjusted as needed.
