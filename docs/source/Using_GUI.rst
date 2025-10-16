@@ -61,7 +61,7 @@ FaceIt provides two ways to visualize the pupil area:
 Toggling the view
 ~~~~~~~~~~~~~~~~~
 
-Use the **``Show_binary``** checkbox to switch between modes.
+Use the **Show_binary** checkbox to switch between modes.
 
 Binarization methods
 --------------------
@@ -79,7 +79,7 @@ Selecting the method
 
 By default, **Adaptive binarization** is used.
 
-To switch methods, use the **``Constant Binary``** checkbox:
+To switch methods, use the **Constant Binary** checkbox:
 
 - **Unchecked (default)** → **Adaptive** binarization.
 - **Checked** → **Global (constant)** binarization.
@@ -89,7 +89,7 @@ global threshold used for the constant method.
 
 .. note::
    - In **Adaptive** mode, the global threshold slider is disabled; instead, tune
-     **``Block size``** and **``C``** under *Adaptive thresholding settings*.
+     **Block size** and **C** under *Adaptive thresholding settings*.
    - In **Constant** mode, adjust the **threshold slider** to control the binary mask.
 
 Parameters
@@ -99,8 +99,8 @@ Parameters
   - **``Binary threshold``**: the global threshold value applied to all pixels.
 
 - **Adaptive** (see **Adaptive thresholding settings**):
-  - **``Block size``**: odd window size for local statistics (larger → smoother, less detail).
-  - **``C``**: constant subtracted from the local mean/weighted mean (higher ``C`` → stricter threshold).
+  - **Block size**: odd window size for local statistics (larger → smoother, less detail).
+  - **C**: constant subtracted from the local mean/weighted mean (higher ``C`` → stricter threshold).
 
 When to use which
 ~~~~~~~~~~~~~~~~~
@@ -112,8 +112,8 @@ Tips
 ~~~~
 
 - If the binary mask looks noisy or fragmented, try:
-  - adjusting **``Block size``** or  **``C``** (Adaptive).
-  - Tweaking **``Binary threshold``** (Global).
+adjusting **``Block size``** or  **``C``** (Adaptive).
+Tweaking **``Binary threshold``** (Global).
 - The **``Show_binary``** checkbox controls **visualization**. The chosen **Binarization method** controls **how** the mask is computed.
 
 
