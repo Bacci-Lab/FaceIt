@@ -304,15 +304,16 @@ Quick Comparison
 +-------------------+--------------------------------+--------------------------------+-----------+
 | **Method**        | **Best for**                   | **How it works (short)**       | **Speed** |
 +===================+================================+================================+===========+
-| Simple Contour    | Clean masks with one main blob | Find contours → (optional)     | ★★★ Fast |
+| Simple Contour    | Clean masks with one main blob | Find contours → (optional)     | ★★★ Fast  |
 | *(default)*       |                                | filter by width/aspect/area →  |           |
 |                   |                                | pick largest → convex hull     |           |
 +-------------------+--------------------------------+--------------------------------+-----------+
 | DBSCAN            | Fragmented masks (many islands)| Cluster foreground pixels with | ★ Slower  |
-|                   |                                | DBSCAN → (optional)            |           |
-|                   |                                | filter wide/elongated|         |           |
-|                   |                                | clusters → largest → hull      |           |
+|                   |                                | DBSCAN → (optional) filter     |           |
+|                   |                                | wide/elongated clusters →      |           |
+|                   |                                | largest → hull                 |           |
 +-------------------+--------------------------------+--------------------------------+-----------+
+
 
 Simple Contour
 ~~~~~~~~~~~~~~
