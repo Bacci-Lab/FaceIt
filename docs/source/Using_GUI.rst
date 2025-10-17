@@ -298,22 +298,6 @@ Default
 
 Output is the convex hull of the selected blob (fills small holes before ellipse fit).
 
-Quick Comparison
-~~~~~~~~~~~~~~~~
-
-+-------------------+--------------------------------+--------------------------------+-----------+
-| **Method**        | **Best for**                   | **How it works (short)**       | **Speed** |
-+===================+================================+================================+===========+
-| Simple Contour    | Clean masks with one main blob | Find contours → (optional)     | ★★★ Fast  |
-| *(default)*       |                                | filter by width/aspect/area →  |           |
-|                   |                                | pick largest → convex hull     |           |
-+-------------------+--------------------------------+--------------------------------+-----------+
-| DBSCAN            | Fragmented masks (many islands)| Cluster foreground pixels with | ★ Slower  |
-|                   |                                | DBSCAN → (optional) filter     |           |
-|                   |                                | wide/elongated clusters →      |           |
-|                   |                                | largest → hull                 |           |
-+-------------------+--------------------------------+--------------------------------+-----------+
-
 
 Simple Contour
 ~~~~~~~~~~~~~~
@@ -362,11 +346,125 @@ DBSCAN
    - **Decrease ``MND``** if the algorithm **merges too much** and includes unwanted dark areas or noise.
      A smaller value keeps clusters more separated.
 
+Quick Comparison
+~~~~~~~~~~~~~~~~
+
++-------------------+--------------------------------+--------------------------------+-----------+
+| **Method**        | **Best for**                   | **How it works (short)**       | **Speed** |
++===================+================================+================================+===========+
+| Simple Contour    | Clean masks with one main blob | Find contours → (optional)     | ★★★ Fast |
+| *(default)*       |                                | filter by width/aspect/area →  |           |
+|                   |                                | pick largest → convex hull     |           |
++-------------------+--------------------------------+--------------------------------+-----------+
+| DBSCAN            | Fragmented masks (many islands)| Cluster foreground pixels with | ★ Slower  |
+|                   |                                | DBSCAN → (optional) filter     |           |
+|                   |                                | wide/elongated clusters →      |           |
+|                   |                                | largest → hull                 |           |
++-------------------+--------------------------------+--------------------------------+-----------+
+
+
 Analyse whisker pad
 ^^^^^^^^^^^^^^^^^^^
 
 To analyse Whisker pad motion energy you can start by defining your region of interest using **Face ROI** bottom in the **ROI tools** section. check **whisker pad** checkbox and click on the process bottom.
 After the analysis is complete, a whisker pad motion energy plot will be displayed on the GUI. If grooming activity is present in your data, you can easily interpolate the grooming segments by setting a threshold on the y-axis of the motion energy plot. To do this, click on **Define Grooming Threshold** and select the area where you want to remove activity above the specified level. A new plot, with the grooming segments interpolated, will then be displayed.
+
+Post-processing
+^^^^^^^^^^^^^^^
+
+After the main processing finishes, **FaceIt** provides optional post-processing
+tools you can apply to clean signals and flag artifacts. All actions are **undoable**.
+
+Detect blinking
+---------------
+
+**Idea.** Identify blinks using (a) geometry changes (width/height ratio) and
+(b) large pupil drops; replace blink segments by interpolation and mask saccades
+at the same indices.
+
+**Algorithm (short).**
+
+1. Compute ``ratio = width / height``.
+2. Detect candidate blink indices from:
+   - ``ratio`` using a robust threshold,
+   - pupil area using a robust threshold.
+3. Union the indices, bound them to signal length, and **mask saccades** (set to
+   ``NaN`` at blink indices).
+4. **Interpolate** the pupil trace across those indices.
+
+**API.**
+
+.. code:: python
+
+    ids = process_handler.detect_blinking(
+        pupil=pupil_area, width=width, height=height,
+        x_saccade=X_sacc, y_saccade=Y_sacc
+    )
+    # → Updates: app.interpolated_pupil, X/Y_saccade_updated
+
+
+.. note::
+
+   - Because **Detect blinking** relies on the **geometry of the detected cluster**,
+     the option **“Filter Cluster”** (in *Options & Threshold → Clustering Method*)
+     **should be unchecked**.
+     Filtering can smooth or alter the cluster’s shape, reducing blink detection accuracy.
+
+   - This method performs **best when using a global binarization method**
+     (e.g., ``Global threshold``) rather than an adaptive one.
+
+
+
+Filtering pupil (Hampel)
+------------------------
+
+**Idea.** Robust outlier removal on the pupil time series using a **Hampel
+filter** (rolling median ± *k*·MAD). Outlier samples are treated as blinks:
+saccades are masked at those indices and the pupil is interpolated.
+
+**Parameters.**
+
+- ``win``: half-window size for rolling statistics (e.g., 15–25).
+- ``k``: outlier threshold multiplier (default ≈ 3.0).
+
+**API.**
+
+.. code:: python
+
+    ids = process_handler.Pupil_Filtering(
+        pupil=pupil_area,
+        x_saccade=X_sacc, y_saccade=Y_sacc,
+        win=15, k=3.0
+    )
+    # → Updates: app.interpolated_pupil, X/Y_saccade_updated
+
+
+Grooming threshold
+------------------
+
+**Idea.** When animals groom, the **face-motion** signal shows large bursts.
+Define a threshold to **clip** those bursts while keeping baseline dynamics.
+Clipped indices are returned for reference.
+
+**API.**
+
+.. code:: python
+
+    facemotion_clean, groom_ids, thr = process_handler.remove_grooming(
+        grooming_thr=threshold_value,
+        facemotion=facemotion_trace
+    )
+    # → Also stores: app.facemotion_without_grooming
+
+
+
+Undo actions
+------------
+
+- **Undo blinking/Filtering detection** restores the pupil trace and saccades to
+  their pre-blink/pre-filter state.
+- **Undo Grooming** restores the original face-motion signal (before clipping).
+
 
 Saving data
 ^^^^^^^^^^^
