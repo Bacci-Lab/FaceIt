@@ -187,7 +187,7 @@ Controls & parameters
    <div style="margin-bottom: 20px;"></div>
 
 Light Adjustment
----------------------
+----------------
 
 Uneven illumination and low contrast can break the pupil mask. FaceIt provides two
 complementary tools to precondition frames **before** binarization:
@@ -196,8 +196,6 @@ complementary tools to precondition frames **before** binarization:
 - **Gradual Image Adjustment** — apply a spatial brightness/saturation gradient to
   compensate vignetting or directional lighting.
 
-Both tools operate on the ROI display panel and are purely **visual/photometric**
-preprocessing; they do not change geometry.
 
 At a glance
 ~~~~~~~~~~~
@@ -213,7 +211,7 @@ At a glance
 Uniform Image Adjustment
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Enable with the **``Uniform Image Adjustments``** checkbox.
+Enable with the **Uniform Image Adjustments** checkbox.
 
 Controls
 ~~~~~~~~
@@ -236,7 +234,7 @@ When to use
 Gradual Image Adjustment
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Enable with the **``Gradual Image Adjustments``** checkbox.
+Enable with the **Gradual Image Adjustments** checkbox.
 
 This mode builds a **brightness weight mask** (a 2-D gradient) and multiplies it with
 the image brightness. Optionally, it can also adjust saturation non-uniformly.
@@ -270,7 +268,7 @@ Behavior
 - If *Saturation* is given, scales the HSV **S** channel as well.
 
 Relation to binarization
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Both **Uniform** and **Gradual** adjustments are applied **before** binarization
   (Adaptive or Constant). The goal is to present a cleaner, more separable histogram
@@ -280,9 +278,88 @@ Relation to binarization
 - For **Constant/Global** binarization, Gradual adjustment helps meet a single
   threshold across the ROI.
 
-Use the **Saturation Slider** to adjust the eyeball's saturation and achieve the optimal contrast between the pupil and the eyeball.
-After completing the previous steps, use the frame slider to review the quality of pupil detection throughout your data and make any necessary adjustments. Once satisfied, select the **Pupil** checkbox and click **Process** to begin the analysis.
-Once the analysis is complete, a pupil area plot will appear on the GUI. You can utilize the blinking detection button to detect and remove blinking, after which a new plot, excluding blinking, will be displayed on the GUI.
+Clustering (Choosing the Pupil Blob)
+------------------------------------
+
+After binarization, **FaceIt** selects the pupil region from the foreground mask.
+You can choose a method in:
+
+**Options & Threshold → Clustering Method**
+
+Available methods:
+
+- **Simple Contour** *(default)*
+- **DBSCAN*
+
+Default
+~~~~~~~
+
+**Clustering Method:** Simple Contour (with filtering enabled)
+
+Output is the convex hull of the selected blob (fills small holes before ellipse fit).
+
+Quick Comparison
+~~~~~~~~~~~~~~~~
+
++-------------------+--------------------------------+--------------------------------+-----------+
+| **Method**        | **Best for**                   | **How it works (short)**       | **Speed** |
++===================+================================+================================+===========+
+| Simple Contour    | Clean masks with one main blob | Find contours → (optional)     | ★★★ Fast |
+| *(default)*       |                                | filter by width/aspect/area →  |           |
+|                   |                                | pick largest → convex hull     |           |
++-------------------+--------------------------------+--------------------------------+-----------+
+| DBSCAN            | Fragmented masks (many islands)| Cluster foreground pixels with | ★ Slower  |
+|                   |                                | DBSCAN → (optional)            |           |
+|                   |                                | filter wide/elongated|         |           |
+|                   |                                | clusters → largest → hull      |           |
++-------------------+--------------------------------+--------------------------------+-----------+
+
+Simple Contour
+~~~~~~~~~~~~~~
+
+**Algorithm**
+
+1. Apply ``cv2.findContours`` on the binary mask.
+2. *(Optional)* Filter contours by width, aspect ratio (W/H), and area.
+3. Keep the largest remaining contour.
+4. Draw and fill its convex hull.
+
+
+**Pros**
+
+- Fast and reliable when the pupil is already one blob.
+
+**Notes**
+
+- If the pupil breaks into several islands (fir example because of light reflection), consider DBSCAN.
+
+DBSCAN
+~~~~~~
+
+**Algorithm**
+
+1. Take coordinates of all non-zero pixels (foreground).
+2. Cluster with DBSCAN (``eps = mnd``, ``min_samples = 1``).
+3. For each cluster, compute its bounding box and **optionally filter out** :
+   - width > 80% of image width
+   - aspect ratio W/H > 2
+4. Select the largest valid cluster and fill its convex hull.
+
+**Pros**
+
+- Handles fragmented masks produced by glare removal or noise.
+
+.. tip::
+
+   **Note:** ``MND`` applies **only** when using the **DBSCAN** clustering method.
+
+   You can change ``MND`` directly from the **Settings** window.
+
+   - **Increase ``MND``** if the pupil mask is **broken into too many small islands**.
+     A higher value makes DBSCAN merge nearby fragments into one larger cluster.
+
+   - **Decrease ``MND``** if the algorithm **merges too much** and includes unwanted dark areas or noise.
+     A smaller value keeps clusters more separated.
 
 Analyse whisker pad
 ^^^^^^^^^^^^^^^^^^^
