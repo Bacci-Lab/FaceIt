@@ -302,7 +302,7 @@ Output is the convex hull of the selected blob (fills small holes before ellipse
 Simple Contour
 ~~~~~~~~~~~~~~
 
-**Algorithm**
+**Algorithm:**
 
 1. Apply ``cv2.findContours`` on the binary mask.
 2. *(Optional)* Filter contours by width, aspect ratio (W/H), and area.
@@ -321,7 +321,7 @@ Simple Contour
 DBSCAN
 ~~~~~~
 
-**Algorithm**
+**Algorithm:**
 
 1. Take coordinates of all non-zero pixels (foreground).
 2. Cluster with DBSCAN (``eps = mnd``, ``min_samples = 1``).
@@ -369,6 +369,49 @@ Analyse whisker pad
 To analyse Whisker pad motion energy you can start by defining your region of interest using **Face ROI** bottom in the **ROI tools** section. check **whisker pad** checkbox and click on the process bottom.
 After the analysis is complete, a whisker pad motion energy plot will be displayed on the GUI. If grooming activity is present in your data, you can easily interpolate the grooming segments by setting a threshold on the y-axis of the motion energy plot. To do this, click on **Define Grooming Threshold** and select the area where you want to remove activity above the specified level. A new plot, with the grooming segments interpolated, will then be displayed.
 
+Process data
+^^^^^^^^^^^^
+
+Once the **Pupil** and **Face (Whisker Pad)** ROIs are selected and adjusted,
+you can start processing the data by checking the corresponding boxes under
+**Options & Threshold** and pressing the **Process** button.
+
+- Check **Whisker Pad** to process face motion (motion energy analysis).
+- Check **Pupil** to process pupil dilation and related parameters.
+
+Only the ROIs with their checkboxes enabled will be processed.
+If an ROI checkbox is **not selected**, that data will be skipped during processing.
+
+
+Data visualization in the GUI
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+After processing is finished, the computed signals are automatically displayed in the
+main **GUI window** for quick inspection.
+
+The visualization area is divided into two main plots:
+
+- **Top panel (orange)** — *Face motion*
+  Displays the motion energy trace.
+
+- **Bottom panel (green)** — *Pupil*
+  Displays the raw or filtered pupil area trace. Vertical ticks mark detected
+  saccades (big ye movement).
+
+Both panels share a common **x-axis**, representing **frame number**.
+
+Navigation and interaction
+--------------------------
+
+- A **blue vertical line** indicates the **current frame**.
+  It moves dynamically as you slide through frames with the bottom **slider**.
+
+- The **horizontal slider** allows continuous browsing through frames.
+
+- You can **jump to a specific frame** by entering its number in the small box
+  next to the slider and pressing **Enter**.
+
+
 Post-processing
 ^^^^^^^^^^^^^^^
 
@@ -378,11 +421,13 @@ tools you can apply to clean signals and flag artifacts. All actions are **undoa
 Detect blinking
 ---------------
 
-**Idea.** Identify blinks using (a) geometry changes (width/height ratio) and
+**Idea:**
+
+Identify blinks using (a) geometry changes (width/height ratio) and
 (b) large pupil drops; replace blink segments by interpolation and mask saccades
 at the same indices.
 
-**Algorithm (short).**
+**Algorithm (short):**
 
 1. Compute ``ratio = width / height``.
 2. Detect candidate blink indices from:
@@ -410,21 +455,22 @@ at the same indices.
      **should be unchecked**.
      Filtering can smooth or alter the cluster’s shape, reducing blink detection accuracy.
 
-   - This method performs **best when using a global binarization method**
-     (e.g., ``Global threshold``) rather than an adaptive one.
+   - This method performs **best when using a global binarization method** rather than an adaptive one.
 
 
 
 Filtering pupil (Hampel)
 ------------------------
 
-**Idea.** Robust outlier removal on the pupil time series using a **Hampel
+**Idea:**
+
+Robust outlier removal on the pupil time series using a **Hampel
 filter** (rolling median ± *k*·MAD). Outlier samples are treated as blinks:
 saccades are masked at those indices and the pupil is interpolated.
 
 **Parameters.**
 
-- ``win``: half-window size for rolling statistics (e.g., 15–25).
+- ``win``: half-window size for rolling statistics.
 - ``k``: outlier threshold multiplier (default ≈ 3.0).
 
 **API.**
@@ -442,7 +488,9 @@ saccades are masked at those indices and the pupil is interpolated.
 Grooming threshold
 ------------------
 
-**Idea.** When animals groom, the **face-motion** signal shows large bursts.
+**Idea:**
+
+When animals groom, the **face-motion** signal shows large bursts.
 Define a threshold to **clip** those bursts while keeping baseline dynamics.
 Clipped indices are returned for reference.
 
@@ -466,7 +514,15 @@ Undo actions
 - **Undo Grooming** restores the original face-motion signal (before clipping).
 
 
+
 Saving data
 ^^^^^^^^^^^
 
-When you click the save button, the processing results will automatically be stored in **.npz** files. To save the data in **.nwb** format, ensure you select the **Save NWB** checkbox before saving.
+When you click the **Save** button, the processing results are automatically stored in
+``.npz`` files.
+To save the data in **.nwb** format, ensure you select the **Save NWB** checkbox before saving.
+
+In addition, several **visualization images (.png)** are automatically saved in the same directory
+to provide a quick overview of the processed results.
+
+To better understand what is contained in the saved files, refer to the **Output** section of this documentation.
