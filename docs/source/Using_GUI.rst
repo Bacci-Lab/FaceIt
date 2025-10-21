@@ -247,6 +247,9 @@ Enable with the **Uniform Image Adjustments** checkbox.
    :align: center
 
 
+   **Figure:** Uniform Image adjustment panel
+
+
 
 Controls
 ~~~~~~~~
@@ -270,6 +273,17 @@ Gradual Image Adjustment
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Enable with the **Gradual Image Adjustments** checkbox.
+
+
+.. figure:: _static/Gradual_Image_adjustment.png
+   :alt: Gradual Image adjustment
+   :width: 900px
+   :align: center
+
+
+   **Figure:** Uniform Image adjustment panel
+
+
 
 This mode builds a **brightness weight mask** (a 2-D gradient) and multiplies it with
 the image brightness. Optionally, it can also adjust saturation non-uniformly.
@@ -324,7 +338,19 @@ You can choose a method in:
 Available methods:
 
 - **Simple Contour** *(default)*
-- **DBSCAN*
+- **DBSCAN**
+- **Watershed**
+
+
+
+.. figure:: _static/Clustring Methods.png
+   :alt: Clustring Methods
+   :width: 900px
+   :align: center
+
+
+   **Figure:** Clustring Methods
+
 
 Default
 ~~~~~~~
