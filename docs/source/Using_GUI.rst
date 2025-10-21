@@ -102,15 +102,15 @@ To switch methods, use the **Constant Binary** checkbox:
 - **Unchecked (default)** → **Adaptive** binarization.
 - **Checked** → **Global (constant)** binarization.
 
-When **Constant Binary** is checked, a **threshold slider** becomes active so you can set the
-global threshold used for the constant method.
-
 
 .. figure:: _static/threshold_slider.png
    :alt: Threshold slider shown when Constant Binary is enabled
    :width: 900px
    :align: center
 
+
+When **Constant Binary** is checked, a **threshold slider** becomes active so you can set the
+global threshold used for the constant method.
 
 
 
@@ -210,14 +210,18 @@ Light Adjustment
 Uneven illumination and low contrast can break the pupil mask. FaceIt provides two
 complementary tools to precondition frames before binarization:
 
-- **Uniform Image Adjustment** — apply the same saturation/contrast everywhere.
-- **Gradual Image Adjustment** — apply a spatial brightness/saturation gradient to
-  compensate vignetting or directional lighting.
+- **Uniform Image Adjustment** — applies the same saturation and contrast across the entire image.
+- **Gradual Image Adjustment** — applies a spatial brightness/saturation gradient to
+  compensate for vignetting or directional lighting.
 
 .. figure:: _static/Light_adgustment.png
-   :alt:  Light adjustment panel
+   :alt: Light adjustment panel
    :width: 900px
    :align: center
+
+   **Figure:** Light adjustment panel
+
+
 
 At a glance
 ~~~~~~~~~~~
@@ -234,6 +238,15 @@ Uniform Image Adjustment
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Enable with the **Uniform Image Adjustments** checkbox.
+
+
+
+.. figure:: _static/Uniform_Image_adjustment.png
+   :alt: Uniform Image adjustment
+   :width: 900px
+   :align: center
+
+
 
 Controls
 ~~~~~~~~
