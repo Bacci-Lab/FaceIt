@@ -21,7 +21,8 @@ To begin pupil tracking, use the **Pupil ROI** button in the **ROI tools** secti
 
    <div style="margin-bottom: 20px;"></div>
 
-Pupil_roi_chosen
+
+
 After selecting and adjusting the Eyeball ROI, you can use the **Eraser** option to remove pixels from the surrounding eye region. This ensures that these pixels are excluded from further analysis. The size of the eraser can be customized in the settings window.
 
 .. figure:: _static/Pupil_roi_chosen.png
@@ -61,7 +62,16 @@ FaceIt provides two ways to visualize the pupil area:
 Toggling the view
 ~~~~~~~~~~~~~~~~~
 
-Use the **Show_binary** checkbox to switch between modes.
+Use the **Show binary** checkbox to switch between modes.
+
+
+
+.. raw:: html
+
+   <div style="display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 10px;">
+       <img src="_static/Normal_eye_preview.png" alt="Normal Eye Preview" width="350px"/>
+       <img src="_static/Binary_eye_preview.png" alt="Binary Eye Preview" width="350px"/>
+   </div>
 
 Binarization methods
 --------------------
