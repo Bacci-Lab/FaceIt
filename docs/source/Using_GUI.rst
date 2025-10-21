@@ -68,10 +68,18 @@ Use the **Show binary** checkbox to switch between modes.
 
 .. raw:: html
 
-   <div style="display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 10px;">
-       <img src="_static/Normal_eye_preview.png" alt="Normal Eye Preview" width="350px"/>
-       <img src="_static/Binary_eye_preview.png" alt="Binary Eye Preview" width="350px"/>
+   <div style="display: flex; justify-content: center; align-items: flex-start; gap: 40px; margin-top: 15px;">
+       <div style="text-align: center;">
+           <p><b>Normal preview</b></p>
+           <img src="_static/Normal_eye_preview.png" alt="Normal Eye Preview" width="350px"/>
+       </div>
+       <div style="text-align: center;">
+           <p><b>Binary preview</b></p>
+           <img src="_static/Binary_eye_preview.png" alt="Binary Eye Preview" width="350px"/>
+       </div>
    </div>
+
+
 
 Binarization methods
 --------------------
@@ -96,6 +104,19 @@ To switch methods, use the **Constant Binary** checkbox:
 
 When **Constant Binary** is checked, a **threshold slider** becomes active so you can set the
 global threshold used for the constant method.
+
+
+Threshold slider (Global binarization)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. figure:: _static/threshold_slider.png
+   :alt: Threshold slider shown when Constant Binary is enabled
+   :width: 900px
+   :align: center
+
+   **Threshold slider** available when **Constant Binary** is enabled.
+
+
 
 .. note::
    - In **Adaptive** mode, the global threshold slider is disabled; instead, tune
