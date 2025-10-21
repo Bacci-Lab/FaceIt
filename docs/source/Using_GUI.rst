@@ -106,15 +106,11 @@ When **Constant Binary** is checked, a **threshold slider** becomes active so yo
 global threshold used for the constant method.
 
 
-Threshold slider (Global binarization)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 .. figure:: _static/threshold_slider.png
    :alt: Threshold slider shown when Constant Binary is enabled
    :width: 900px
    :align: center
 
-   **Threshold slider** available when **Constant Binary** is enabled.
 
 
 
@@ -130,9 +126,9 @@ Parameters
 
   - **Binary threshold**: the global threshold value applied to all pixels.
 
-- **Adaptive** (see **Adaptive thresholding settings**):
+- **Adaptive**:
 
-  - **Block size**: odd window size for local statistics (larger → smoother, less detail).
+  - **Block size**: window size for local statistics (larger → smoother, less detail).
   - **C**: constant subtracted from the local mean/weighted mean (higher ``C`` → stricter threshold).
 
 When to use which
@@ -141,15 +137,6 @@ When to use which
 - Use **Global** when lighting is uniform and the pupil/eyeball contrast is stable.
 - Use **Adaptive** when lighting is uneven, there are vignetting, or contrast varies across the frame.
 
-Tips
-~~~~
-
-- If the binary mask looks noisy or fragmented, try:
-
-  - adjusting **Block size** (Adaptive)
-  - adjusting **C** (Adaptive)
-
-- The **Show_binary** checkbox controls **visualization**. The chosen **Binarization method** controls **how** the mask is computed.
 
 Reflection Correction
 ---------------------
@@ -211,7 +198,7 @@ Controls & parameters
    :width: 300px
    :align: center
 
-   Adding reflection cover to the pupil.
+   Adding manual reflection cover to the pupil.
 
 .. raw:: html
 
@@ -221,12 +208,16 @@ Light Adjustment
 ----------------
 
 Uneven illumination and low contrast can break the pupil mask. FaceIt provides two
-complementary tools to precondition frames **before** binarization:
+complementary tools to precondition frames before binarization:
 
 - **Uniform Image Adjustment** — apply the same saturation/contrast everywhere.
 - **Gradual Image Adjustment** — apply a spatial brightness/saturation gradient to
   compensate vignetting or directional lighting.
 
+.. figure:: _static/Light_adgustment.png
+   :alt:  Light adjustment panel
+   :width: 900px
+   :align: center
 
 At a glance
 ~~~~~~~~~~~
