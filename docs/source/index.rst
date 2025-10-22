@@ -22,4 +22,5 @@ FACEIT Documentation and User Guide
    :caption: How the Pipeline Works: Methods
 
    FaceMotion_Computation
+   Pupil detection
    Pupil_detection
