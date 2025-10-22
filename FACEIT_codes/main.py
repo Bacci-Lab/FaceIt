@@ -193,6 +193,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.reflect_brightness_slider.setSingleStep(1)
         self.reflect_brightness_slider.setValue(self.reflect_brightness)
         self.reflect_brightness_slider.valueChanged.connect(self.get_reflect_brightness_value)
+        # --- Group box for Adaptive Thresholding ---
+        adapt_group = QtWidgets.QGroupBox("Adaptive thresholding settings")
+        adapt_group.setStyleSheet("QGroupBox { font-weight: 600; }")
+        adapt_vbox = QtWidgets.QVBoxLayout(adapt_group)
         #------------------------------------  C ---------------------------------------#
         C_layout = QtWidgets.QHBoxLayout()
         C_label = QtWidgets.QLabel("C")
@@ -227,10 +231,11 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         block_size_layout.addWidget(block_size_label)
         block_size_layout.addWidget(self.block_size_slider)
         block_size_layout.addWidget(self.block_size_edit)
+        adapt_vbox.addLayout(C_layout)
+        adapt_vbox.addLayout(block_size_layout)
         main_layout.addLayout(cluster_pixel_layout)
         main_layout.addLayout(br_reflect_layout)
-        main_layout.addLayout(C_layout)
-        main_layout.addLayout(block_size_layout)
+        main_layout.addWidget(adapt_group)
         self.settings_window.setLayout(main_layout)
         self.settings_window.show()
 
@@ -242,7 +247,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
     def get_reflect_brightness_value(self):
         slider_value = self.reflect_brightness_slider.value()
         self.reflect_brightness = slider_value
-        self.reflect_brightness_edit.setText(f"{self.reflect_brightness:.1f}")  # format with 1 decimal
+        self.reflect_brightness_edit.setText(f"{self.reflect_brightness:.1f}")
         return self.reflect_brightness
 
     def get_c_value(self):
@@ -413,8 +418,10 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         self.checkBox_nwb = QtWidgets.QCheckBox("Save NWB")
         self.optionsLayout.addWidget(self.checkBox_nwb, 0, 3)
 
-        self.save_video = QtWidgets.QCheckBox("Save Video")
-        self.optionsLayout.addWidget(self.save_video, 1, 3)
+        ##############
+        self.FilterContours =  QtWidgets.QCheckBox("Disable Filter Contours")
+        self.optionsLayout.addWidget(self.FilterContours, 3, 2)
+        ###########################
 
         # Grooming Threshold
         self.grooming_limit_Label = QtWidgets.QLabel("Grooming Threshold:")
@@ -688,8 +695,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         return self.checkBox_face.isChecked()
     def nwb_check(self):
         return self.checkBox_nwb.isChecked()
-    def save_video_chack(self):
-        return self.save_video.isChecked()
+    def deactivate_filtering(self):
+        return self.FilterContours.isChecked()
 
     def update_saturation_method(self):
         if self.radio_button_Uniform.isChecked():
@@ -748,6 +755,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.clustering_method = "watershed"
         elif self.radioButton_SimpleContour.isChecked():
             self.clustering_method = "SimpleContour"
+
 
     def update_binary_method(self):
         if self.radioButton_Constant.isChecked():

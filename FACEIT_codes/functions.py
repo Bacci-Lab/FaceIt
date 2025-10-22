@@ -1,39 +1,62 @@
-import cv2
-import os.path
-import numpy as np
-from PyQt5 import QtWidgets, QtGui, QtCore
-import matplotlib.pyplot as plt
+import os
 import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
-def initialize_attributes(obj, image):
-    if len(image.shape) == 3:
+import cv2
+import numpy as np
+from PyQt5 import QtCore, QtGui, QtWidgets
+
+
+# ======================================================================
+# Initialization / state helpers
+# ======================================================================
+
+def initialize_attributes(obj, image: np.ndarray) -> None:
+    """
+    Initialize GUI/app state fields based on an input frame.
+
+    Notes
+    -----
+    - Sets image height/width depending on whether the frame is gray or color.
+    - Initializes all flags and defaults so other code can assume existence.
+    """
+    if image.ndim == 3:
         obj.image_height, obj.image_width, _ = image.shape
-    elif len(image.shape) == 2:
+    elif image.ndim == 2:
         obj.image_height, obj.image_width = image.shape
+    else:
+        raise ValueError("Unsupported image array shape")
+
     obj.ratio = 2
     obj.reflect_height = 30
     obj.reflect_width = 30
+
+    # Data / frames
     obj.Face_frame = None
     obj.Pupil_frame = None
     obj.sub_region = None
-    obj.reflect_ellipse = None
-    obj.saturation = 0
-    obj.saturation_ununiform = 1
-    obj.contrast = 1
-    obj.brightness = 1
-    obj.secondary_BrightGain = 1
-    obj.brightness_curve = 1
     obj.frame = None
+
+    # Masks / ROI / geometry
+    obj.reflect_ellipse = None          # list-like or None
     obj.pupil_ROI = None
     obj.face_ROI = None
     obj.pupil_detection = None
     obj.pupil_ellipse_items = None
     obj.current_ROI = None
     obj.ROI_exist = False
-    obj.reflection_center = (obj.image_width // obj.ratio / 2, obj.image_height // obj.ratio / 2)
-    obj.oval_center = (obj.image_width // obj.ratio / 2, obj.image_height // obj.ratio / 2)
-    obj.face_rect_center = (obj.image_width // obj.ratio / 2, obj.image_height // obj.ratio / 2)
-    obj.ROI_center = (obj.image_width // obj.ratio / 2, obj.image_height // obj.ratio / 2)
+
+    # Centers (half sized because of display scaling by ratio)
+    cx = obj.image_width // obj.ratio / 2
+    cy = obj.image_height // obj.ratio / 2
+    obj.reflection_center = (cx, cy)
+    obj.oval_center = (cx, cy)
+    obj.face_rect_center = (cx, cy)
+    obj.ROI_center = (cx, cy)
+
+    # UX flags
     obj.Image_loaded = False
     obj.Pupil_ROI_exist = False
     obj.Face_ROI_exist = False
@@ -41,282 +64,313 @@ def initialize_attributes(obj, image):
     obj.eyecorner = None
     obj.eye_corner_center = None
     obj.erased_pixels = None
+
+    # Processing defaults
     obj.mnd = 3
-    obj.reflect_brightness = 985
+    obj.reflect_brightness = 985  # percentile*10 (see detect_reflection_automatically)
     obj.binary_threshold = 220
     obj.Show_binary = False
     obj.clustering_method = "SimpleContour"
     obj.saturation_method = "None"
     obj.binary_method = "Adaptive"
+
+    # Light adjustment
     obj.primary_direction = None
     obj.secondary_direction = None
+    obj.saturation = 0                  # uniform saturation (%)
+    obj.saturation_ununiform = 1.0      # gradual: multiplicative factor for S
+    obj.contrast = 1.0
+    obj.brightness = 1.0
+    obj.secondary_BrightGain = 1.0
+    obj.brightness_curve = 1.0
 
 
+# ======================================================================
+# Light adjustment (Uniform & Gradual)
+# ======================================================================
+
+@dataclass
 class SaturationSettings:
-    def __init__(self,
-                 primary_direction=None,
-                 brightness_curve=1.0,
-                 brightness=1.0,
-                 secondary_direction=None,
-                 brightness_concave_power=1.5,
-                 secondary_BrightGain=1.0,
-                 saturation_ununiform = 1):
-        self.primary_direction = primary_direction
-        self.brightness_curve = brightness_curve
-        self.brightness = brightness
-        self.secondary_direction = secondary_direction
-        self.brightness_concave_power = brightness_concave_power
-        self.secondary_BrightGain = secondary_BrightGain
-        self.saturation_ununiform = saturation_ununiform
+    """
+    Settings for 'Gradual Image Adjustment'.
+
+    primary_direction: "Right" | "Left" | "Down" | "UP" | None
+    secondary_direction: "Horizontal" | "Vertical" | None
+    brightness_curve: curvature (>1 = steeper) for primary ramp
+    brightness: end gain (>=1.0) for primary ramp
+    brightness_concave_power: power shaping for symmetric concave mask
+    secondary_BrightGain: end gain (>=1.0) for secondary mask
+    saturation_ununiform: multiplicative factor for the S channel (>=0)
+    """
+    primary_direction: Optional[str] = None
+    brightness_curve: float = 1.0
+    brightness: float = 1.0
+    secondary_direction: Optional[str] = None
+    brightness_concave_power: float = 1.5
+    secondary_BrightGain: float = 1.0
+    saturation_ununiform: float = 1.0
 
 
-def change_Gradual_saturation(image_bgr: np.ndarray, settings: SaturationSettings, show = False):
-    cv2.imwrite(r"C:\Users\faezeh.rabbani\FACEIT_DATA\Frames\output_image.png", image_bgr)
+def _direction_mask(h: int, w: int, direction: str, curve: float, strength: float) -> np.ndarray:
+    if direction == "Right":
+        return np.tile(np.linspace(1.0, strength, w) ** curve, (h, 1))
+    if direction == "Left":
+        return np.tile(np.linspace(strength, 1.0, w) ** curve, (h, 1))
+    if direction == "Down":
+        return np.tile(np.linspace(1.0, strength, h) ** curve, (w, 1)).T
+    if direction == "UP":
+        return np.tile(np.linspace(strength, 1.0, h) ** curve, (w, 1)).T
+    raise ValueError("Unknown direction: {!r}".format(direction))
+
+
+def _symmetric_concave_mask(h: int, w: int, axis: str, strength: float, power: float) -> np.ndarray:
+    """
+    axis: "Horizontal" (vary across width) or "Vertical" (vary across height)
+    """
+    if axis not in {"Horizontal", "Vertical"}:
+        raise ValueError("axis must be 'Horizontal' or 'Vertical'")
+    size = w if axis == "Horizontal" else h
+    x = np.linspace(-1, 1, size)
+    curve = np.abs(x) ** power  # concave outward
+    scaled = 1 + (strength - 1) * curve
+    return np.tile(scaled, (h, 1)) if axis == "Horizontal" else np.tile(scaled, (w, 1)).T
+
+
+def change_Gradual_saturation(image_bgr: np.ndarray,
+                              settings: SaturationSettings,
+                              show: bool = False) -> np.ndarray:
+    """
+    Apply spatial brightness/saturation gradient in HSV space (color input).
+
+    Returns RGB image (for display). Keeps values in [0, 255].
+    """
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
-    cv2.imwrite(r"C:\Users\faezeh.rabbani\FACEIT_DATA\Frames\hsv.png", hsv)
     h, w = hsv.shape[:2]
     gradient = np.ones((h, w), dtype=np.float32)
 
-    def get_direction_mask(direction, curve, strength):
-        if direction == "Right":
-            return np.tile(np.linspace(1.0, strength, w) ** curve, (h, 1))
-        elif direction == "Left":
-            return np.tile(np.linspace(strength, 1.0, w) ** curve, (h, 1))
-        elif direction == "Down":
-            return np.tile(np.linspace(1.0, strength, h) ** curve, (w, 1)).T
-        elif direction == "UP":
-            return np.tile(np.linspace(strength, 1.0, h) ** curve, (w, 1)).T
-        else:
-            raise ValueError(f"Unknown direction: {direction}")
+    # primary ramp
+    if settings.primary_direction:
+        gradient *= _direction_mask(h, w,
+                                    settings.primary_direction,
+                                    settings.brightness_curve,
+                                    settings.brightness)
 
-    # Apply primary direction
-    if settings.primary_direction is not None:
-        gradient *= get_direction_mask(settings.primary_direction,
-         settings.brightness_curve, settings.brightness)
+    # secondary symmetric concave gain
+    if settings.secondary_direction:
+        gradient *= _symmetric_concave_mask(
+            h, w,
+            axis=settings.secondary_direction,
+            strength=settings.secondary_BrightGain,
+            power=settings.brightness_concave_power,
+        )
 
-    def get_symmetric_concave_mask(h: int, w: int, direction="Horizontal", strength=2.0, power = 1.5):
-        size = w if direction in ["Horizontal"] else h
-        x = np.linspace(-1, 1, size)
-        curve = np.abs(x) ** power
-        scaled = 1 + (strength - 1) * curve
-        if direction == "Horizontal":
-            return np.tile(scaled, (h, 1))
-        elif direction == "Vertical":
-            return np.tile(scaled, (w, 1)).T
+    # Apply gradient to V; adjust S multiplicatively
+    hsv[..., 2] = np.clip(hsv[..., 2] * gradient, 0, 255)
+    hsv[..., 1] = np.clip(hsv[..., 1] * settings.saturation_ununiform, 0, 255)
 
-    if settings.secondary_direction is not None:
-        gradient *= get_symmetric_concave_mask(h, w, "Vertical",
-          settings.secondary_BrightGain, settings.brightness_concave_power)
-        # Plot with x and y axis values shown
+    # Back to RGB for Qt display
+    bgr = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
     if show:
-        plt.figure(figsize=(8, 4))
-        plt.imshow(gradient, cmap='gray', aspect='auto')
-        plt.colorbar(label='Brightness Scaling Factor')
-        plt.title(f"h")
-        plt.xlabel("Width (pixels)")
-        plt.ylabel("Height (pixels)")
-        plt.xticks(np.linspace(0, w, 5, dtype=int))
-        plt.yticks(np.linspace(0, h, 5, dtype=int))
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(6, 2))
+        plt.imshow(gradient, cmap="gray", aspect="auto")
+        plt.title("Brightness weight mask")
         plt.tight_layout()
         plt.show()
 
-    # Apply gradient to brightness channel
-    hsv[..., 2] *= gradient
-    hsv[..., 2] = np.clip(hsv[..., 2], 0, 255)
+    return rgb
 
-    # change saturation channel
-    hsv[..., 1] *= settings.saturation_ununiform
-    hsv[..., 1] = np.clip(hsv[..., 1], 0, 255)
 
-    # Convert back to RGB
-    bgr_result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-    rgb_result = cv2.cvtColor(bgr_result, cv2.COLOR_BGR2RGB)
-    return rgb_result
-
-def change_saturation_uniform(image, saturation=0, contrast=1.0):
+def change_saturation_uniform(image: np.ndarray,
+                              saturation: float = 0.0,
+                              contrast: float = 1.0) -> np.ndarray:
     """
-    Changes the saturation of an image and adjusts brightness to make dark pixels darker and bright pixels brighter.
+    Uniform Image Adjustment (color or gray).
 
-    Parameters:
-        image (numpy.ndarray): The input image (BGR or grayscale).
-        saturation (float): Saturation adjustment value in percentage (e.g., 20 = increase by 20%).
-        contrast (float): Contrast multiplier (e.g., 1.2 = increase contrast by 20%).
-
-    Returns:
-        numpy.ndarray: The processed image in BGR format.
+    - In HSV: scale S and V by (1 + saturation/100).
+    - In BGR: apply contrast gain via convertScaleAbs(alpha=contrast).
     """
-    brightness = 0
+    brightness_offset = 0  # keep mean unchanged
 
-    # If image is grayscale, convert to BGR
-    if len(image.shape) == 2 or image.shape[2] == 1:
+    # Ensure BGR input
+    if image.ndim == 2 or (image.ndim == 3 and image.shape[2] == 1):
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
-    # Convert to HSV for saturation manipulation
-    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
-    # Apply saturation and brightness changes
-    hsv_image[..., 1] = np.clip(hsv_image[..., 1] * (1 + saturation / 100.0), 0, 255)
-    hsv_image[..., 2] = np.clip(hsv_image[..., 2] * (1 + saturation / 100.0), 0, 255)
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+    gain = 1.0 + saturation / 100.0
+    hsv[..., 1] = np.clip(hsv[..., 1] * gain, 0, 255)  # Saturation
+    hsv[..., 2] = np.clip(hsv[..., 2] * gain, 0, 255)  # Value (brightness)
 
-    # Convert back to BGR and apply contrast
-    hsv_image = hsv_image.astype(np.uint8)
-    image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
-    image = cv2.convertScaleAbs(image, alpha=contrast, beta=brightness)
-    return image
+    img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+    img = cv2.convertScaleAbs(img, alpha=contrast, beta=brightness_offset)
+    return img
 
 
-
-def apply_intensity_gradient_gray(gray_image: np.ndarray, settings) -> np.ndarray:
+def apply_intensity_gradient_gray(gray_image: np.ndarray,
+                                  settings: SaturationSettings) -> np.ndarray:
     """
-    Applies intensity gradient and optional uniform saturation adjustment to a grayscale image.
+    Gradual adjustment for grayscale input; returns BGR (for display/pipeline).
 
-    Parameters:
-        gray_image (np.ndarray): Input grayscale image (H, W).
-        settings (SaturationSettings): Settings including brightness and optional saturation adjustment.
-
-    Returns:
-        np.ndarray: Output grayscale image with applied intensity and saturation (via HSV) modifications.
+    Steps
+    -----
+    1) Build combined gradient (primary + optional secondary).
+    2) Convert gray→BGR→HSV, scale S by saturation_ununiform, scale V by gradient.
+    3) Back to BGR.
     """
-    if len(gray_image.shape) != 2:
-        raise ValueError("Input image must be grayscale (2D)")
+    if gray_image.ndim != 2:
+        raise ValueError("apply_intensity_gradient_gray expects a 2D grayscale array")
 
-    height, width = gray_image.shape
-    gradient = np.ones((height, width), dtype=np.float32)
+    h, w = gray_image.shape
+    gradient = np.ones((h, w), dtype=np.float32)
 
-    def get_direction_mask(direction, curve, strength):
-        if direction == "Right":
-            return np.tile(np.linspace(1.0, strength, width) ** curve, (height, 1))
-        elif direction == "Left":
-            return np.tile(np.linspace(strength, 1.0, width) ** curve, (height, 1))
-        elif direction == "Down":
-            return np.tile(np.linspace(1.0, strength, height) ** curve, (width, 1)).T
-        elif direction == "UP":
-            return np.tile(np.linspace(strength, 1.0, height) ** curve, (width, 1)).T
-        else:
-            raise ValueError(f"Unknown direction: {direction}")
-
-    def get_symmetric_concave_mask(h: int, w: int, direction="Horizontal", strength=2.0, power = 1.5):
-        size = w if direction == "Horizontal" else h
-        x = np.linspace(-1, 1, size)
-        curve = np.abs(x) ** power
-        scaled = 1 + (strength - 1) * curve
-        if direction == "Horizontal":
-            return np.tile(scaled, (h, 1))
-        elif direction == "Vertical":
-            return np.tile(scaled, (w, 1)).T
-
-    # === Apply directional gradient ===
     if settings.primary_direction:
-        gradient *= get_direction_mask(settings.primary_direction, settings.brightness_curve, settings.brightness)
+        gradient *= _direction_mask(h, w,
+                                    settings.primary_direction,
+                                    settings.brightness_curve,
+                                    settings.brightness)
 
-    # === Apply symmetric concave gradient if needed ===
     if settings.secondary_direction:
-        gradient *= get_symmetric_concave_mask(height, width, "Vertical", settings.secondary_BrightGain, settings.brightness_concave_power)
+        gradient *= _symmetric_concave_mask(
+            h, w,
+            axis=settings.secondary_direction,
+            strength=settings.secondary_BrightGain,
+            power=settings.brightness_concave_power,
+        )
 
-    # === Convert grayscale to BGR for HSV conversion ===
-    if len(gray_image.shape) == 2 or gray_image.shape[2] == 1:
-        gray_image = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
-    hsv = cv2.cvtColor(gray_image, cv2.COLOR_BGR2HSV).astype(np.float32)
+    bgr = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
 
-    # === Apply uniform saturation adjustment ===
-    hsv[..., 1] = np.clip(hsv[..., 1] * (1 + settings.saturation_ununiform / 100.0), 0, 255)
+    hsv[..., 1] = np.clip(hsv[..., 1] * (settings.saturation_ununiform), 0, 255)
+    hsv[..., 2] = np.clip(hsv[..., 2] * gradient, 0, 255)
 
-    # === Apply brightness/intensity gradient ===
-    hsv[..., 2] *= gradient
-    hsv[..., 2] = np.clip(hsv[..., 2], 0, 255)
-
-
-    # === Convert back to BGR ===
-    bgr_result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-    bgr_result = cv2.convertScaleAbs(bgr_result, alpha=settings.saturation_ununiform)
-
-    return bgr_result
+    out = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+    return out
 
 
+# ======================================================================
+# ROI utilities (de-duplicated)
+# ======================================================================
 
-def show_ROI(ROI, image, ROI_type = "pupil"):
-    sub_image = ROI.rect()
-    top = int(sub_image.top())*2
-    bottom = int(sub_image.bottom())*2
-    left = int(sub_image.left())*2
-    right = int(sub_image.right())*2
-    sub_region = image[top:bottom, left:right]
-    frame = [top,bottom, left,right]
-    if ROI_type == "pupil":
-        height, width = sub_region.shape[:2]
-        mask = np.zeros((height, width), dtype=np.uint8)
-        center = (width // 2, height // 2)
-        axes = (width // 2, height // 2)
-        cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
-
-        # === Generate masked_processed for analysis ===
-        if sub_region.ndim == 2:
-            final_image = cv2.bitwise_and(sub_region, sub_region, mask=mask)
-        elif sub_region.ndim == 3 and sub_region.shape[2] == 3:
-            final_image = cv2.bitwise_and(sub_region, sub_region, mask=mask)
-        elif sub_region.ndim == 3 and sub_region.shape[2] == 4:
-            channels = cv2.split(sub_region)
-            for i in range(3):
-                channels[i] = cv2.bitwise_and(channels[i], channels[i], mask=mask)
-            final_image = cv2.merge(channels)
-        else:
-            raise ValueError("Unsupported processed image format")
-    else:
-        final_image = sub_region
-    return final_image, frame
-def show_ROI2(sub_image, image):
-
-    top = int(sub_image.top())*2
-    bottom = int(sub_image.bottom())*2
-    left = int(sub_image.left())*2
-    right = int(sub_image.right())*2
-    sub_region = image[top:bottom, left:right]
-    frame_pos = [top,bottom, left,right]
-    height, width = sub_region.shape[:2]
-    mask = np.zeros((height, width), dtype=np.uint8)
-    center = (width // 2, height // 2)
-    axes = (width // 2, height // 2)
+def _ellipse_center_axes_mask(h: int, w: int) -> Tuple[Tuple[int, int], Tuple[int, int], np.ndarray]:
+    """Return center, axes, and a filled elliptical mask for an image of size (h, w)."""
+    center = (w // 2, h // 2)
+    axes = (w // 2, h // 2)
+    mask = np.zeros((h, w), dtype=np.uint8)
     cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360, color=255, thickness=-1)
-
-    # === Generate masked_processed for analysis ===
-    if sub_region.ndim == 2:
-        masked_processed = cv2.bitwise_and(sub_region, sub_region, mask=mask)
-    elif sub_region.ndim == 3 and sub_region.shape[2] == 3:
-        masked_processed = cv2.bitwise_and(sub_region, sub_region, mask=mask)
-    elif sub_region.ndim == 3 and sub_region.shape[2] == 4:
-        channels = cv2.split(sub_region)
-        for i in range(3):
-            channels[i] = cv2.bitwise_and(channels[i], channels[i], mask=mask)
-        masked_processed = cv2.merge(channels)
-    else:
-        raise ValueError("Unsupported processed image format")
-    return masked_processed, frame_pos, center, axes
+    return center, axes, mask
 
 
+def _apply_ellipse_mask(img: np.ndarray) -> np.ndarray:
+    """Apply a centered filled ellipse mask to img (gray, BGR, or BGRA)."""
+    h, w = img.shape[:2]
+    center = (w // 2, h // 2)
+    axes = (w // 2, h // 2)
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.ellipse(mask, center=center, axes=axes, angle=0, startAngle=0, endAngle=360,
+                color=255, thickness=-1)
 
-def second_region(graphicsView_subImage,graphicsView_MainFig):
+    # Grayscale
+    if img.ndim == 2:
+        return cv2.bitwise_and(img, img, mask=mask)
+
+    # BGR
+    if img.ndim == 3 and img.shape[2] == 3:
+        return cv2.bitwise_and(img, img, mask=mask)
+
+    # BGRA (preserve alpha channel)
+    if img.ndim == 3 and img.shape[2] == 4:
+        bgr = img[:, :, :3]
+        a   = img[:, :, 3]
+        bgr_masked = cv2.bitwise_and(bgr, bgr, mask=mask)
+        return np.dstack([bgr_masked, a])
+
+    raise ValueError("Unsupported image format for ellipse masking")
+
+
+def show_ROI(ROI: QtWidgets.QGraphicsRectItem,
+             image: np.ndarray,
+             ROI_type: str = "pupil") -> Tuple[np.ndarray, List[int]]:
+    """
+    Extract and (optionally) mask an ROI from the full frame.
+
+    Returns
+    -------
+    final_image : np.ndarray
+        Sub-image; if ROI_type == 'pupil', a centered elliptical mask is applied.
+    frame : [top, bottom, left, right]
+    """
+    rect = ROI.rect()
+    top, bottom = int(rect.top()) * 2, int(rect.bottom()) * 2
+    left, right = int(rect.left()) * 2, int(rect.right()) * 2
+    sub = image[top:bottom, left:right]
+    frame = [top, bottom, left, right]
+
+    if ROI_type == "pupil":
+        sub = _apply_ellipse_mask(sub)
+    return sub, frame
+
+
+def show_ROI2(sub_rect: QtCore.QRectF,
+              image: np.ndarray) -> Tuple[np.ndarray, List[int], Tuple[int, int], Tuple[int, int]]:
+    """
+    Variant returning center & axes; kept for compatibility with existing callers.
+    """
+    top, bottom = int(sub_rect.top()) * 2, int(sub_rect.bottom()) * 2
+    left, right = int(sub_rect.left()) * 2, int(sub_rect.right()) * 2
+    sub = image[top:bottom, left:right]
+    frame = [top, bottom, left, right]
+
+    h, w = sub.shape[:2]
+    center, axes, _ = _ellipse_center_axes_mask(h, w)
+    masked = _apply_ellipse_mask(sub)
+    return masked, frame, center, axes
+
+
+# ======================================================================
+# Graphics / display helpers
+# ======================================================================
+
+def second_region(graphicsView_subImage: QtWidgets.QGraphicsView,
+                  graphicsView_MainFig: QtWidgets.QGraphicsView) -> QtWidgets.QGraphicsScene:
+    """Create a fresh scene for the subimage view and link it to the main view."""
     scene2 = QtWidgets.QGraphicsScene(graphicsView_subImage)
     graphicsView_subImage.setScene(scene2)
     graphicsView_MainFig.graphicsView_subImage = graphicsView_subImage
     return scene2
 
-def display_region(image, graphicsView_MainFig, image_width, image_height, scene=None):
+
+def display_region(image: np.ndarray,
+                   graphicsView_MainFig: QtWidgets.QGraphicsView,
+                   image_width: int,
+                   image_height: int,
+                   scene: Optional[QtWidgets.QGraphicsScene] = None
+                   ) -> Tuple[QtWidgets.QGraphicsView, QtWidgets.QGraphicsScene]:
+    """
+    Display an image (BGR) inside a QGraphicsView; fits and disables scrollbars.
+
+    Notes
+    -----
+    - If a scene is supplied, removes the previous pixmap item first.
+    - Scales to half size (width/2, height/2) while keeping aspect ratio.
+    """
     if scene is None:
         scene = QtWidgets.QGraphicsScene(graphicsView_MainFig)
     else:
-        for item in scene.items():
+        # Remove existing pixmap items to avoid stacking
+        for item in list(scene.items()):
             if isinstance(item, QtWidgets.QGraphicsPixmapItem):
                 scene.removeItem(item)
                 del item
 
-    # Convert BGR (OpenCV format) to RGB for QImage
+    # BGR → RGB for Qt
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-    # Create QImage from RGB data
-    qimage = QtGui.QImage(image_rgb.data, image_width, image_height, image_rgb.strides[0], QtGui.QImage.Format_RGB888)
+    qimage = QtGui.QImage(image_rgb.data, image_width, image_height,
+                          image_rgb.strides[0], QtGui.QImage.Format_RGB888)
     pixmap = QtGui.QPixmap.fromImage(qimage)
-
-    # Scale the pixmap to fit inside the window
-    scaled_pixmap = pixmap.scaled(image_width/2, image_height/2, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+    scaled_pixmap = pixmap.scaled(image_width // 2, image_height // 2,
+                                  QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
 
     item = QtWidgets.QGraphicsPixmapItem(scaled_pixmap)
     item.setZValue(-1)
@@ -332,192 +386,152 @@ def display_region(image, graphicsView_MainFig, image_width, image_height, scene
     return graphicsView_MainFig, scene
 
 
-def _natural_key(s):
-    # Natural sort if your files are like frame_1.npy, frame_2.npy, ...
-    return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', s)]
+# ======================================================================
+# File utils
+# ======================================================================
 
-def list_npy_files(folder_path):
-    if not os.path.isdir(folder_path):
-        raise ValueError(f"Expected a directory, got: {folder_path!r}")
-    files = [f for f in os.listdir(folder_path) if f.lower().endswith('.npy')]
-    files.sort(key=_natural_key)  # natural sort; use .sort() if you prefer simple lexicographic
+_num_pat = re.compile(r"(\d+)")
+
+def _natural_key(s: str):
+    """Natural sort key: frame_2.npy < frame_10.npy."""
+    return [int(t) if t.isdigit() else t.lower() for t in _num_pat.split(s)]
+
+
+def list_npy_files(folder_path: Union[str, Path]) -> List[str]:
+    """Return naturally sorted .npy file names in a directory."""
+    folder = Path(folder_path)
+    if not folder.is_dir():
+        raise ValueError("Expected a directory, got: {!r}".format(folder))
+    files = [f.name for f in folder.iterdir() if f.suffix.lower() == ".npy"]
+    files.sort(key=_natural_key)
     if not files:
-        raise ValueError(f"No .npy files found in: {folder_path!r}")
+        raise ValueError("No .npy files found in: {!r}".format(folder))
     return files
 
 
-def load_npy_by_index(folder_path, index, *, allow_pickle=False, mmap_mode=None):
-    if not os.path.isdir(folder_path):
-        raise ValueError(f"load_npy_by_index expects a directory, got: {folder_path!r}")
+def load_npy_by_index(folder_path: Union[str, Path],
+                      index: int,
+                      *,
+                      allow_pickle: bool = False,
+                      mmap_mode: Optional[str] = None) -> np.ndarray:
+    """Load a .npy file by natural order index."""
+    folder = Path(folder_path)
+    if not folder.is_dir():
+        raise ValueError("load_npy_by_index expects a directory, got: {!r}".format(folder))
 
-    files = [f for f in os.listdir(folder_path) if f.lower().endswith('.npy')]
-    files.sort()  # simple lexicographic sort; see natural sort below if needed
-    if not files:
-        raise ValueError(f"No .npy files found in: {folder_path!r}")
-
+    files = list_npy_files(folder)
     if index < 0 or index >= len(files):
-        raise IndexError(f"Index {index} out of range (0..{len(files)-1})")
+        raise IndexError("Index {} out of range (0..{})".format(index, len(files) - 1))
 
-    path = os.path.join(folder_path, files[index])
+    path = folder / files[index]
     try:
-        return np.load(path, allow_pickle=allow_pickle, mmap_mode=mmap_mode)
+        return np.load(str(path), allow_pickle=allow_pickle, mmap_mode=mmap_mode)
     except Exception as e:
-        raise IOError(f"Failed to load {path}: {e}") from e
+        raise IOError("Failed to load {}: {}".format(path, e)) from e
 
-def load_frame_by_index(cap, index):
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    if index < 0 or index >= total_frames:
-        raise IndexError("Index out of range")
+
+def load_frame_by_index(cap: cv2.VideoCapture, index: int) -> np.ndarray:
+    """Seek to frame `index` and return it; raises if out of range or read fails."""
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if index < 0 or index >= total:
+        raise IndexError("Index {} out of range (0..{})".format(index, total - 1))
     cap.set(cv2.CAP_PROP_POS_FRAMES, index)
-    ret, frame = cap.read()
-    if not ret:
-        raise ValueError(f"Error: Could not read frame at index {index}.")
+    ok, frame = cap.read()
+    if not ok:
+        raise ValueError("Could not read frame at index {}.".format(index))
     return frame
 
 
-def setup_sliders(parent,min,max,set_value, orientation):
-    Slider = QtWidgets.QSlider(parent)
-    if orientation == "Vertical":
-        Slider.setOrientation(QtCore.Qt.Vertical)
-    elif orientation == "horizontal":
-        Slider.setOrientation(QtCore.Qt.Horizontal)
-    Slider.setMinimum(min)
-    Slider.setMaximum(max)
-    Slider.setValue(set_value)
-    Slider.setEnabled(False)
-    return Slider
-def set_active_style():
-    return """
-    QWidget {
-        background-color: #3d4242;
-        color: #000000;
-    }
-    
-    QRadioButton::indicator:checked {
-    background-color: #CD853F;
-    border: 1px solid white;
-    }
+# ======================================================================
+# UI helpers (styles / sliders / eyecorner marker)
+# ======================================================================
 
-    QRadioButton::indicator:unchecked {
-        background-color: #4d5454;
-        border: 1px solid gray;
-    }
-
-    QLabel,
-    QRadioButton,
-    QCheckBox,
-    QGroupBox::title {
-        color: white;
-    }
-
-    QPushButton {
-        background-color: #CD853F;
-        color: white;
-        border: 3px outset #CD853F;
-        padding: 4px;
-    }
-    QPushButton:hover {
-        background-color: #c24b23;
-    }
-
-    QLineEdit, QSlider {
-        background-color: #3d4242;
-        color: #000000;
-        border: 1px solid #3d4242;
-        padding: 5px;
-    }
-
-    QSlider::groove:horizontal {
-        border: 1px solid #999999;
-        height: 8px;
-        background: #b0b0b0;
-        margin: 2px 0;
-    }
-
-    QSlider::handle:horizontal {
-        background: #CD853F;
-        border: 1px ridge #CD853F;
-        width: 8px;
-        height: 20px;
-        margin: -7px 0;
-        border-radius: 3px;
-    }
+def setup_sliders(parent: QtWidgets.QWidget,
+                  min_val: int,
+                  max_val: int,
+                  set_value: int,
+                  orientation: str) -> QtWidgets.QSlider:
     """
-def set_inactive_style():
+    Create a disabled slider with given bounds/value.
+
+    orientation: "Vertical" or "Horizontal" (case-insensitive)
+    """
+    slider = QtWidgets.QSlider(parent)
+    if orientation.lower().startswith("v"):
+        slider.setOrientation(QtCore.Qt.Vertical)
+    else:
+        slider.setOrientation(QtCore.Qt.Horizontal)
+    slider.setMinimum(min_val)
+    slider.setMaximum(max_val)
+    slider.setValue(set_value)
+    slider.setEnabled(False)
+    return slider
+
+
+def set_active_style() -> str:
+    """Palette for active widgets."""
     return """
-    
-    QWidget {
-        background-color: #3d4242;
-        color: #000000;
-    }
-    
-    QRadioButton::indicator:checked {
-    background-color: 3d4242;
-    border: 1px solid white;
-    }
+    QWidget { background-color: #3d4242; color: #000000; }
 
-    QRadioButton::indicator:unchecked {
-        background-color: 3d4242;
-        border: 1px solid gray;
-    }
+    QRadioButton::indicator:checked { background-color: #CD853F; border: 1px solid white; }
+    QRadioButton::indicator:unchecked { background-color: #4d5454; border: 1px solid gray; }
 
-    QLabel,
-    QRadioButton,
-    QCheckBox,
-    QGroupBox::title {
-        color: white;
-    }
+    QLabel, QRadioButton, QCheckBox, QGroupBox::title { color: white; }
 
     QPushButton {
-        background-color:  #3d4242;
-        color: red;
-        border: 3px outset  #3d4242;
-        padding: 4px;
+        background-color: #CD853F; color: white; border: 3px outset #CD853F; padding: 4px;
     }
-    QPushButton:hover {
-        background-color:  #3d4242;
-    }
+    QPushButton:hover { background-color: #c24b23; }
 
-    QLineEdit, QSlider {
-        background-color:  #4d5454;
-        color: #4d5454;
-        border: 1px solid  #4d5454;
-        padding: 5px;
-    }
-    QSlider::groove:horizontal {
-        border: 1px solid  #4d5454;
-        height: 8px;
-        background:  #4d5454;
-        margin: 2px 0;
-    }
-    QSlider::handle:horizontal {
-        background: #4d5454;
-        border: 1px solid  #4d5454;
-        width: 10px;
-        height: 20px;
-        margin: -7px 0;
-        border-radius: 4px;
-    }
+    QLineEdit, QSlider { background-color: #3d4242; color: #000000; border: 1px solid #3d4242; padding: 5px; }
+
+    QSlider::groove:horizontal { border: 1px solid #999999; height: 8px; background: #b0b0b0; margin: 2px 0; }
+    QSlider::handle:horizontal { background: #CD853F; border: 1px ridge #CD853F; width: 8px; height: 20px;
+                                 margin: -7px 0; border-radius: 3px; }
     """
 
 
-def add_eyecorner(x_pos , y_pos, scene2, graphicsView_subImage):
-    if hasattr(graphicsView_subImage, 'eyecorner') and graphicsView_subImage.eyecorner is not None:
+def set_inactive_style() -> str:
+    """Palette for inactive/disabled widgets."""
+    return """
+    QWidget { background-color: #3d4242; color: #000000; }
+
+    QRadioButton::indicator:checked { background-color: #3d4242; border: 1px solid white; }
+    QRadioButton::indicator:unchecked { background-color: #3d4242; border: 1px solid gray; }
+
+    QLabel, QRadioButton, QCheckBox, QGroupBox::title { color: white; }
+
+    QPushButton { background-color: #3d4242; color: red; border: 3px outset #3d4242; padding: 4px; }
+    QPushButton:hover { background-color: #3d4242; }
+
+    QLineEdit, QSlider { background-color: #4d5454; color: #4d5454; border: 1px solid #4d5454; padding: 5px; }
+
+    QSlider::groove:horizontal { border: 1px solid #4d5454; height: 8px; background: #4d5454; margin: 2px 0; }
+    QSlider::handle:horizontal { background: #4d5454; border: 1px solid #4d5454; width: 10px; height: 20px;
+                                 margin: -7px 0; border-radius: 4px; }
+    """
+
+
+def add_eyecorner(x_pos: float,
+                  y_pos: float,
+                  scene2: QtWidgets.QGraphicsScene,
+                  graphicsView_subImage: QtWidgets.QGraphicsView) -> Tuple[float, float]:
+    """
+    Draw/replace a small dot showing the eye corner on the subimage scene.
+
+    Returns the (x, y) tuple for convenience.
+    """
+    # Remove previous marker if present
+    if hasattr(graphicsView_subImage, "eyecorner") and graphicsView_subImage.eyecorner is not None:
         scene2.removeItem(graphicsView_subImage.eyecorner)
-    diameter = 5
-    eyecorner = QtWidgets.QGraphicsEllipseItem(x_pos-diameter/2 , y_pos-diameter/2, diameter , diameter)
+
+    diameter = 5.0
+    item = QtWidgets.QGraphicsEllipseItem(x_pos - diameter / 2, y_pos - diameter / 2, diameter, diameter)
     pen = QtGui.QPen(QtGui.QColor("peru"))
     pen.setWidth(0)
-    eyecorner.setPen(pen)
-    brush = QtGui.QBrush(QtGui.QColor("peru"))
-    eyecorner.setBrush(brush)
-    scene2.addItem(eyecorner)
-    graphicsView_subImage.eyecorner = eyecorner
-    eye_corner_center = (x_pos , y_pos)
-    return eye_corner_center
+    item.setPen(pen)
+    item.setBrush(QtGui.QBrush(QtGui.QColor("peru")))
 
-
-
-
-
-
+    scene2.addItem(item)
+    graphicsView_subImage.eyecorner = item
+    return (x_pos, y_pos)

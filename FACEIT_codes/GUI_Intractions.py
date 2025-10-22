@@ -330,7 +330,7 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
                 _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"pupil")
                 self.parent.set_frame(self.parent.Pupil_frame)
-                print("self.parent.Pupil_frame", self.parent.Pupil_frame)
+
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
             elif self.Resize_reflect:

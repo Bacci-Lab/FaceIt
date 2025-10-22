@@ -1,44 +1,37 @@
+from pathlib import Path
 import numpy as np
-import matplotlib.pyplot as plt
-data = np.load(r"C:\Users\faezeh.rabbani\PycharmProjects\FaceProject\test_data\test_images\FaceIt\faceit.npz", allow_pickle=True)
-Face_frame = data['Face_frame']
-print("Face_frame", Face_frame)
-Pupil_frame = data['Pupil_frame']
-print("Pupil_frame", Pupil_frame)
+from pynwb import NWBHDF5IO
 
-import matplotlib.patches as patches
+nwb_path = Path(r"C:\Users\faezeh.rabbani\FaceIt_saves\FaceIt/faceit.nwb")
 
-import numpy as np
-import matplotlib.pyplot as plt
-import cv2
+with NWBHDF5IO(str(nwb_path), "r") as io:
+    nwb = io.read()
+    mod = nwb.processing["eye_facial_movement"]
 
-# --- Load the image ---
-image = np.load(r"C:\Users\faezeh.rabbani\PycharmProjects\FaceProject\test_data\test_images\1710514480.552814.npy", allow_pickle=True)
+    # List series names:
+    print(list(mod.data_interfaces.keys()))
 
-# --- Face_frame coordinates ---
-top, bottom, left, right = Pupil_frame
-
-# --- Compute ellipse center and axes ---
-center = (int((left + right) / 2), int((top + bottom) / 2))
-axes = (int((right - left) / 2), int((bottom - top) / 2))  # (width/2, height/2)
-angle = 0  # in degrees (no rotation)
-
-# --- Copy image for drawing ---
-image_with_ellipse = image.copy()
-
-# --- Draw the ellipse outline directly on the image ---
-# If the image is grayscale, convert to BGR so we can use color
-if image_with_ellipse.ndim == 2:
-    image_with_ellipse = cv2.cvtColor(image_with_ellipse, cv2.COLOR_GRAY2BGR)
-
-cv2.ellipse(
-    image_with_ellipse, center, axes, angle,
-    0, 360, (0, 255, 0), 2  # green outline
-)
-
-# --- Show the result ---
-plt.figure(figsize=(10, 6))
-plt.imshow(cv2.cvtColor(image_with_ellipse, cv2.COLOR_BGR2RGB))
-plt.title("Elliptical ROI Overlay (No Mask)")
-plt.axis('off')
-plt.show()
+    # Read common series
+    pupil_dilation = np.asarray(mod.data_interfaces["pupil_dilation"].data)
+    pupil_dilation_blinking_corrected = np.asarray(
+        mod.data_interfaces["pupil_dilation_blinking_corrected"].data
+    )
+    blinking_ids = np.asarray(mod.data_interfaces["blinking_ids"].data)
+    pupil_center = np.asarray(mod.data_interfaces["pupil_center"].data)
+    pupil_center_X = np.asarray(mod.data_interfaces["pupil_center_X"].data)
+    pupil_center_y = np.asarray(mod.data_interfaces["pupil_center_y"].data)
+    X_saccade = np.asarray(mod.data_interfaces["X_saccade"].data)
+    Y_saccade = np.asarray(mod.data_interfaces["Y_saccade"].data)
+    pupil_width = np.asarray(mod.data_interfaces["width"].data)
+    pupil_height = np.asarray(mod.data_interfaces["height"].data)
+    motion_energy = np.asarray(mod.data_interfaces["motion_energy"].data)
+    motion_energy_without_grooming = np.asarray(
+        mod.data_interfaces["motion_energy_without_grooming"].data
+    )
+    grooming_ids = np.asarray(mod.data_interfaces["grooming_ids"].data)
+    grooming_threshold = np.asarray(mod.data_interfaces["grooming_threshold"].data)
+    pupil_distance_from_corner = np.asarray(
+        mod.data_interfaces["pupil_distance_from_corner"].data
+    )
+    pupil_angle = np.asarray(mod.data_interfaces["pupil_angle"].data)
+    print("pupil_angle", pupil_angle)

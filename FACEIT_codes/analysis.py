@@ -25,7 +25,6 @@ def _fmt_secs(s):
     h, m = divmod(m, 60)
     return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
-
 def process_single_frame(args):
     (
         current_image, sub_image,
@@ -33,42 +32,40 @@ def process_single_frame(args):
         erased_pixels, reflect_ellipse,
         eye_corner_center, mnd,
         reflect_brightness,
-        clustering_method, binary_method,binary_threshold,
+        clustering_method, binary_method, binary_threshold,
         saturation_method,
         brightness, brightness_curve,
         secondary_BrightGain, brightness_concave_power,
         saturation_ununiform,
-        primary_direction, secondary_direction, c_value,block_size
+        primary_direction, secondary_direction,
+        c_value, block_size,
+        disable_filtering,                      # ← NEW: bool passed in args
     ) = args
 
+    sub_region, frame_pos, pupil_frame_center, frame_axes = show_ROI2(sub_image, current_image)
 
-    sub_region,frame_pos, pupil_frame_center, frame_axes = show_ROI2(sub_image, current_image)
-
-    # === Build saturation settings ===
     settings = SaturationSettings(
         primary_direction=primary_direction,
         brightness_curve=brightness_curve,
         brightness=brightness,
         secondary_direction=secondary_direction,
         brightness_concave_power=brightness_concave_power,
-        secondary_BrightGain = secondary_BrightGain,
-        saturation_ununiform=saturation_ununiform
+        secondary_BrightGain=secondary_BrightGain,
+        saturation_ununiform=saturation_ununiform,
     )
 
-    # === Apply saturation method ===
+    # Gradual / Uniform processing (unchanged) ...
     if saturation_method == "Gradual":
         if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
-            # Grayscale image
             processed = apply_intensity_gradient_gray(sub_region, settings)
         else:
-            # Fake grayscale check
-            if np.allclose(sub_region[..., 0], sub_region[..., 1]) and np.allclose(sub_region[..., 1], sub_region[..., 2]):
+            if (np.allclose(sub_region[..., 0], sub_region[..., 1]) and
+                np.allclose(sub_region[..., 1], sub_region[..., 2])):
                 gray = cv2.cvtColor(sub_region, cv2.COLOR_BGR2GRAY)
                 processed = apply_intensity_gradient_gray(gray, settings)
             else:
                 processed = change_Gradual_saturation(sub_region, settings)
                 processed = cv2.cvtColor(processed, cv2.COLOR_RGB2BGR)
-
     elif saturation_method == "Uniform":
         if len(sub_region.shape) == 2 or sub_region.shape[2] == 1:
             sub_region = cv2.cvtColor(sub_region, cv2.COLOR_GRAY2BGR)
@@ -76,22 +73,29 @@ def process_single_frame(args):
     else:
         processed = sub_region.copy()
 
-    # === Convert to RGBA for pupil detection ===
+    # Detector expects BGRA
     sub_region_rgba = cv2.cvtColor(processed, cv2.COLOR_BGR2BGRA)
 
     _, center, width, height, angle, current_area = pupil_detection.detect_pupil(
-        sub_region_rgba, erased_pixels, reflect_ellipse, mnd,reflect_brightness, clustering_method, binary_method, binary_threshold,c_value,block_size
+        sub_region_rgba,
+        erased_pixels, reflect_ellipse, mnd, reflect_brightness,
+        clustering_method, binary_method, binary_threshold, c_value, block_size,
+        disable_filtering=disable_filtering,          # ← use the bool you unpacked
     )
 
     pupil_distance_from_corner = (
-        math.sqrt((center[0] - eye_corner_center[0]) ** 2 + (center[1] - eye_corner_center[1]) ** 2)
+        math.hypot(center[0] - eye_corner_center[0], center[1] - eye_corner_center[1])
         if eye_corner_center is not None else np.nan
     )
 
-    center = int(center[0]), int(center[1])
+    center = (int(center[0]), int(center[1]))
     width, height = int(width), int(height)
     current_area = np.pi * width * height
-    return current_area, center, center[0], center[1], width, height, pupil_distance_from_corner, frame_pos, pupil_frame_center, frame_axes
+
+    return (current_area, center, center[0], center[1],
+            width, height, pupil_distance_from_corner,
+            frame_pos, pupil_frame_center, frame_axes)
+
 
 
 
@@ -151,7 +155,8 @@ def _detect_frame(i, frame, roi_slice, cfg):
         img_for_det,
         cfg["erased_pixels"], cfg["reflect_ellipse"], cfg["mnd"],
         cfg["reflect_brightness"], cfg["clustering_method"], cfg["binary_method"],
-        cfg["binary_threshold"], cfg["c_value"], cfg["block_size"]
+        cfg["binary_threshold"], cfg["c_value"], cfg["block_size"],
+        disable_filtering=cfg["disable_filtering"],
     )
 
     cx, cy = int(center[0]), int(center[1])
@@ -208,15 +213,10 @@ def _detect_one(i, images, roi_slice, cfg):
 
     _, center, width, height, angle, _ = pupil_detection.detect_pupil(
         img_for_det,
-        cfg["erased_pixels"],
-        cfg["reflect_ellipse"],
-        cfg["mnd"],
-        cfg["reflect_brightness"],
-        cfg["clustering_method"],
-        cfg["binary_method"],
-        cfg["binary_threshold"],
-        cfg["c_value"],
-        cfg["block_size"]
+        cfg["erased_pixels"], cfg["reflect_ellipse"], cfg["mnd"],
+        cfg["reflect_brightness"], cfg["clustering_method"], cfg["binary_method"],
+        cfg["binary_threshold"], cfg["c_value"], cfg["block_size"],
+        disable_filtering=cfg["disable_filtering"],
     )
 
     cx, cy = int(center[0]), int(center[1])
@@ -345,8 +345,8 @@ class ProcessHandler:
         ratio = width / height
 
         # Detect blinking based on the ratio and pupil data using defined thresholds
-        blinking_id_ratio = pupil_detection.detect_blinking_ids_old(ratio, 20)
-        blinking_id_area = pupil_detection.detect_blinking_ids_old(pupil, 10)
+        blinking_id_ratio = pupil_detection.detect_blinking_ids(ratio, 20)
+        blinking_id_area = pupil_detection.detect_blinking_ids(pupil, 10)
 
         # Combine the detected blinking indices and remove duplicates
         combined_blinking_ids = list(set(blinking_id_ratio + blinking_id_area))
@@ -521,6 +521,9 @@ class ProcessHandler:
             block_size=block_size,
             needs_bgra=needs_bgra,
             eye_corner_center=eye_corner_center,
+
+            # NEW: read the checkbox from the main window; default False if missing
+            disable_filtering=bool(getattr(self.app_instance, "deactivate_filtering", lambda: False)()),
         )
 
         # ---- 4) Preallocate outputs ----

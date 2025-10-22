@@ -1,19 +1,27 @@
 How to Use FaceIt GUI
 =====================
 
-Open data to process
+Open Data to Process
 ^^^^^^^^^^^^^^^^^^^^
 
-To analyze mouse face motion data, navigate to the File tab in the menu bar and select the option to open an image series **Folder** (Ctrl + N) or a video  **file** (Ctrl + V). Once selected, the images or video frames will be displayed in the GUI for analysis.
+To analyze mouse face motion data, navigate to the **File** tab in the menu bar and select one of the following options:
 
+- **Folder** — open a ``.npy`` image series (Ctrl + N)
+- **File** — open a video file (Ctrl + V)
+
+Once selected, the images or video frames will be displayed in the GUI for analysis.
+
+
+---
 
 Analyse Pupil
 ^^^^^^^^^^^^^^
 
-To begin pupil tracking, use the **Pupil ROI** button in the **ROI tools** section to define the eyeball region. You can adjust the position of the Pupil ROI by dragging it or resize it by clicking and dragging the blue square at its corner.
+To begin pupil tracking, use the **Pupil ROI** button in the **ROI Tools** section to define the eyeball region.
+You can adjust the position of the ROI by dragging it, or resize it by clicking and dragging the blue square at its corner.
 
 .. image:: _static/ROI_tools.png
-   :alt: Image ROI_tools
+   :alt: ROI Tools
    :width: 400px
    :align: center
 
@@ -25,46 +33,58 @@ To begin pupil tracking, use the **Pupil ROI** button in the **ROI tools** secti
 
 After selecting and adjusting the Eyeball ROI, you can use the **Eraser** option to remove pixels from the surrounding eye region. This ensures that these pixels are excluded from further analysis. The size of the eraser can be customized in the settings window.
 
-.. figure:: _static/Pupil_roi_chosen.png
-   :alt: Image Pupil_roi_chosen
+
+.. image:: _static/ROI_tools.png
+   :alt: ROI Tools
    :width: 400px
    :align: center
 
-   Example of eyeball chosen ROI.
-
 .. raw:: html
 
    <div style="margin-bottom: 20px;"></div>
 
+After selecting and adjusting the eyeball ROI, use the **Eraser** option to remove unwanted pixels around the eye region.
+This ensures that these pixels are excluded from further analysis.
+You can customize the eraser size in the **Settings** window.
+
+.. figure:: _static/Pupil_roi_chosen.png
+   :alt: Pupil ROI chosen
+   :width: 400px
+   :align: center
+
+   **Figure:** Example of eyeball ROI selection.
 
 .. figure:: _static/erased_eye.png
-   :alt: Image erased_eye
+   :alt: Erased surrounding eye region
    :width: 300px
    :align: center
 
-   Erasing pixels from the surrounding eye region.
-
-.. raw:: html
-
-   <div style="margin-bottom: 20px;"></div>
+   **Figure:** Erasing pixels from the surrounding eye region.
 
 .. important::
-    Don’t erase regions the pupil might cross.
+   Avoid erasing regions that the pupil might cross.
+
+---
+
+
 
 Pupil Area Visualization Modes
 ------------------------------
 
-FaceIt provides two ways to visualize the pupil area:
+FaceIt provides two visualization modes for the pupil area:
 
-- **Normal preview** — continuous/raw pupil area trace.
-- **Binary preview** — area estimated from a thresholded (binary) pupil mask.
+- **Normal preview** — continuous, unthresholded pupil area trace.
+- **Binary preview** — pupil area estimated from a thresholded (binary) mask.
 
-Toggling the view
+Toggling the View
 ~~~~~~~~~~~~~~~~~
 
-Use the **Show binary** checkbox to switch between modes.
+Use the **Show Binary** checkbox to switch between visualization modes.
 
+Example Views
+~~~~~~~~~~~~~
 
+Below are examples of the two visualization modes displayed side by side:
 
 .. raw:: html
 
@@ -79,6 +99,7 @@ Use the **Show binary** checkbox to switch between modes.
        </div>
    </div>
 
+---
 
 
 Binarization methods
@@ -108,6 +129,7 @@ To switch methods, use the **Constant Binary** checkbox:
    :width: 900px
    :align: center
 
+   **Figure:** Threshold slider active in Global (Constant) mode.
 
 When **Constant Binary** is checked, a **threshold slider** becomes active so you can set the
 global threshold used for the constant method.
@@ -154,15 +176,15 @@ Defaults
 - In **Adaptive** mode, the pipeline applies **automatic reflection detection + inpainting**
   unless you provide manual ellipses.
 
-Behavior by binarization method
+Behavior by Binarization Method
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 +--------------------+---------------------------+-------------------------------+
-| Thresholding mode  | Auto detect + inpaint     | Manual ellipses               |
+| **Mode**           | **Auto detect + inpaint** | **Manual ellipses**           |
 +====================+===========================+===============================+
-| **Adaptive**       | **Yes** (default)         | Inpaint using ellipses        |
+| Adaptive           | Yes (default)             | Inpaint using ellipses        |
 +--------------------+---------------------------+-------------------------------+
-| **Constant/Global**| **No**                    | Overlap fix (no inpainting)   |
+| Constant / Global  | No                        | Overlap fix (no inpainting)   |
 +--------------------+---------------------------+-------------------------------+
 
 How it works
@@ -214,25 +236,18 @@ complementary tools to precondition frames before binarization:
 - **Gradual Image Adjustment** — applies a spatial brightness/saturation gradient to
   compensate for vignetting or directional lighting.
 
-.. figure:: _static/Light_adgustment.png
-   :alt: Light adjustment panel
-   :width: 900px
-   :align: center
 
-   **Figure:** Light adjustment panel
-
-
-
-At a glance
+At a Glance
 ~~~~~~~~~~~
 
 +---------------------------+--------------------------+----------------------------------+
-| Tool                      | What it fixes            | Typical use                      |
+| **Tool**                  | **What it fixes**        | **Typical use**                  |
 +===========================+==========================+==================================+
-| **Uniform**               | Low contrast overall     | Quick global boost for dark ROI  |
+| Uniform                   | Low contrast overall     | Quick global boost for dark ROI  |
 +---------------------------+--------------------------+----------------------------------+
-| **Gradual**               | Uneven lighting/vignet.  | Brighten one side / center edges |
+| Gradual                   | Uneven lighting/vignet.  | Brighten one side or center edges|
 +---------------------------+--------------------------+----------------------------------+
+
 
 Uniform Image Adjustment
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -461,6 +476,19 @@ The visualization area is divided into two main plots:
 
 Both panels share a common **x-axis**, representing **frame number**.
 
+
+
+.. figure:: _static/Data visualization in the GUI.png
+   :alt: Data visualization in the GUI
+   :width: 900px
+   :align: center
+
+
+   **Figure:** Data visualization in the GUI
+
+
+
+
 Navigation and interaction
 --------------------------
 
@@ -473,11 +501,22 @@ Navigation and interaction
   next to the slider and pressing **Enter**.
 
 
-Post-processing
+Post processing
 ^^^^^^^^^^^^^^^
 
 After the main processing finishes, **FaceIt** provides optional post-processing
 tools you can apply to clean signals and flag artifacts. All actions are **undoable**.
+
+
+.. figure:: _static/Post_processing.png
+   :alt: Post_processing
+   :width: 900px
+   :align: center
+
+
+   **Figure:** Post Processing Panel
+
+
 
 Detect blinking
 ---------------

@@ -356,7 +356,7 @@ class Display:
         # === Apply binarization ===
         if self.app_instance.Show_binary:
             if self.app_instance.binary_method == "Adaptive":
-                binary = pupil_detection.Image_binarization(processed,self.app_instance.reflect_brightness,self.app_instance.c_value,
+                binary = pupil_detection.Image_binarization_Adaptive(processed,self.app_instance.reflect_brightness,self.app_instance.c_value,
                                                             self.app_instance.block_size, self.app_instance.erased_pixels, self.app_instance.reflect_ellipse)
             elif self.app_instance.binary_method == "Constant":
                 binary = pupil_detection.Image_binarization_constant(processed,self.app_instance.erased_pixels, self.app_instance.binary_threshold )
@@ -393,6 +393,8 @@ class Display:
 
         # === Pupil Detection ===
         if Detect_pupil:
+            disable = bool(getattr(self.app_instance, "deactivate_filtering", lambda: False)())
+
             _, center, w, h, angle, _ = pupil_detection.detect_pupil(
                 processed,
                 self.app_instance.erased_pixels,
@@ -403,8 +405,10 @@ class Display:
                 self.app_instance.binary_method,
                 self.app_instance.binary_threshold,
                 self.app_instance.c_value,
-                self.app_instance.block_size
+                self.app_instance.block_size,
+                disable_filtering=disable,  # ← NEW
             )
+
             ellipse_item = QtWidgets.QGraphicsEllipseItem(
                 int(center[0] - w), int(center[1] - h), w * 2, h * 2
             )

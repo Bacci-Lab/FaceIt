@@ -423,7 +423,6 @@ class LoadData:
         app.checkBox_pupil.setChecked(False)
         app.checkBox_face.setChecked(False)
         app.checkBox_nwb.setChecked(False)
-        app.save_video.setChecked(False)
 
         # Buttons
         app.Add_eyecorner.setEnabled(False)

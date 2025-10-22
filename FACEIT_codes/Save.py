@@ -1,461 +1,424 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
+
 import numpy as np
+import matplotlib.pyplot as plt
 from datetime import datetime
+
 from pynwb import NWBFile, NWBHDF5IO, ProcessingModule
 from pynwb.base import TimeSeries
-import os
-import logging
-import matplotlib.pyplot as plt
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+
 
 class SaveHandler:
-    def __init__(self, app_instance):
+    """
+    Handles saving Face-It results to compressed NPZ, NWB, and summary figures.
+
+    Expected app_instance attributes (if available):
+      - save_path: str | Path
+      - nwb_check(): -> bool
+      - pupil_check(): -> bool
+      - face_check(): -> bool
+      - video_path: Optional[str | Path]
+      - pupil_* / motion_* / grooming_* / blinking_ids / angle / Face_frame / Pupil_frame (arrays)
+    """
+
+    # ---- Public API ---------------------------------------------------------
+
+    def __init__(self, app_instance, base_path: Path | None = None):
+        self.app = app_instance
+        # Prefer explicit base_path, then app.save_path if present, else a safe default
+        base = (
+            Path(base_path)
+            if base_path is not None
+            else Path(getattr(self.app, "save_path", Path.home() / "FaceIt_saves"))
+        )
+        self.save_dir: Path = self._make_dir(base)
+
+    @staticmethod
+    def _make_dir(base_path: Path) -> Path:
+        save_directory = Path(base_path) / "FaceIt"
+        save_directory.mkdir(parents=True, exist_ok=True)
+        return save_directory
+
+    def init_save_data(self) -> None:
         """
-        Initialize the SaveHandler class with a reference to the app instance.
-
-        Parameters:
-        app_instance (object): The main application instance containing relevant data and methods.
-        """
-        self.app_instance = app_instance
-
-    def init_save_data(self):
-        """
-        Initializes data for saving. Checks if pupil and face data exist;
-        if not, it fills the arrays with NaNs.
+        Prepare data (fill missing arrays with NaNs where needed) and save:
+        - compressed NPZ
+        - NWB
+        - quick-look PNG figures
         """
 
-        if self.app_instance.save_video_chack():
-            pass
+        # Decide master length from pupil_center if available, otherwise motion_energy
+        len_data = self._infer_length()
 
-        self.save_directory = self._make_dir(self.app_instance.save_path)
+        # ---- Ensure pupil arrays exist (if pupil_check() is False)
+        if not self._call_bool_method(("pupil_check",)):
+            self._ensure_series(len_data, "pupil_center")
+            self._ensure_series(len_data, "pupil_center_X")
+            self._ensure_series(len_data, "pupil_center_y")  # original name kept
+            self._ensure_series(len_data, "final_pupil_area")
+            self._ensure_series(len_data, "pupil_dilation")
+            self._ensure_series(len_data, "X_saccade_updated", shape=(2, len_data))  # X/Y rows typical
+            self._ensure_series(len_data, "Y_saccade_updated", shape=(2, len_data))
+            self._ensure_series(len_data, "pupil_distance_from_corner")
+            self._ensure_series(len_data, "width")
+            self._ensure_series(len_data, "height")
+            self._ensure_series(len_data, "angle")
 
-        if hasattr(self.app_instance, 'pupil_center') and self.app_instance.pupil_center is not None:
-            len_data = len(self.app_instance.pupil_center)
+        # ---- Ensure face arrays exist (if face_check() is False)
+        if not self._call_bool_method(("face_check",)):
+            self._ensure_series(len_data, "motion_energy")
+            self._ensure_series(len_data, "facemotion_without_grooming")
+            self._ensure_series(len_data, "grooming_ids")
+            self._ensure_series(1, "grooming_thr")           # scalar threshold commonly 1-length
+            self._ensure_series(1, "Face_frame")             # frame reference often 1-length
+
+        # ---- Post conditions / defaults
+        if getattr(self.app, "facemotion_without_grooming", None) is None:
+            self.app.facemotion_without_grooming = getattr(self.app, "motion_energy", np.full((len_data,), np.nan))
+        if not hasattr(self.app, "grooming_ids") or self.app.grooming_ids is None:
+            self._ensure_series(len_data, "grooming_ids")
+        if not hasattr(self.app, "grooming_thr") or self.app.grooming_thr is None:
+            self._ensure_series(1, "grooming_thr")
+        if not hasattr(self.app, "blinking_ids") or self.app.blinking_ids is None:
+            self._ensure_series(len_data, "blinking_ids")
+        if not hasattr(self.app, "Pupil_frame") or self.app.Pupil_frame is None:
+            self._ensure_series(1, "Pupil_frame")
+
+        # ---- Save NWB
+        try:
+            nwb_out = self.save_dir / "faceit.nwb"
+            self._save_nwb(nwb_out)
+        except Exception as e:
+            logger.error("Failed to save NWB: %s", e, exc_info=True)
+
+        # ---- Save figures
+        try:
+            self._save_figures()
+        except Exception as e:
+            logger.error("Failed to save figures: %s", e, exc_info=True)
+
+    # ---- Internal helpers ---------------------------------------------------
+
+    def _infer_length(self) -> int:
+        """Choose a consistent primary length for 1D signals."""
+        if hasattr(self.app, "pupil_center") and getattr(self.app, "pupil_center") is not None:
+            return int(len(self.app.pupil_center))
+        if hasattr(self.app, "motion_energy") and getattr(self.app, "motion_energy") is not None:
+            return int(len(self.app.motion_energy))
+        # Last resort: avoid zero-length issues
+        logger.warning("Could not infer data length; defaulting to 1.")
+        return 1
+
+    def _call_bool_method(self, candidates: Tuple[str, ...]) -> bool:
+        """Call the first available boolean method name in `candidates` on app."""
+        for name in candidates:
+            fn = getattr(self.app, name, None)
+            if callable(fn):
+                try:
+                    return bool(fn())
+                except Exception:
+                    logger.warning("Method %s() raised; treating as False.", name, exc_info=True)
+                    return False
+        return False
+
+    def _ensure_series(self, length: int, attr: str, shape: Optional[Tuple[int, ...]] = None) -> None:
+        """
+        Ensure `self.app.attr` exists as a NumPy array of NaNs with given shape/length.
+        If shape is provided, use it; else create 1D (length,).
+        """
+        if getattr(self.app, attr, None) is not None:
+            return
+        if shape is None:
+            arr = np.full((length,), np.nan, dtype=float)
         else:
-            len_data = len(self.app_instance.motion_energy)
+            arr = np.full(shape, np.nan, dtype=float)
+        setattr(self.app, attr, arr)
 
-        def initialize_data(attribute_name):
-            setattr(self.app_instance, attribute_name, np.full((len_data,), np.nan))
+    # -------------------------- Saving: NPZ ----------------------------------
 
-        # Check and initialize pupil-related data
-        if not self.app_instance.pupil_check():
-            attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
-                          'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner',
-                          'width', 'height', 'angle']
-            for attr in attributes:
-                initialize_data(attr)
+    def _save_npz(self, include_video: bool) -> None:
+        """
+        Saves all relevant arrays to NPZ. Optionally embeds video bytes
+        (if `include_video` and `app.video_path` resolves to a file).
+        """
+        out_npz = self.save_dir / "faceit.npz"
 
-        # Check and initialize face-related data
-        if not self.app_instance.face_check():
-            self.app_instance.motion_energy = np.full((len_data,), np.nan)
-            self.app_instance.facemotion_without_grooming = np.full((len_data,), np.nan)
-            self.app_instance.grooming_ids = np.full((len_data,), np.nan)
-            self.app_instance.grooming_thr = np.full(1, np.nan)
-            self.app_instance.Face_frame = np.full(1, np.nan)
-        if not hasattr(self.app_instance, 'facemotion_without_grooming') or self.app_instance.facemotion_without_grooming is None:
-            self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
-            self.app_instance.grooming_ids = np.full((len_data,), np.nan)
-            self.app_instance.grooming_thr = np.full(1, np.nan)
-        if not hasattr(self.app_instance, 'blinking_ids'):
-            self.app_instance.blinking_ids = np.full((len_data,), np.nan)
-        else:
-            pass
-
-
-        # Save data
-        self.save_data(
-            pupil_center=self.app_instance.pupil_center,
-            pupil_center_X=self.app_instance.pupil_center_X,
-            pupil_center_y=self.app_instance.pupil_center_y,
-            pupil_dilation_blinking_corrected=self.app_instance.final_pupil_area,
-            pupil_dilation= self.app_instance.pupil_dilation,
-            X_saccade=self.app_instance.X_saccade_updated,
-            Y_saccade=self.app_instance.Y_saccade_updated,
-            pupil_distance_from_corner=self.app_instance.pupil_distance_from_corner,
-            width=self.app_instance.width,
-            height=self.app_instance.height,
-            motion_energy=self.app_instance.motion_energy,
-            motion_energy_without_grooming = self.app_instance.facemotion_without_grooming,
-            grooming_ids = self.app_instance.grooming_ids,
-            grooming_threshold = self.app_instance.grooming_thr,
-            blinking_ids = self.app_instance.blinking_ids,
-            angle = self.app_instance.angle,
-            Face_frame = self.app_instance.Face_frame,
-            Pupil_frame = self.app_instance.Pupil_frame
-
-
+        data_dict: Dict[str, np.ndarray] = dict(
+            pupil_center=np.asarray(getattr(self.app, "pupil_center", np.array([]))),
+            pupil_center_X=np.asarray(getattr(self.app, "pupil_center_X", np.array([]))),
+            pupil_center_y=np.asarray(getattr(self.app, "pupil_center_y", np.array([]))),
+            pupil_dilation_blinking_corrected=np.asarray(getattr(self.app, "final_pupil_area", np.array([]))),
+            pupil_dilation=np.asarray(getattr(self.app, "pupil_dilation", np.array([]))),
+            X_saccade=np.asarray(getattr(self.app, "X_saccade_updated", np.empty((0, 0)))),
+            Y_saccade=np.asarray(getattr(self.app, "Y_saccade_updated", np.empty((0, 0)))),
+            pupil_distance_from_corner=np.asarray(getattr(self.app, "pupil_distance_from_corner", np.array([]))),
+            width=np.asarray(getattr(self.app, "width", np.array([]))),
+            height=np.asarray(getattr(self.app, "height", np.array([]))),
+            motion_energy=np.asarray(getattr(self.app, "motion_energy", np.array([]))),
+            motion_energy_without_grooming=np.asarray(getattr(self.app, "facemotion_without_grooming", np.array([]))),
+            grooming_ids=np.asarray(getattr(self.app, "grooming_ids", np.array([]))),
+            grooming_threshold=np.asarray(getattr(self.app, "grooming_thr", np.array([]))),
+            blinking_ids=np.asarray(getattr(self.app, "blinking_ids", np.array([]))),
+            angle=np.asarray(getattr(self.app, "angle", np.array([]))),
+            Face_frame=np.asarray(getattr(self.app, "Face_frame", np.array([]))),
+            Pupil_frame=np.asarray(getattr(self.app, "Pupil_frame", np.array([]))),
         )
 
-
-    def save_data(self, **data_dict):
-        """
-        Saves data to a .npz file and includes a video file as binary data if 'save_video' is checked.
-        """
-        save_directory = os.path.join(self.save_directory, "faceit.npz")
-        save_position = os.path.join(self.save_directory, "pupil_frame_pos.npy")
-
-        # Check if "save_video" is checked
-        if self.app_instance.save_video_chack():
-            print("Saving video data...")
-            video_path = r"C:\Users\faezeh.rabbani\Desktop\2024_09_03\16-00-59\FaceCamera.wmv"
-
-            if os.path.exists(video_path):
-                with open(video_path, "rb") as video_file:
-                    video_bytes = video_file.read()  # Read video as binary
+        if include_video:
+            video_path = Path(getattr(self.app, "video_path", "")) if hasattr(self.app, "video_path") else None
+            if video_path and video_path.is_file():
+                try:
+                    logger.info("Embedding video bytes from %s", video_path)
+                    with open(video_path, "rb") as f:
+                        video_bytes = f.read()
+                    # Keep as object array so it's savable in NPZ
                     data_dict["video_file"] = np.array([video_bytes], dtype=object)
+                except Exception:
+                    logger.warning("Could not read video file: %s", video_path, exc_info=True)
             else:
-                print(f"Video file not found at {video_path}")
+                logger.info("Video path not set or missing; skipping embedding.")
 
         try:
-            np.savez_compressed(save_directory, **data_dict)
-            logging.info(f"Data successfully saved to {save_directory}")
+            np.savez_compressed(out_npz, **data_dict)
+            logger.info("Data successfully saved to %s", out_npz)
         except Exception as e:
-            logging.error(f"Failed to save data: {e}")
-        try:
-            nwb_save_path = os.path.join(self.save_directory, "faceit.nwb")
-            self.save_nwb(nwb_save_path)
-        except Exception as e:
-            logging.error(f"Failed to save .nwb data: {e}")
-        try:
-            self.save_fig()
-        except Exception as e:
-            logging.error(f"Failed to save image: {e}")
+            logger.error("Failed to save NPZ: %s", e, exc_info=True)
 
-    def save_nwb(self, output_path):
+    # -------------------------- Saving: NWB ----------------------------------
+
+    def _save_nwb(self, output_path: Path) -> None:
         """
-        Saves data to an .nwb file at the specified path.
-
-        Parameters:
-        output_path (str): The path where the .nwb file will be saved.
+        Saves to NWB if `app.nwb_check()` returns True.
+        Each TimeSeries uses timestamps matching its own length to avoid mismatches.
         """
-        if self.app_instance.nwb_check():
-            nwbfile = NWBFile(
-                session_description='faceit',
-                identifier='pupil_dilation_data',
-                session_start_time=datetime.now(),
-                file_create_date=datetime.now(),
-            )
+        if not self._call_bool_method(("nwb_check",)):
+            logger.info("NWB check returned False; skipping NWB save.")
+            return
 
-            if hasattr(self.app_instance, 'pupil_center') and self.app_instance.pupil_center is not None:
-                len_data = len(self.app_instance.pupil_center)
-            else:
-                len_data = len(self.app_instance.motion_energy)
+        nwbfile = NWBFile(
+            session_description="faceit",
+            identifier=f"pupil_facemotion_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            session_start_time=datetime.now(),
+            file_create_date=datetime.now(),
+        )
 
-            def initialize_data(attribute_name):
-                setattr(self.app_instance, attribute_name, np.full((len_data,), np.nan))
+        proc = ProcessingModule(
+            name="eye_facial_movement",
+            description=("Contains pupil size, dilation, position and saccade data, "
+                         "and whisker pad motion energy")
+        )
+        nwbfile.add_processing_module(proc)
 
-            # Check and initialize pupil-related data
-            if not self.app_instance.pupil_check():
-                attributes = ['pupil_center', 'pupil_center_X', 'pupil_center_y', 'final_pupil_area','pupil_dilation',
-                              'X_saccade_updated', 'Y_saccade_updated', 'pupil_distance_from_corner','width', 'height', 'angle', 'Pupil_frame']
+        # Helper to add a TimeSeries safely
+        def add_ts(name: str, data: Optional[np.ndarray], unit: str = "a.u."):
+            if data is None:
+                return
+            arr = np.asarray(data)
+            if arr.size == 0:
+                return
+            # Make row-major for 2D; most are 1D series
+            arr = np.ascontiguousarray(arr)
+            t = np.arange(arr.shape[-1]) if arr.ndim > 1 else np.arange(len(arr))
+            ts = TimeSeries(name=name, data=arr, unit=unit, timestamps=t)
+            proc.add_data_interface(ts)
 
-                for attr in attributes:
-                    initialize_data(attr)
+        # Add your signals (names kept close to NPZ keys)
+        add_ts("pupil_center", getattr(self.app, "pupil_center", None))
+        add_ts("pupil_center_X", getattr(self.app, "pupil_center_X", None))
+        add_ts("pupil_center_y", getattr(self.app, "pupil_center_y", None))
+        add_ts("pupil_dilation", getattr(self.app, "pupil_dilation", None))
+        add_ts("pupil_dilation_blinking_corrected", getattr(self.app, "final_pupil_area", None))
+        add_ts("X_saccade", getattr(self.app, "X_saccade_updated", None))
+        add_ts("Y_saccade", getattr(self.app, "Y_saccade_updated", None))
+        add_ts("pupil_distance_from_corner", getattr(self.app, "pupil_distance_from_corner", None))
+        add_ts("width", getattr(self.app, "width", None))
+        add_ts("height", getattr(self.app, "height", None))
+        add_ts("motion_energy", getattr(self.app, "motion_energy", None))
+        add_ts("motion_energy_without_grooming", getattr(self.app, "facemotion_without_grooming", None))
+        add_ts("grooming_ids", getattr(self.app, "grooming_ids", None), unit="frame")
+        add_ts("grooming_threshold", getattr(self.app, "grooming_thr", None), unit="a.u.")
+        add_ts("blinking_ids", getattr(self.app, "blinking_ids", None), unit="frame")
+        add_ts("pupil_angle", getattr(self.app, "angle", None), unit="deg")  # if angle in degrees
+        add_ts("Face_frame", getattr(self.app, "Face_frame", None), unit="frame")
+        add_ts("Pupil_frame", getattr(self.app, "Pupil_frame", None), unit="frame")
 
-            # Check and initialize face-related data
-            if not self.app_instance.face_check():
-                self.app_instance.motion_energy = np.full((len_data,), np.nan)
-                self.app_instance.facemotion_without_grooming = np.full((len_data,), np.nan)
-                self.app_instance.grooming_ids = np.full((len_data,), np.nan)
-                self.app_instance.grooming_thr = np.full(1, np.nan)
-                self.app_instance.Face_frame = np.full(1, np.nan)
-            if not hasattr(self.app_instance,
-                           'facemotion_without_grooming') or self.app_instance.facemotion_without_grooming is None:
-                self.app_instance.facemotion_without_grooming = self.app_instance.motion_energy
-                self.app_instance.grooming_ids = np.full((len_data,), np.nan)
-                self.app_instance.grooming_thr = np.full(1, np.nan)
-            if not hasattr(self.app_instance, 'blinking_ids'):
-                self.app_instance.blinking_ids = np.full((len_data,), np.nan)
-            else:
-                pass
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with NWBHDF5IO(str(output_path), "w") as io:
+            io.write(nwbfile)
+        logger.info("NWB saved to %s", output_path)
 
-            time_stamps = np.arange(0, len_data, 1)
+    # -------------------------- Saving: Figures ------------------------------
 
-            pupil_center_series = TimeSeries(
-                name='pupil_center',
-                data=self.app_instance.pupil_center,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-            pupil_center_X_series = TimeSeries(
-                name='pupil_center_X',
-                data=self.app_instance.pupil_center_X,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-            pupil_center_y_series = TimeSeries(
-                name='pupil_center_y',
-                data=self.app_instance.pupil_center_y,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-            pupil_dilation_blinking_corrected_series = TimeSeries(
-                name='pupil_dilation_blinking_corrected',
-                data=self.app_instance.final_pupil_area,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-            pupil_dilation_series = TimeSeries(
-                name='pupil_dilation',
-                data=self.app_instance.pupil_dilation,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-
-            X_saccade_series = TimeSeries(
-                name='X_saccade',
-                data=self.app_instance.X_saccade_updated,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-            Y_saccade_series = TimeSeries(
-                name='Y_saccade',
-                data=self.app_instance.Y_saccade_updated,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-            pupil_distance_from_corner_series = TimeSeries(
-                name='pupil_distance_from_corner',
-                data=self.app_instance.pupil_distance_from_corner,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-            width_series = TimeSeries(
-                name='width',
-                data=self.app_instance.width,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-
-            height_series = TimeSeries(
-                name='height',
-                data=self.app_instance.height,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-            motion_energy_series = TimeSeries(
-                name='motion_energy',
-                data=self.app_instance.motion_energy,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-            motion_energy_without_grooming_series = TimeSeries(
-                name='motion_energy_without_grooming',
-                data=self.app_instance.facemotion_without_grooming,
-                unit='arbitrary units',
-                timestamps=time_stamps
-            )
-
-            grooming_id_series = TimeSeries(
-                name='grooming ids',
-                data=self.app_instance.grooming_ids,
-                unit='frame',
-                timestamps=time_stamps
-            )
-
-            grooming_threshold = TimeSeries(
-                name='grooming threshold',
-                data=self.app_instance.grooming_thr,
-                unit='frame',
-                timestamps=time_stamps
-            )
-
-            blinking_ids = TimeSeries(
-                name='blinking ids',
-                data=self.app_instance.blinking_ids,
-                unit='frame',
-                timestamps=time_stamps
-            )
-
-            angle = TimeSeries(
-                name='pupil angle',
-                data=self.app_instance.angle,
-                unit='frame',
-                timestamps=time_stamps
-            )
-
-
-            Face_frame = TimeSeries(
-                name='Face motion frame',
-                data=self.app_instance.Face_frame,
-                unit='frame',
-                timestamps=time_stamps
-            )
-
-            Pupil_frame = TimeSeries(
-                name='Pupil frame',
-                data=self.app_instance.Pupil_frame,
-                unit='frame',
-                timestamps=time_stamps
-            )
-
-
-            processing_module = ProcessingModule(
-                name='eye facial movement',
-                description='Contains pupil size, dilation, position and saccade data and whisker pad motion energy'
-            )
-            nwbfile.add_processing_module(processing_module)
-
-
-            # Add the TimeSeries data to the processing module
-            processing_module.add_data_interface(pupil_dilation_series)
-            processing_module.add_data_interface(pupil_dilation_blinking_corrected_series)
-            processing_module.add_data_interface(blinking_ids)
-            processing_module.add_data_interface(pupil_center_series)
-            processing_module.add_data_interface(pupil_center_y_series)
-            processing_module.add_data_interface(pupil_center_X_series)
-            processing_module.add_data_interface(X_saccade_series)
-            processing_module.add_data_interface(Y_saccade_series)
-            processing_module.add_data_interface(width_series)
-            processing_module.add_data_interface(height_series)
-            processing_module.add_data_interface(pupil_distance_from_corner_series)
-            processing_module.add_data_interface(motion_energy_series)
-            processing_module.add_data_interface(motion_energy_without_grooming_series)
-            processing_module.add_data_interface(grooming_id_series)
-            processing_module.add_data_interface(grooming_threshold)
-            processing_module.add_data_interface(angle)
-            processing_module.add_data_interface(Face_frame)
-            processing_module.add_data_interface(Pupil_frame)
-
-
-            with NWBHDF5IO(output_path, 'w') as io:
-                io.write(nwbfile)
-
-            print(f"Data successfully saved to {output_path}")
-        else:
-            print("NWB check failed; data not saved.")
-
-    def save_fig(self):
+    def _save_figures(self) -> None:
         """
-        Saves figures for pupil dilation and motion energy data.
-
+        Saves quick-look PNGs for:
+          - blinking corrected pupil area
+          - raw pupil area
+          - motion energy (with grooming threshold line)
+          - face motion without grooming
+          - pupil center X/Y
         """
+        # Pupil (blinking corrected)
+        self._maybe_plot_line(
+            data=getattr(self.app, "final_pupil_area", None),
+            label="blinking_corrected",
+            color="firebrick",
+            filename="blinking_corrected.png",
+            saccade=getattr(self.app, "X_saccade_updated", None),
+        )
 
-        if hasattr(self.app_instance, 'final_pupil_area') and self.app_instance.final_pupil_area is not None:
-            self._save_single_fig(
-                data=self.app_instance.final_pupil_area,
-                label='blinking corrected',
-                color='firebrick',
-                filename="blinking_corrected.png",
-                saccade_data=self.app_instance.X_saccade_updated
-            )
+        # Pupil (raw)
+        self._maybe_plot_line(
+            data=getattr(self.app, "pupil_dilation", None),
+            label="pupil_dilation",
+            color="olive",
+            filename="pupil_area.png",
+            saccade=getattr(self.app, "X_saccade_updated", None),
+        )
 
+        # Motion energy
+        self._maybe_plot_line(
+            data=getattr(self.app, "motion_energy", None),
+            label="motion_energy",
+            color="salmon",
+            filename="motion_energy.png",
+            draw_groom_thr=True,
+        )
 
-        if hasattr(self.app_instance, 'pupil_dilation') and self.app_instance.pupil_dilation is not None:
-            self._save_single_fig(
-                data=self.app_instance.pupil_dilation,
-                label='pupil_dilation',
-                color='olive',
-                filename="pupil_area.png",
-                saccade_data=self.app_instance.X_saccade_updated
-            )
+        # Face motion without grooming
+        self._maybe_plot_line(
+            data=getattr(self.app, "facemotion_without_grooming", None),
+            label="facemotion_without_grooming",
+            color="grey",
+            filename="facemotion_without_grooming.png",
+        )
 
-        # Check and save motion energy data
-        if hasattr(self.app_instance, 'motion_energy') and self.app_instance.motion_energy is not None:
-            self._save_single_fig(
-                data=self.app_instance.motion_energy,
-                label='motion_energy',
-                color='salmon',
-                filename="motion_energy.png"
-            )
-        if hasattr(self.app_instance, 'facemotion_without_grooming') and self.app_instance.facemotion_without_grooming is not None:
-            self._save_single_fig(
-                data=self.app_instance.facemotion_without_grooming,
-                label='facemotion without grooming',
-                color='grey',
-                filename="facemotion_without_grooming.png"
-            )
-        # --- NEW: Save pupil center X and Y plots ---
-        if hasattr(self.app_instance, 'pupil_center_X') and hasattr(self.app_instance, 'pupil_center_y'):
-            x_data = np.array(self.app_instance.pupil_center_X)
-            y_data = np.array(self.app_instance.pupil_center_y)
-            if x_data.size > 0 and y_data.size > 0:
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
-                x_vals = np.arange(len(x_data))
+        # Pupil center X/Y dual panel
+        x = getattr(self.app, "pupil_center_X", None)
+        y = getattr(self.app, "pupil_center_y", None)
+        if x is not None and y is not None:
+            x_arr = np.asarray(x)
+            y_arr = np.asarray(y)
+            if x_arr.size and y_arr.size:
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 6), sharex=True)
+                t = np.arange(len(x_arr))
+                ax1.plot(t, x_arr, color="teal", label="Pupil center X")
+                ax1.set_ylabel("X (px)")
+                ax1.set_title("Pupil center X over time")
+                ax1.grid(alpha=0.3)
+                ax1.legend()
 
-                ax1.plot(x_vals, x_data, color='teal', label='Pupil center X')
-                ax1.set_ylabel('X position')
-                ax1.set_title('Pupil center X over time')
-
-                ax2.plot(x_vals, y_data, color='darkorange', label='Pupil center Y')
-                ax2.set_ylabel('Y position')
-                ax2.set_xlabel('Frame')
-                ax2.set_title('Pupil center Y over time')
-
-                for ax in (ax1, ax2):
-                    ax.legend()
-                    ax.grid(alpha=0.3)
+                t2 = np.arange(len(y_arr))
+                ax2.plot(t2, y_arr, color="darkorange", label="Pupil center Y")
+                ax2.set_ylabel("Y (px)")
+                ax2.set_xlabel("Frame")
+                ax2.set_title("Pupil center Y over time")
+                ax2.grid(alpha=0.3)
+                ax2.legend()
 
                 fig.tight_layout()
-                save_path_xy = os.path.join(self.save_directory, "pupil_center_xy.png")
-                fig.savefig(save_path_xy, dpi=300)
+                p = self.save_dir / "pupil_center_xy.png"
+                fig.savefig(p, dpi=300)
                 plt.close(fig)
+                logger.info("Saved %s", p)
 
-    def _save_single_fig(self, data, label, color, filename, saccade_data=None):
-        """
-        Helper function to plot data and save a figure.
-        """
-        fig, ax = plt.subplots()
-        save_path = os.path.join(self.save_directory, filename)
+    # -- plotting primitives --------------------------------------------------
 
-        self._plot_data(ax, data, label, color)
+    def _maybe_plot_line(
+        self,
+        data: Optional[np.ndarray],
+        label: str,
+        color: str,
+        filename: str,
+        saccade: Optional[np.ndarray] = None,
+        draw_groom_thr: bool = False,
+    ) -> None:
+        """Plot a single line to PNG if `data` is a nonempty array."""
+        if data is None:
+            return
+        arr = np.asarray(data, dtype=float)
+        if arr.size == 0:
+            return
 
-        # Add title
-        ax.set_title(label.replace("_", " ").capitalize(), fontsize=12, fontweight="bold")
-        ax.set_xlabel("Frame")
-        ax.set_ylabel("Value")
-        ax.legend()
+        fig, ax = plt.subplots(figsize=(9, 3))
+        self._plot_line(ax, arr, label, color)
 
-        # Plot saccade data if provided
-        if saccade_data is not None:
-            self._plot_saccade(ax, saccade_data, data)
+        if saccade is not None:
+            self._overlay_saccade(ax, saccade, arr)
 
-        # --- NEW: Add grooming threshold line if applicable ---
-        if "motion_energy" in filename.lower():
-            thr = getattr(self.app_instance, "grooming_thr", None)
-            if thr is not None and np.isfinite(thr).any():
-                thr_val = float(np.nanmean(thr))
-                ax.axhline(y=thr_val, color="black", linestyle="--", linewidth=1.2, label="Grooming threshold")
+        if draw_groom_thr:
+            thr = np.asarray(getattr(self.app, "grooming_thr", np.array([])), dtype=float)
+            thr = thr[np.isfinite(thr)]
+            if thr.size:
+                ax.axhline(y=float(np.nanmean(thr)), color="black", linestyle="--", linewidth=1.2,
+                           label="Grooming threshold")
                 ax.legend()
 
         fig.tight_layout()
-        fig.savefig(save_path, dpi=300)
+        out = self.save_dir / filename
+        fig.savefig(out, dpi=300)
         plt.close(fig)
+        logger.info("Saved %s", out)
 
-    def _plot_data(self, ax: plt.Axes, data: np.ndarray, label: str, color: str):
+    @staticmethod
+    def _plot_line(ax: plt.Axes, data: np.ndarray, label: str, color: str) -> None:
+        """Simple line plot with labels."""
+        t = np.arange(len(data))
+        ax.plot(t, data, color=color, label=label, linestyle="--")
+        ax.set_title(label.replace("_", " ").capitalize(), fontsize=12, fontweight="bold")
+        ax.set_xlabel("Frame")
+        ax.set_ylabel("Value")
+        ax.grid(alpha=0.3)
+        ax.legend()
+
+    @staticmethod
+    def _overlay_saccade(ax: plt.Axes, saccade: np.ndarray, main: np.ndarray) -> None:
         """
-        Plots the main data on the provided axes.
-
-        Parameters:
-        ax (plt.Axes): The axes to plot on.
-        data (np.ndarray): The data to plot.
-        label (str): The label for the plot line.
-        color (str): The color of the plot line.
+        Overlay a small-height colormap strip for saccade data above the max(main).
+        Accepts:
+            - 1D (len == len(main)) or
+            - 2D with shape (H, W) where W == len(main).
+        If shape has an extra first column (legacy), trims to match.
         """
-        x_values = np.arange(len(data))
-        ax.plot(x_values, data, color=color, label=label, linestyle='--')
+        try:
+            sac = np.asarray(saccade, dtype=float)
+            if sac.ndim == 1:
+                if sac.shape[0] != len(main):
+                    return
+                sac = sac[None, :]  # make (1, T)
+            elif sac.ndim == 2:
+                # Legacy: if first column is an index/time column, drop it
+                if sac.shape[1] == len(main) + 1:
+                    sac = sac[:, 1:]
+                if sac.shape[1] != len(main):
+                    return
+            else:
+                return
 
-    def _plot_saccade(self, ax: plt.Axes, saccade: np.ndarray, data: np.ndarray):
-        """
-        Plots the saccade data as a colormap overlay if provided.
+            data_max = np.nanmax(main)
+            data_min = np.nanmin(main)
+            rng = max(1e-9, data_max - data_min)
+            y_min = data_max + 0.10 * rng
+            y_max = data_max + 0.20 * rng
 
-        Parameters:
-        ax (plt.Axes): The axes to plot on.
-        saccade (np.ndarray): The saccade data to overlay.
-        data (np.ndarray): The main data array for reference to calculate plot boundaries.
-        """
-        if saccade is not None:
-            if saccade.shape[1] == len(data):
-                saccade = saccade[:, 1:]  # Trim the first column to match the length
-            data_max = np.max(data)
-            range_val = np.max(data) - np.min(data)
-            y_min = data_max + range_val / 10
-            y_max = data_max + range_val / 5
-            x_values = np.arange(len(data))
-            ax.pcolormesh(x_values, [y_min, y_max], saccade, cmap='RdYlGn', shading='flat')
+            t = np.arange(len(main))
+            ax.pcolormesh(t, [y_min, y_max], sac, cmap="RdYlGn", shading="auto")
+        except Exception:
+            # Never crash the figure for overlay issues
+            logger.debug("Skipping saccade overlay due to an error.", exc_info=True)
 
-    def _make_dir(self, base_path):
-        save_directory = os.path.join(base_path, "FaceIt")
-        if not os.path.exists(save_directory):
-            os.mkdir(save_directory)
-        return save_directory

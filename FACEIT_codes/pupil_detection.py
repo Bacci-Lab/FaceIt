@@ -3,8 +3,6 @@ import numpy as np
 import cv2
 import bottleneck as bn
 from sklearn.cluster import DBSCAN
-from line_profiler import profile
-
 
 def find_ellipse(binary_image, show=False):
     """
@@ -158,34 +156,78 @@ def find_cluster_watershed(binary):
 
 
 
+def find_cluster_simple(
+    binary_image: np.ndarray,
+    show_plot: bool = False,
+    *,
+    filter_contours: bool = False,
+    max_width_frac: float = 0.8,
+    max_aspect: float = 2.0,
+    min_area: int = 0
+) -> np.ndarray:
+    """
+    Find the main blob and return a convex-hull mask.
 
-def find_cluster_simple(binary_image, show_plot=False):
+    Steps:
+      1) find contours
+      2) (optional) filter by size/shape
+      3) choose largest
+      4) draw convex hull of that contour
+
+    Parameters
+    ----------
+    binary_image : np.ndarray
+        2D uint8 mask (0/255).
+    show_plot : bool
+        If True, show intermediate views.
+    filter_contours : bool
+        If True, apply width/aspect/area filters; if False, consider all contours.
+    max_width_frac : float
+        Max allowed width as a fraction of image width (e.g., 0.8 → 80%).
+    max_aspect : float
+        Max allowed aspect ratio W/H.
+    min_area : int
+        Minimum contour area to keep (0 disables).
+
+    Returns
+    -------
+    final_mask : np.ndarray
+        Binary mask (uint8) of the convex hull for the chosen contour (or zeros).
     """
-    Visualize each step of `find_cluster_simple`:
-      1) All contours
-      2) Filtered contours (only the kept ones, on blank)
-      3) Largest contour    (only that one, on blank)
-      4) Final convex‐hull mask
-    """
+    # 1) Contours
     contours, _ = cv2.findContours(binary_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     h_img, w_img = binary_image.shape
-    filtered = []
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        if w <= 0.8 * w_img and (w / h if h > 0 else float('inf')) <= 2:
-        # if w <= 0.99 * w_img:
-            filtered.append(cnt)
+    kept = []
 
-    if filtered:
-        largest = max(filtered, key=cv2.contourArea)
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < min_area:
+            continue
+
+        if not filter_contours:
+            kept.append(cnt)
+            continue
+
+        x, y, w, h = cv2.boundingRect(cnt)
+        aspect = (w / h) if h > 0 else np.inf
+        wide_enough = (w <= max_width_frac * w_img)
+        aspect_ok = (aspect <= max_aspect)
+        if wide_enough and aspect_ok:
+            kept.append(cnt)
+
+    # 3) Largest contour (post-filter or all)
+    if kept:
+        largest = max(kept, key=cv2.contourArea)
         hull = cv2.convexHull(largest)
         final_mask = np.zeros_like(binary_image)
         cv2.drawContours(final_mask, [hull], -1, 255, -1)
     else:
         largest = None
         final_mask = np.zeros_like(binary_image)
+
     return final_mask
+
 
 
 
@@ -216,11 +258,42 @@ def find_cluster_simple(binary_image, show_plot=False):
     #
     # return mask
 
-def find_cluster_DBSCAN(binary_image, mnd, show_cluster = False):
+def find_cluster_DBSCAN(
+    binary_image: np.ndarray,
+    mnd: float,
+    show_cluster: bool = False,
+    *,
+    filter_clusters: bool = True,
+    max_width_frac: float = 0.8,   # reject clusters wider than this × image width
+    max_aspect: float = 2.0,       # reject clusters with W/H > max_aspect
+    min_cluster_points: int = 1    # DBSCAN min_samples
+) -> np.ndarray:
     """
-    Detects and visualizes DBSCAN clusters, filters those wider than 80% of the image width
-    and with aspect ratio (W/H) > 2, and returns a binary image showing the convex hull
-    of the largest valid cluster.
+    Cluster foreground pixels with DBSCAN and return the convex hull of the
+    largest valid cluster. When `filter_clusters=False`, all clusters are
+    considered valid (no width/aspect filtering).
+
+    Parameters
+    ----------
+    binary_image : np.ndarray
+        2D uint8 mask (0/255).
+    mnd : float
+        DBSCAN `eps` (larger merges more points).
+    show_cluster : bool
+        If True, draw the clusters kept after filtering.
+    filter_clusters : bool
+        If True (default), apply width/aspect filters. If False, skip filtering.
+    max_width_frac : float
+        Max allowed cluster width as a fraction of image width (only if filtering).
+    max_aspect : float
+        Max allowed aspect ratio W/H (only if filtering).
+    min_cluster_points : int
+        DBSCAN `min_samples` (minimum points per cluster).
+
+    Returns
+    -------
+    hull_image : np.ndarray
+        Binary mask of the convex hull of the chosen cluster (or zeros).
     """
     non_zero_coords = np.column_stack(np.where(binary_image > 0))
     if non_zero_coords.shape[0] == 0:
@@ -228,7 +301,7 @@ def find_cluster_DBSCAN(binary_image, mnd, show_cluster = False):
 
     image_height, image_width = binary_image.shape
 
-    clustering = DBSCAN(eps=mnd, min_samples=1).fit(non_zero_coords)
+    clustering = DBSCAN(eps=mnd, min_samples=min_cluster_points).fit(non_zero_coords)
     labels = clustering.labels_
     unique_labels = np.unique(labels)
 
@@ -238,27 +311,32 @@ def find_cluster_DBSCAN(binary_image, mnd, show_cluster = False):
     valid_clusters = []
 
     for label in unique_labels:
+        if label == -1:  # DBSCAN noise
+            continue
         cluster_coords = non_zero_coords[labels == label]
         ys, xs = cluster_coords[:, 0], cluster_coords[:, 1]
         h = ys.max() - ys.min() + 1
         w = xs.max() - xs.min() + 1
-        color = np.random.randint(0, 255, size=3).tolist()
 
+        color = np.random.randint(0, 255, size=3).tolist()
         for y, x in cluster_coords:
             all_clusters_img[y, x] = color
 
-        if w <= 0.8 * image_width and (w / h if h > 0 else float('inf')) <= 2:
-            valid_clusters.append(cluster_coords)
+        keep = True
+        if filter_clusters:
+            aspect = (w / h) if h > 0 else float('inf')
+            keep = (w <= max_width_frac * image_width) and (aspect <= max_aspect)
 
-            if show_cluster == True:
+        if keep:
+            valid_clusters.append(cluster_coords)
+            if show_cluster:
                 for y, x in cluster_coords:
                     filtered_img[y, x] = color
 
     if valid_clusters:
         largest_cluster = max(valid_clusters, key=lambda arr: arr.shape[0])
         cluster_mask = np.zeros_like(binary_image)
-        for y, x in largest_cluster:
-            cluster_mask[y, x] = 255
+        cluster_mask[largest_cluster[:, 0], largest_cluster[:, 1]] = 255
 
         contours, _ = cv2.findContours(cluster_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if contours:
@@ -268,104 +346,15 @@ def find_cluster_DBSCAN(binary_image, mnd, show_cluster = False):
             cv2.drawContours(hull_image, [hull], -1, 255, -1)
         else:
             hull_image = cluster_mask
-
-        # # === Plot the cluster points as dots on a white background ===
-        # ys, xs = largest_cluster[:, 0], largest_cluster[:, 1]
-        # white_background = np.ones_like(binary_image) * 255  # White background
-        #
-        # plt.figure(figsize=(6, 6))
-        # plt.imshow(white_background, cmap='gray')
-        # plt.scatter(xs, ys, s=10, c='red', label='Cluster points')
-        # plt.title("Largest Cluster Points")
-        # plt.axis('off')
-        # plt.legend()
-        # plt.show()
-
-        # === Plot all valid clusters as dots on white background ===
-        if show_cluster == True:
-            white_background = np.ones_like(binary_image) * 0  # Pure white background
-            fig, ax = plt.subplots(figsize=(6, 6), facecolor='white')  # set white figure background
-            ax.set_facecolor('white')  # set white axes background
-            ax.imshow(white_background, cmap='binary')  # white image background
-
-            for cluster_coords in valid_clusters:
-                ys, xs = cluster_coords[:, 0], cluster_coords[:, 1]
-                color = np.random.rand(3, )  # random RGB color
-                ax.scatter(xs, ys, s=10, c=[color])
-
-            ax.set_title("All Valid Cluster Points on White Background")
-            ax.axis('off')
-            plt.tight_layout()
-            plt.show()
-
-
     else:
-        print("No valid clusters after filtering.")
+        if filter_clusters:
+            print("No valid clusters after filtering.")
         hull_image = np.zeros_like(binary_image)
 
-
-    # fig, axes = plt.subplots(2,2, figsize=(10,8))
-    # ax = axes.ravel()
-    #
-    # ax[0].imshow(binary_image, cmap='gray')
-    # ax[0].set_title("1) Input Binary")
-    # ax[0].axis('off')
-    #
-    # ax[1].imshow(all_clusters_img)
-    # ax[1].set_title("2) All DBSCAN Clusters")
-    # ax[1].axis('off')
-    #
-    # ax[2].imshow(filtered_img)
-    # ax[2].set_title("3) Filtered Clusters")
-    # ax[2].axis('off')
-    #
-    # ax[3].imshow(hull_image, cmap='gray')
-    # ax[3].set_title("4) Convex Hull Mask")
-    # ax[3].axis('off')
-    #
-    # plt.tight_layout()
-    # plt.show()
-    #
-    # # Plotting
-    # fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-    # axes[0].imshow(cv2.cvtColor(all_clusters_img, cv2.COLOR_BGR2RGB))
-    # axes[0].set_title("All DBSCAN Clusters")
-    # axes[0].axis('off')
-    #
-    # axes[1].imshow(cv2.cvtColor(filtered_img, cv2.COLOR_BGR2RGB))
-    # axes[1].set_title("Filtered Clusters (Width ≤ 80% and W/H ≤ 2)")
-    # axes[1].axis('off')
-    # plt.tight_layout()
-    # plt.show()
-    # if show_cluster == True:
-    #     return hull_image, filtered_img
-    # else:
     return hull_image
-    # return all_clusters_img
 
-def detect_blinking_ids (pupil_data, threshold_factor, window_size= 8):
-    win = 25
-    k = 3
-    L = 1.4826  # scale factor for MAD
-    n = len(pupil_data)
 
-    medians = np.zeros(n)
-    mads = np.zeros(n)
-    outliers = []
-
-    # Compute rolling median, MAD, and detect outliers
-    for i in range(n):
-        start = max(0, i - win // 2)
-        end = min(n, i + win // 2)
-        window = pupil_data[start:end]
-        med = np.median(window)
-        mad = L * np.median(np.abs(window - med))
-        medians[i] = med
-        mads[i] = mad
-        if mad > 0 and np.abs(pupil_data[i] - med) > k * mad:
-            outliers.append(i)
-    return outliers
-def detect_blinking_ids_old(pupil_data, threshold_factor, window_size=8):
+def detect_blinking_ids(pupil_data, threshold_factor, window_size=8):
     """
     Detects blinking indices in pupil data based on a moving variance threshold.
 
@@ -392,9 +381,6 @@ def detect_blinking_ids_old(pupil_data, threshold_factor, window_size=8):
     )
     # Return a sorted list of unique blink indices
     return sorted(expanded_blink_indices)
-
-
-
 
 def remove_reflection_with_inpaint(gray_image, reflect_ellipses):
     mask = np.zeros_like(gray_image, dtype=np.uint8)
@@ -425,15 +411,6 @@ def erase_pixels(erased_pixels, binary_image):
 
     return binary_image
 
-# def erase_pixels(erased_pixels, binary_image):
-#     if erased_pixels is not None and len(erased_pixels) > 0:
-#         if not isinstance(erased_pixels, np.ndarray):
-#             erased_pixels = np.array(erased_pixels)
-#         # Ensure the array is of shape (N, 2) for valid indexing
-#         if erased_pixels.ndim == 2 and erased_pixels.shape[1] == 2:
-#             # Set those pixels to 0 in the binary image
-#             binary_image[erased_pixels[:, 1], erased_pixels[:, 0]] = 0
-#     return binary_image
 
 def interpolate(blink_indices, data_series):
     """
@@ -576,7 +553,7 @@ def detect_reflection_automatically(
 
     return dilated_mask
 
-def Image_binarization(chosen_frame_region, reflect_brightness, c_value,block_size, erased_pixels=None, reflect_ellipse=None, show=False):
+def Image_binarization_Adaptive(chosen_frame_region, reflect_brightness, c_value,block_size, erased_pixels=None, reflect_ellipse=None, show=False):
     """
     Applies adaptive binary thresholding. Supports erasing specific pixels or known reflections.
     Also applies an elliptical mask to focus only on the pupil region.
@@ -604,14 +581,6 @@ def Image_binarization(chosen_frame_region, reflect_brightness, c_value,block_si
         sub_region_2Dgray = np.zeros_like(sub_region_2Dgray, dtype=np.float32)
 
     sub_region_2Dgray = np.clip(sub_region_2Dgray, 0, 255).astype(np.uint8)
-
-    if show:
-        fig1, ax1 = plt.subplots()
-        ax1.imshow(sub_region_2Dgray, cmap='gray')
-        ax1.add_patch(plt.Rectangle((60 - (17 // 2), 80 - (17 // 2)), 17, 17, linewidth=2, edgecolor='red', facecolor='none'))
-        ax1.set_title("Neighborhood Location in Image")
-        ax1.axis('off')
-
     if reflect_ellipse is not None and len(reflect_ellipse) > 0:
         sub_region_2Dgray = remove_reflection_with_inpaint(sub_region_2Dgray, reflect_ellipse)
 
@@ -657,28 +626,36 @@ def Image_binarization(chosen_frame_region, reflect_brightness, c_value,block_si
             valid = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
             good = arr[valid]
             binary_image[good[:, 1], good[:, 0]] = 0
-    if show:
-        # Final display
-        fig, axes = plt.subplots(2, 1, figsize=(12, 10))
-        axes[0].imshow(sub_region_2Dgray, cmap='gray')
-        axes[0].set_title('Interpolated Light Reflection')
-        axes[1].imshow(binary_image, cmap='gray')
-        axes[1].set_title('Binary Output after Adaptive Thresholding')
-        plt.tight_layout()
-        plt.show()
-
     return binary_image
 
 
-def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd,reflect_brightness,clustering_method, binary_method,binary_threshold,c_value, block_size ):
+def detect_pupil(
+    chosen_frame_region,
+    erased_pixels,
+    reflect_ellipse,
+    mnd,
+    reflect_brightness,
+    clustering_method,
+    binary_method,
+    binary_threshold,
+    c_value,
+    block_size,
+    *,
+    disable_filtering: bool = False,   # ← NEW (kw-only, backward compatible)
+):
 
     if binary_method == "Adaptive":
-        binary_image = Image_binarization(chosen_frame_region, reflect_brightness,c_value,block_size, erased_pixels=erased_pixels, reflect_ellipse =reflect_ellipse)
+        binary_image = Image_binarization_Adaptive(chosen_frame_region, reflect_brightness,c_value,block_size, erased_pixels=erased_pixels, reflect_ellipse =reflect_ellipse)
     elif binary_method == "Constant":
         binary_image = Image_binarization_constant(chosen_frame_region,erased_pixels, binary_threshold, show_binary = False, show_original = False)
 
     if clustering_method == "DBSCAN":
-        binary_image = find_cluster_DBSCAN(binary_image, mnd, show_cluster=False)
+        binary_image = find_cluster_DBSCAN(
+            binary_image,
+            mnd,
+            show_cluster=False,
+            filter_clusters=not disable_filtering,   # invert checkbox meaning
+        )
     elif clustering_method == "watershed":
         result = find_cluster_watershed(binary_image)
         if isinstance(result, tuple):
@@ -686,7 +663,11 @@ def detect_pupil(chosen_frame_region, erased_pixels, reflect_ellipse, mnd,reflec
         else:
             binary_image = result
     elif clustering_method == "SimpleContour":
-        binary_image = find_cluster_simple(binary_image,  show_plot= False)
+        binary_image = find_cluster_simple(
+        binary_image,
+        show_plot=False,
+        filter_contours=not disable_filtering,
+    )
     if binary_method == "Adaptive":
         pupil_ROI0, center, width, height, angle = find_ellipse(binary_image ,show=False)
         pupil_area = np.pi * (width * height)
