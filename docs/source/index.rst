@@ -23,4 +23,3 @@ FACEIT Documentation and User Guide
 
    FaceMotion_Computation
    Pupil detection
-   Pupil_detection

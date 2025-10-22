@@ -1,5 +1,5 @@
-Pupil Processing (Face-IT)
-==========================
+Pupil Processing
+================
 
 Overview
 --------
