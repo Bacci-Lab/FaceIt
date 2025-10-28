@@ -230,34 +230,6 @@ def find_cluster_simple(
 
 
 
-
-    # contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # if not contours:
-    #     return np.zeros_like(binary_image)
-    #
-    # image_height, image_width = binary_image.shape
-    # filtered_contours = []
-    #
-    # # Step 1: Remove contours that are too wide
-    # for contour in contours:
-    #     x, y, w, h = cv2.boundingRect(contour)
-    #     if w <= 0.7 * image_width and (w / h if h > 0 else float('inf')) <= 2:
-    #         filtered_contours.append(contour)
-    #
-    # if not filtered_contours:
-    #     print("All contours were too wide — returning empty mask.")
-    #     return np.zeros_like(binary_image)
-    #
-    # # Step 2: Get the largest remaining contour
-    # largest = max(filtered_contours, key=cv2.contourArea)
-    # hull = cv2.convexHull(largest)
-    #
-    # # Step 3: Create binary mask
-    # mask = np.zeros_like(binary_image)
-    # cv2.drawContours(mask, [hull], -1, 255, -1)
-    #
-    # return mask
-
 def find_cluster_DBSCAN(
     binary_image: np.ndarray,
     mnd: float,
@@ -381,6 +353,7 @@ def detect_blinking_ids(pupil_data, threshold_factor, window_size=8):
     )
     # Return a sorted list of unique blink indices
     return sorted(expanded_blink_indices)
+
 
 def remove_reflection_with_inpaint(gray_image, reflect_ellipses):
     mask = np.zeros_like(gray_image, dtype=np.uint8)
@@ -641,7 +614,7 @@ def detect_pupil(
     c_value,
     block_size,
     *,
-    disable_filtering: bool = False,   # ← NEW (kw-only, backward compatible)
+    disable_filtering: bool = False,
 ):
 
     if binary_method == "Adaptive":
