@@ -24,6 +24,21 @@ def _fmt_secs(s):
     m, s = divmod(int(s), 60)
     h, m = divmod(m, 60)
     return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+def to_bgra(img):
+    # Always produce BGRA regardless of input channels
+    if img is None:
+        raise ValueError("to_bgra: None image")
+    if img.ndim == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
+    if img.ndim == 3:
+        c = img.shape[2]
+        if c == 1:
+            return cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
+        if c == 3:
+            return cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+        if c == 4:
+            return img
+    raise ValueError(f"to_bgra: unsupported shape {img.shape}")
 
 def process_single_frame(args):
     (
@@ -108,6 +123,20 @@ def display_show_ROI(ROI, image):
     sub_image = ROI.rect()
     return sub_image, ROI
 
+def _empty_result():
+    e = np.array([])
+    return (
+        e,  # pupil_dilation
+        e,  # pupil_center_X
+        e,  # pupil_center_y
+        np.empty((0, 2), dtype=np.int32),  # pupil_center
+        e.reshape(1, 0),  # X_saccade
+        e.reshape(1, 0),  # Y_saccade
+        e,  # pupil_distance
+        e,  # pupil_width
+        e,  # pupil_height
+        e,  # angle
+    )
 
 def create_roi(x, y, width, height):
     """Creates a representation of a region of interest (ROI) based on given coordinates and size."""
@@ -142,14 +171,7 @@ def _detect_frame(i, frame, roi_slice, cfg):
     )
 
     # choose detector input format
-    if cfg["needs_bgra"]:
-        if is_gray:
-            bgr = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
-            img_for_det = cv2.cvtColor(bgr, cv2.COLOR_BGR2BGRA)
-        else:
-            img_for_det = cv2.cvtColor(processed, cv2.COLOR_BGR2BGRA)
-    else:
-        img_for_det = processed  # pass GRAY or BGR
+    img_for_det = to_bgra(processed) if cfg["needs_bgra"] else processed
 
     _, center, width, height, angle, _ = pupil_detection.detect_pupil(
         img_for_det,
@@ -202,14 +224,7 @@ def _detect_one(i, images, roi_slice, cfg):
         cfg["contrast"]
     )
 
-    if cfg["needs_bgra"]:
-        if is_gray:
-            bgr = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
-            img_for_det = cv2.cvtColor(bgr, cv2.COLOR_BGR2BGRA)
-        else:
-            img_for_det = cv2.cvtColor(processed, cv2.COLOR_BGR2BGRA)
-    else:
-        img_for_det = processed  # pass GRAY or BGR as your detector supports
+    img_for_det = to_bgra(processed) if cfg["needs_bgra"] else processed
 
     _, center, width, height, angle, _ = pupil_detection.detect_pupil(
         img_for_det,
@@ -453,6 +468,8 @@ class ProcessHandler:
         self.app_instance.final_pupil_area = np.array(self.app_instance.interpolated_pupil)
         return valid_ids
 
+
+
     def pupil_dilation_comput(self, images_iter, saturation, contrast, erased_pixels, reflect_ellipse,
                               mnd, reflect_brightness, clustering_method, binary_method, binary_threshold,
                               saturation_method, brightness, brightness_curve,
@@ -479,10 +496,11 @@ class ProcessHandler:
             try:
                 i0, first_frame = next(frame_iter)  # peek one
             except StopIteration:
-                return tuple([np.array([])] * 13)  # empty
+                return _empty_result()
+
 
         if n == 0:
-            return tuple([np.array([])] * 13)
+            return _empty_result()
 
         # ---- 2) ROI slicer and frame-invariant geometry from first frame ----
         roi_slice = _make_roi_slicer(sub_image, first_frame)
