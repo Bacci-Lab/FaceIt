@@ -42,6 +42,7 @@ class LoadData:
         folder_path = QtWidgets.QFileDialog.getExistingDirectory(
             self.app_instance, "Select Folder", default_path
         )
+        print("open_image_folder", folder_path)
         if not folder_path:
             return
 

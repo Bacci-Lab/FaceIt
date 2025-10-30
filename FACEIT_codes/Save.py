@@ -22,36 +22,80 @@ if not logger.handlers:
     )
 
 
+from pathlib import Path
+from datetime import datetime
+
 class SaveHandler:
     """
     Handles saving Face-It results to compressed NPZ, NWB, and summary figures.
 
-    Expected app_instance attributes (if available):
-      - save_path: str | Path
-      - nwb_check(): -> bool
-      - pupil_check(): -> bool
-      - face_check(): -> bool
-      - video_path: Optional[str | Path]
-      - pupil_* / motion_* / grooming_* / blinking_ids / angle / Face_frame / Pupil_frame (arrays)
+    Expected app_instance attributes:
+      - save_path: str | Path (set by LoadData)
+      - folder_path: str | Path (NPY image dir)  [optional]
+      - video_path: str | Path (full path to video) [optional]
+      - video: bool, NPY: bool
+      - nwb_check(), pupil_check(), face_check()
+      - data arrays...
     """
 
     # ---- Public API ---------------------------------------------------------
-
     def __init__(self, app_instance, base_path: Path | None = None):
         self.app = app_instance
-        # Prefer explicit base_path, then app.save_path if present, else a safe default
-        base = (
-            Path(base_path)
-            if base_path is not None
-            else Path(getattr(self.app, "save_path", Path.home() / "FaceIt_saves"))
-        )
-        self.save_dir: Path = self._make_dir(base)
+        # DO NOT compute save_dir here; store override and resolve lazily later
+        self._override: Path | None = Path(base_path) if base_path is not None else None
+        self._run_id: str | None = None
+
+    @property
+    def save_dir(self) -> Path:
+        """
+        Resolve the base directory *now* (after loader filled app.save_path/app.folder_path/app.video_path)
+        and ensure a '<base>/faceIt' subfolder exists. Always called at save time.
+        """
+        base = self._resolve_base_dir()
+        return self._ensure_faceit_dir(base)
+
+    # ---- Helpers ------------------------------------------------------------
+    def _resolve_base_dir(self) -> Path:
+        """Pick the source dir in priority: override -> app.save_path -> folder_path -> parent(video_path) -> ~"""
+        if self._override is not None:
+            return self._override
+
+        # 1) app.save_path (set in LoadData.open_image_folder / load_video)
+        sp = getattr(self.app, "save_path", None)
+        if isinstance(sp, (str, Path)) and str(sp).strip():
+            p = Path(sp)
+            if p.exists() and p.is_dir():
+                return p
+
+        # 2) NPY folder (images directory)
+        fp = getattr(self.app, "folder_path", None)
+        if isinstance(fp, (str, Path)) and str(fp).strip():
+            p = Path(fp)
+            if p.exists() and p.is_dir():
+                return p
+
+        # 3) Parent of video file (if any)
+        vp = getattr(self.app, "video_path", None)
+        if isinstance(vp, (str, Path)) and str(vp).strip():
+            vpp = Path(vp)
+            base = vpp.parent if vpp.suffix else vpp
+            if base.exists():
+                return base
+
+        # 4) Fallback to home dir
+        return Path.home()
 
     @staticmethod
-    def _make_dir(base_path: Path) -> Path:
-        save_directory = Path(base_path) / "FaceIt"
-        save_directory.mkdir(parents=True, exist_ok=True)
-        return save_directory
+    def _ensure_faceit_dir(base_path: Path) -> Path:
+        """Create and return '<base>/faceIt' (lowercase as requested)."""
+        out = Path(base_path) / "faceIt"
+        out.mkdir(parents=True, exist_ok=True)
+        return out
+
+    # call this at the very start of init_save_data:
+    def _stamp_run(self) -> None:
+        self._run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
 
     def init_save_data(self) -> None:
         """
@@ -60,6 +104,9 @@ class SaveHandler:
         - NWB
         - quick-look PNG figures
         """
+        self._stamp_run()  # sets self._run_id at save time
+        _ = self.save_dir  # forces resolving base and creating '<base>/faceIt'
+
 
         # Decide master length from pupil_center if available, otherwise motion_energy
         len_data = self._infer_length()
@@ -97,6 +144,11 @@ class SaveHandler:
             self._ensure_series(len_data, "blinking_ids")
         if not hasattr(self.app, "Pupil_frame") or self.app.Pupil_frame is None:
             self._ensure_series(1, "Pupil_frame")
+
+        try:
+            self._save_npz()
+        except Exception as e:
+            logger.error("Failed to save npz: %s", e, exc_info=True)
 
         # ---- Save NWB
         try:
@@ -150,10 +202,9 @@ class SaveHandler:
 
     # -------------------------- Saving: NPZ ----------------------------------
 
-    def _save_npz(self, include_video: bool) -> None:
+    def _save_npz(self) -> None:
         """
         Saves all relevant arrays to NPZ. Optionally embeds video bytes
-        (if `include_video` and `app.video_path` resolves to a file).
         """
         out_npz = self.save_dir / "faceit.npz"
 
@@ -178,19 +229,6 @@ class SaveHandler:
             Pupil_frame=np.asarray(getattr(self.app, "Pupil_frame", np.array([]))),
         )
 
-        if include_video:
-            video_path = Path(getattr(self.app, "video_path", "")) if hasattr(self.app, "video_path") else None
-            if video_path and video_path.is_file():
-                try:
-                    logger.info("Embedding video bytes from %s", video_path)
-                    with open(video_path, "rb") as f:
-                        video_bytes = f.read()
-                    # Keep as object array so it's savable in NPZ
-                    data_dict["video_file"] = np.array([video_bytes], dtype=object)
-                except Exception:
-                    logger.warning("Could not read video file: %s", video_path, exc_info=True)
-            else:
-                logger.info("Video path not set or missing; skipping embedding.")
 
         try:
             np.savez_compressed(out_npz, **data_dict)
@@ -421,4 +459,3 @@ class SaveHandler:
         except Exception:
             # Never crash the figure for overlay issues
             logger.debug("Skipping saccade overlay due to an error.", exc_info=True)
-

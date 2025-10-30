@@ -18,8 +18,8 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         super().__init__()
         # Create an instance of the class that has the process function
         self.process_handler = ProcessHandler(self)
-        self.save_handler = SaveHandler(self)
         self.load_handler = LoadData(self)
+        self.save_handler = SaveHandler(self)
         self.plot_handler = display_and_plots.PlotHandler(self)
         self.Display_handler = display_and_plots.Display(self)
         self.timer = QtCore.QTimer()
