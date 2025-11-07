@@ -677,15 +677,14 @@ class FaceMotionApp(QtWidgets.QMainWindow):
                     child.widget().deleteLater()
             QtWidgets.QWidget().setLayout(old_layout)
 
-
-    def set_frame(self, face_frame=None, Pupil_frame=None, reflect_ellipse = None):
+    # in FaceMotionApp
+    def set_frame(self, *, face_frame=None, Pupil_frame=None, reflect_ellipse=None):
         if face_frame is not None:
-            self.Face_frame = face_frame
+            self.Face_frame = np.asarray(face_frame, dtype=float)
         if Pupil_frame is not None:
-            self.Pupil_frame = Pupil_frame
+            self.Pupil_frame = np.asarray(Pupil_frame, dtype=float)
         if reflect_ellipse is not None:
             self.reflect_ellipse = reflect_ellipse
-
 
     def pupil_check(self):
         return self.checkBox_pupil.isChecked()
@@ -893,24 +892,42 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             self.lineEdit_frame_number.setText(str(self.Slider_frame.value()))
 
     def start_pupil_dilation_computation(self, images):
+        # Basic guardrails
+        if not hasattr(self, "pupil_ROI") or self.pupil_ROI is None:
+            self.warning("Define the Pupil ROI first.")
+            return
+
         self.sub_image = self.pupil_ROI.rect()
-        self.thread = QThread()
-        self.worker = PupilWorker(
+
+        # Disable UI that shouldn't be used during processing
+        self.Process_Button.setEnabled(False)
+
+        # Use local variables so you don’t accidentally clobber an older thread
+        thread = QThread(self)
+        worker = PupilWorker(
             images, self.process_handler, self.saturation, self.contrast,
-            self.erased_pixels,self.brightness_concave_power,self.secondary_direction, self.reflect_ellipse, self.mnd, self.reflect_brightness,
-            self.clustering_method, self.binary_method, self.binary_threshold, self.saturation_method, self.saturation_ununiform, self.primary_direction,
-            self.brightness, self.brightness_curve, self.secondary_BrightGain, self.c_value, self.block_size, self.sub_image)
-        self.worker.moveToThread(self.thread)
+            self.erased_pixels, self.brightness_concave_power, self.secondary_direction,
+            self.reflect_ellipse, self.mnd, self.reflect_brightness,
+            self.clustering_method, self.binary_method, self.binary_threshold,
+            self.saturation_method, self.saturation_ununiform, self.primary_direction,
+            self.brightness, self.brightness_curve, self.secondary_BrightGain,
+            self.c_value, self.block_size, self.sub_image
+        )
+        worker.moveToThread(thread)
 
-        self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.handle_pupil_results)
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
-        self.worker.error.connect(self.handle_worker_error)
-        self.thread.start()
+        # Wire signals — note: connect to the *local* objects
+        thread.started.connect(worker.run)
+        worker.finished.connect(self.handle_pupil_results)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        worker.error.connect(self.handle_worker_error)
 
+        # Keep refs so they don’t get GC’d
+        self._pupil_thread = thread
+        self._pupil_worker = worker
 
+        thread.start()
 
     def handle_pupil_results(self, result):
         (self.pupil_dilation,
@@ -922,8 +939,7 @@ class FaceMotionApp(QtWidgets.QMainWindow):
          self.pupil_distance_from_corner,
          self.width,
          self.height,
-         self.angle
-         ) = result
+         self.angle) = result
 
         self.final_pupil_area = self.pupil_dilation
         self.X_saccade_updated = self.X_saccade
@@ -937,8 +953,13 @@ class FaceMotionApp(QtWidgets.QMainWindow):
             saccade=self.X_saccade
         )
 
+        # Re-enable the button now that processing is done
+        self.Process_Button.setEnabled(True)
+
     def handle_worker_error(self, error_msg):
-        self.warning(f"Pupil processing error: {error_msg}")
+        # Always re-enable the button on error too
+        self.Process_Button.setEnabled(True)
+        self.warning(f"Pupil processing error:\n{error_msg}")
 
     def start_blinking_detection(self):
         if hasattr(self, 'pupil_dilation'):

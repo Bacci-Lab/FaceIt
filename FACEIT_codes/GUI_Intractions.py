@@ -307,11 +307,11 @@ class GUI_Intract(QtWidgets.QGraphicsView):
             if self.dragging_face:
                 self.parent.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image, "face")
                 _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"face")
-                self.parent.set_frame(self.parent.Face_frame)
+                self.parent.set_frame(face_frame=self.parent.Face_frame)
             elif self.dragging_pupil:
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
                 _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"pupil")
-                self.parent.set_frame(self.parent.Pupil_frame)
+                self.parent.set_frame(Pupil_frame=self.parent.Pupil_frame)
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)
 
@@ -325,11 +325,11 @@ class GUI_Intract(QtWidgets.QGraphicsView):
                 self.parent.sub_region, self.parent.Face_frame = functions.show_ROI(self.face_ROI, self.parent.image, "face")
 
                 _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"face")
-                self.parent.set_frame(self.parent.Face_frame)
+                self.parent.set_frame(face_frame=self.parent.Face_frame)
             elif self.Resize_pupil:
                 self.parent.sub_region, self.parent.Pupil_frame = functions.show_ROI(self.pupil_ROI, self.parent.image)
                 _ = self.parent.Display_handler.display_sub_region(self.parent.sub_region,"pupil")
-                self.parent.set_frame(self.parent.Pupil_frame)
+                self.parent.set_frame(Pupil_frame=self.parent.Pupil_frame)
 
                 self.parent.reflection_center = (
                     (self.parent.Pupil_frame[3] - self.parent.Pupil_frame[2]) / 2, (self.parent.Pupil_frame[1] - self.parent.Pupil_frame[0]) / 2)

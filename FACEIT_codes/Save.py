@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,19 +11,14 @@ from datetime import datetime
 from pynwb import NWBFile, NWBHDF5IO, ProcessingModule
 from pynwb.base import TimeSeries
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- #
 # Logging
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- #
 logger = logging.getLogger(__name__)
 if not logger.handlers:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s - %(levelname)s - %(message)s")
 
-
-from pathlib import Path
-from datetime import datetime
 
 class SaveHandler:
     """
@@ -33,48 +28,86 @@ class SaveHandler:
       - save_path: str | Path (set by LoadData)
       - folder_path: str | Path (NPY image dir)  [optional]
       - video_path: str | Path (full path to video) [optional]
-      - video: bool, NPY: bool
-      - nwb_check(), pupil_check(), face_check()
+      - nwb_check(), pupil_check(), face_check()  [optional]
       - data arrays...
     """
 
-    # ---- Public API ---------------------------------------------------------
-    def __init__(self, app_instance, base_path: Path | None = None):
+    # ----------------------------- Public API -------------------------------- #
+    def __init__(self, app_instance, base_path: Optional[Path] = None):
         self.app = app_instance
-        # DO NOT compute save_dir here; store override and resolve lazily later
-        self._override: Path | None = Path(base_path) if base_path is not None else None
-        self._run_id: str | None = None
+        self._override: Optional[Path] = Path(base_path) if base_path is not None else None
+        self._run_id: Optional[str] = None
 
     @property
     def save_dir(self) -> Path:
-        """
-        Resolve the base directory *now* (after loader filled app.save_path/app.folder_path/app.video_path)
-        and ensure a '<base>/faceIt' subfolder exists. Always called at save time.
-        """
+        """Resolve base dir and ensure '<base>/faceIt' exists."""
         base = self._resolve_base_dir()
         return self._ensure_faceit_dir(base)
 
-    # ---- Helpers ------------------------------------------------------------
+    # ----------------------------- Init / Save -------------------------------- #
+    def _stamp_run(self) -> None:
+        self._run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    def init_save_data(self) -> None:
+        """
+        Prepare data (ensure existence + exact shapes), then save:
+          - compressed NPZ
+          - NWB
+          - quick-look PNG figures
+        """
+        self._stamp_run()
+        _ = self.save_dir
+
+        # decide master T (frames)
+        T = self._infer_length()
+
+        # Enforce shapes for ALL fields (create missing, coerce wrong shapes)
+        self._enforce_all(T)
+
+        # Derived defaults that depend on others (after shapes are enforced)
+        # If facemotion_without_grooming is all-NaN, fall back to motion_energy
+        fmg = self._get_arr("facemotion_without_grooming")
+        if fmg is not None and np.isnan(fmg).all():
+            me = self._get_arr("motion_energy")
+            if me is not None and len(me) == T:
+                setattr(self.app, self._resolve_attr_target("facemotion_without_grooming"),
+                        np.asarray(me, float))
+
+        # Save artifacts
+        try:
+            self._save_npz()
+        except Exception as e:
+            logger.error("Failed to save NPZ: %s", e, exc_info=True)
+
+        try:
+            nwb_out = self.save_dir / "faceit.nwb"
+            self._save_nwb(nwb_out)
+        except Exception as e:
+            logger.error("Failed to save NWB: %s", e, exc_info=True)
+
+        try:
+            self._save_figures()
+        except Exception as e:
+            logger.error("Failed to save figures: %s", e, exc_info=True)
+
+    # ----------------------------- Path helpers ------------------------------- #
     def _resolve_base_dir(self) -> Path:
-        """Pick the source dir in priority: override -> app.save_path -> folder_path -> parent(video_path) -> ~"""
+        """Priority: override -> save_path -> folder_path -> parent(video_path) -> HOME"""
         if self._override is not None:
             return self._override
 
-        # 1) app.save_path (set in LoadData.open_image_folder / load_video)
         sp = getattr(self.app, "save_path", None)
         if isinstance(sp, (str, Path)) and str(sp).strip():
             p = Path(sp)
             if p.exists() and p.is_dir():
                 return p
 
-        # 2) NPY folder (images directory)
         fp = getattr(self.app, "folder_path", None)
         if isinstance(fp, (str, Path)) and str(fp).strip():
             p = Path(fp)
             if p.exists() and p.is_dir():
                 return p
 
-        # 3) Parent of video file (if any)
         vp = getattr(self.app, "video_path", None)
         if isinstance(vp, (str, Path)) and str(vp).strip():
             vpp = Path(vp)
@@ -82,167 +115,153 @@ class SaveHandler:
             if base.exists():
                 return base
 
-        # 4) Fallback to home dir
         return Path.home()
 
     @staticmethod
     def _ensure_faceit_dir(base_path: Path) -> Path:
-        """Create and return '<base>/faceIt' (lowercase as requested)."""
         out = Path(base_path) / "faceIt"
         out.mkdir(parents=True, exist_ok=True)
         return out
 
-    # call this at the very start of init_save_data:
-    def _stamp_run(self) -> None:
-        self._run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-
-    def init_save_data(self) -> None:
-        """
-        Prepare data (fill missing arrays with NaNs where needed) and save:
-        - compressed NPZ
-        - NWB
-        - quick-look PNG figures
-        """
-        self._stamp_run()  # sets self._run_id at save time
-        _ = self.save_dir  # forces resolving base and creating '<base>/faceIt'
-
-
-        # Decide master length from pupil_center if available, otherwise motion_energy
-        len_data = self._infer_length()
-
-        # ---- Ensure pupil arrays exist (if pupil_check() is False)
-        if not self._call_bool_method(("pupil_check",)):
-            self._ensure_series(len_data, "pupil_center")
-            self._ensure_series(len_data, "pupil_center_X")
-            self._ensure_series(len_data, "pupil_center_y")  # original name kept
-            self._ensure_series(len_data, "final_pupil_area")
-            self._ensure_series(len_data, "pupil_dilation")
-            self._ensure_series(len_data, "X_saccade_updated", shape=(2, len_data))  # X/Y rows typical
-            self._ensure_series(len_data, "Y_saccade_updated", shape=(2, len_data))
-            self._ensure_series(len_data, "pupil_distance_from_corner")
-            self._ensure_series(len_data, "width")
-            self._ensure_series(len_data, "height")
-            self._ensure_series(len_data, "angle")
-
-        # ---- Ensure face arrays exist (if face_check() is False)
-        if not self._call_bool_method(("face_check",)):
-            self._ensure_series(len_data, "motion_energy")
-            self._ensure_series(len_data, "facemotion_without_grooming")
-            self._ensure_series(len_data, "grooming_ids")
-            self._ensure_series(1, "grooming_thr")           # scalar threshold commonly 1-length
-            self._ensure_series(1, "Face_frame")             # frame reference often 1-length
-
-        # ---- Post conditions / defaults
-        if getattr(self.app, "facemotion_without_grooming", None) is None:
-            self.app.facemotion_without_grooming = getattr(self.app, "motion_energy", np.full((len_data,), np.nan))
-        if not hasattr(self.app, "grooming_ids") or self.app.grooming_ids is None:
-            self._ensure_series(len_data, "grooming_ids")
-        if not hasattr(self.app, "grooming_thr") or self.app.grooming_thr is None:
-            self._ensure_series(1, "grooming_thr")
-        if not hasattr(self.app, "blinking_ids") or self.app.blinking_ids is None:
-            self._ensure_series(len_data, "blinking_ids")
-        if not hasattr(self.app, "Pupil_frame") or self.app.Pupil_frame is None:
-            self._ensure_series(1, "Pupil_frame")
-
-        try:
-            self._save_npz()
-        except Exception as e:
-            logger.error("Failed to save npz: %s", e, exc_info=True)
-
-        # ---- Save NWB
-        try:
-            nwb_out = self.save_dir / "faceit.nwb"
-            self._save_nwb(nwb_out)
-        except Exception as e:
-            logger.error("Failed to save NWB: %s", e, exc_info=True)
-
-        # ---- Save figures
-        try:
-            self._save_figures()
-        except Exception as e:
-            logger.error("Failed to save figures: %s", e, exc_info=True)
-
-    # ---- Internal helpers ---------------------------------------------------
-
+    # ------------------------- Shape enforcement ------------------------------ #
     def _infer_length(self) -> int:
-        """Choose a consistent primary length for 1D signals."""
-        if hasattr(self.app, "pupil_center") and getattr(self.app, "pupil_center") is not None:
-            return int(len(self.app.pupil_center))
-        if hasattr(self.app, "motion_energy") and getattr(self.app, "motion_energy") is not None:
-            return int(len(self.app.motion_energy))
-        # Last resort: avoid zero-length issues
+        """Choose a consistent primary length T for 1D signals."""
+        pc = self._get_arr("pupil_center")
+        if pc is not None and pc.size > 0:
+            return int(pc.shape[0])
+        me = self._get_arr("motion_energy")
+        if me is not None and me.size > 0:
+            return int(me.shape[0])
         logger.warning("Could not infer data length; defaulting to 1.")
         return 1
 
-    def _call_bool_method(self, candidates: Tuple[str, ...]) -> bool:
-        """Call the first available boolean method name in `candidates` on app."""
-        for name in candidates:
-            fn = getattr(self.app, name, None)
-            if callable(fn):
-                try:
-                    return bool(fn())
-                except Exception:
-                    logger.warning("Method %s() raised; treating as False.", name, exc_info=True)
-                    return False
-        return False
+    def _target_shapes(self, T: int) -> Dict[str, Tuple[int, ...]]:
+        """Single source of truth for every field's shape."""
+        return {
+            # pupil signals
+            "pupil_center": (T,),
+            "pupil_center_X": (T,),
+            "pupil_center_y": (T,),
+            "final_pupil_area": (T,),
+            "pupil_dilation": (T,),
+            "X_saccade_updated": (2, T),
+            "Y_saccade_updated": (2, T),
+            "pupil_distance_from_corner": (T,),
+            "width": (T,),
+            "height": (T,),
+            "angle": (T,),
+            "blinking_ids": (T,),
 
-    def _ensure_series(self, length: int, attr: str, shape: Optional[Tuple[int, ...]] = None) -> None:
+            # face signals
+            "motion_energy": (T,),
+            "facemotion_without_grooming": (T,),
+            "grooming_ids": (T,),
+            "grooming_thr": (1,),
+
+            # frame references (fixed-size slots)
+            "Face_frame": (4,),
+            "Pupil_frame": (4,),
+        }
+
+    def _resolve_attr_target(self, attr: str) -> str:
         """
-        Ensure `self.app.attr` exists as a NumPy array of NaNs with given shape/length.
-        If shape is provided, use it; else create 1D (length,).
+        Return the attribute name on `self.app` we should actually read/write.
+        If `self.app.attr` exists but is callable (e.g. QWidget.width()),
+        redirect to a safe alternate name like 'attr_arr'.
         """
-        if getattr(self.app, attr, None) is not None:
+        cur = getattr(self.app, attr, None)
+        if callable(cur):
+            return f"{attr}_arr"
+        return attr
+
+    def _ensure_exact(self, attr: str, target_shape: Tuple[int, ...], *, dtype=float) -> None:
+        """
+        Ensure self.app.<attr> exists (under a non-conflicting name) and has exactly target_shape.
+        If missing => create with NaNs; if shape mismatch => pad/trim.
+        """
+        # Resolve to safe attribute (handles QWidget.width/height collisions)
+        attr_target = self._resolve_attr_target(attr)
+        cur = getattr(self.app, attr_target, None)
+
+        # Treat callables or weird types as "missing"
+        if (cur is None) or callable(cur):
+            setattr(self.app, attr_target, np.full(target_shape, np.nan, dtype=dtype))
             return
-        if shape is None:
-            arr = np.full((length,), np.nan, dtype=float)
-        else:
-            arr = np.full(shape, np.nan, dtype=float)
-        setattr(self.app, attr, arr)
 
-    # -------------------------- Saving: NPZ ----------------------------------
-
-    def _save_npz(self) -> None:
-        """
-        Saves all relevant arrays to NPZ. Optionally embeds video bytes
-        """
-        out_npz = self.save_dir / "faceit.npz"
-
-        data_dict: Dict[str, np.ndarray] = dict(
-            pupil_center=np.asarray(getattr(self.app, "pupil_center", np.array([]))),
-            pupil_center_X=np.asarray(getattr(self.app, "pupil_center_X", np.array([]))),
-            pupil_center_y=np.asarray(getattr(self.app, "pupil_center_y", np.array([]))),
-            pupil_dilation_blinking_corrected=np.asarray(getattr(self.app, "final_pupil_area", np.array([]))),
-            pupil_dilation=np.asarray(getattr(self.app, "pupil_dilation", np.array([]))),
-            X_saccade=np.asarray(getattr(self.app, "X_saccade_updated", np.empty((0, 0)))),
-            Y_saccade=np.asarray(getattr(self.app, "Y_saccade_updated", np.empty((0, 0)))),
-            pupil_distance_from_corner=np.asarray(getattr(self.app, "pupil_distance_from_corner", np.array([]))),
-            width=np.asarray(getattr(self.app, "width", np.array([]))),
-            height=np.asarray(getattr(self.app, "height", np.array([]))),
-            motion_energy=np.asarray(getattr(self.app, "motion_energy", np.array([]))),
-            motion_energy_without_grooming=np.asarray(getattr(self.app, "facemotion_without_grooming", np.array([]))),
-            grooming_ids=np.asarray(getattr(self.app, "grooming_ids", np.array([]))),
-            grooming_threshold=np.asarray(getattr(self.app, "grooming_thr", np.array([]))),
-            blinking_ids=np.asarray(getattr(self.app, "blinking_ids", np.array([]))),
-            angle=np.asarray(getattr(self.app, "angle", np.array([]))),
-            Face_frame=np.asarray(getattr(self.app, "Face_frame", np.array([]))),
-            Pupil_frame=np.asarray(getattr(self.app, "Pupil_frame", np.array([]))),
-        )
-
-
+        # Try to coerce to ndarray
         try:
-            np.savez_compressed(out_npz, **data_dict)
-            logger.info("Data successfully saved to %s", out_npz)
-        except Exception as e:
-            logger.error("Failed to save NPZ: %s", e, exc_info=True)
+            arr = np.asarray(cur, dtype=dtype)
+        except Exception:
+            setattr(self.app, attr_target, np.full(target_shape, np.nan, dtype=dtype))
+            return
 
-    # -------------------------- Saving: NWB ----------------------------------
+        if arr.shape == target_shape:
+            setattr(self.app, attr_target, arr)
+            return
 
+        # Coerce by copy into target (pad/truncate per-dimension)
+        out = np.full(target_shape, np.nan, dtype=dtype)
+        try:
+            src_slices, dst_slices = [], []
+            for i, tsize in enumerate(target_shape):
+                ssize = arr.shape[i] if i < arr.ndim else 1
+                n = min(tsize, ssize)
+                src_slices.append(slice(0, n))
+                dst_slices.append(slice(0, n))
+            out[tuple(dst_slices)] = arr[tuple(src_slices)]
+        except Exception:
+            # last-resort: flatten-copy
+            n = min(out.size, arr.size)
+            out.reshape(-1)[:n] = arr.reshape(-1)[:n]
+        setattr(self.app, attr_target, out)
+
+    def _enforce_all(self, T: int) -> None:
+        """Create/Coerce all fields to their exact shapes."""
+        for name, shp in self._target_shapes(T).items():
+            self._ensure_exact(name, shp)
+
+    # ------------------------------ Safe getters ----------------------------- #
+    def _get_arr(self, attr: str) -> Optional[np.ndarray]:
+        """Read array from `self.app`, resolving Qt collisions (attr -> attr_arr)."""
+        attr_target = self._resolve_attr_target(attr)
+        v = getattr(self.app, attr_target, None)
+        if v is None or callable(v):
+            return None
+        try:
+            return np.asarray(v)
+        except Exception:
+            return None
+
+    # ------------------------------ Save: NPZ -------------------------------- #
+    def _save_npz(self) -> None:
+        out_npz = self.save_dir / "faceit.npz"
+        d = {
+            "pupil_center": self._get_arr("pupil_center"),
+            "pupil_center_X": self._get_arr("pupil_center_X"),
+            "pupil_center_y": self._get_arr("pupil_center_y"),
+            "pupil_dilation_blinking_corrected": self._get_arr("final_pupil_area"),
+            "pupil_dilation": self._get_arr("pupil_dilation"),
+            "X_saccade": self._get_arr("X_saccade_updated"),
+            "Y_saccade": self._get_arr("Y_saccade_updated"),
+            "pupil_distance_from_corner": self._get_arr("pupil_distance_from_corner"),
+            "width": self._get_arr("width"),
+            "height": self._get_arr("height"),
+            "motion_energy": self._get_arr("motion_energy"),
+            "motion_energy_without_grooming": self._get_arr("facemotion_without_grooming"),
+            "grooming_ids": self._get_arr("grooming_ids"),
+            "grooming_threshold": self._get_arr("grooming_thr"),
+            "blinking_ids": self._get_arr("blinking_ids"),
+            "angle": self._get_arr("angle"),
+            "Face_frame": self._get_arr("Face_frame"),
+            "Pupil_frame": self._get_arr("Pupil_frame"),
+        }
+        # Replace None with empty arrays to keep savez happy
+        d = {k: (v if v is not None else np.array([])) for k, v in d.items()}
+        np.savez_compressed(out_npz, **d)
+        logger.info("Data successfully saved to %s", out_npz)
+
+    # ------------------------------ Save: NWB -------------------------------- #
     def _save_nwb(self, output_path: Path) -> None:
-        """
-        Saves to NWB if `app.nwb_check()` returns True.
-        Each TimeSeries uses timestamps matching its own length to avoid mismatches.
-        """
         if not self._call_bool_method(("nwb_check",)):
             logger.info("NWB check returned False; skipping NWB save.")
             return
@@ -261,38 +280,36 @@ class SaveHandler:
         )
         nwbfile.add_processing_module(proc)
 
-        # Helper to add a TimeSeries safely
         def add_ts(name: str, data: Optional[np.ndarray], unit: str = "a.u."):
             if data is None:
                 return
             arr = np.asarray(data)
             if arr.size == 0:
                 return
-            # Make row-major for 2D; most are 1D series
             arr = np.ascontiguousarray(arr)
-            t = np.arange(arr.shape[-1]) if arr.ndim > 1 else np.arange(len(arr))
-            ts = TimeSeries(name=name, data=arr, unit=unit, timestamps=t)
+            # time assumed on last axis (we enforce (2, T) for saccades)
+            T = arr.shape[-1] if arr.ndim > 1 else len(arr)
+            ts = TimeSeries(name=name, data=arr, unit=unit, timestamps=np.arange(T))
             proc.add_data_interface(ts)
 
-        # Add your signals (names kept close to NPZ keys)
-        add_ts("pupil_center", getattr(self.app, "pupil_center", None))
-        add_ts("pupil_center_X", getattr(self.app, "pupil_center_X", None))
-        add_ts("pupil_center_y", getattr(self.app, "pupil_center_y", None))
-        add_ts("pupil_dilation", getattr(self.app, "pupil_dilation", None))
-        add_ts("pupil_dilation_blinking_corrected", getattr(self.app, "final_pupil_area", None))
-        add_ts("X_saccade", getattr(self.app, "X_saccade_updated", None))
-        add_ts("Y_saccade", getattr(self.app, "Y_saccade_updated", None))
-        add_ts("pupil_distance_from_corner", getattr(self.app, "pupil_distance_from_corner", None))
-        add_ts("width", getattr(self.app, "width", None))
-        add_ts("height", getattr(self.app, "height", None))
-        add_ts("motion_energy", getattr(self.app, "motion_energy", None))
-        add_ts("motion_energy_without_grooming", getattr(self.app, "facemotion_without_grooming", None))
-        add_ts("grooming_ids", getattr(self.app, "grooming_ids", None), unit="frame")
-        add_ts("grooming_threshold", getattr(self.app, "grooming_thr", None), unit="a.u.")
-        add_ts("blinking_ids", getattr(self.app, "blinking_ids", None), unit="frame")
-        add_ts("pupil_angle", getattr(self.app, "angle", None), unit="deg")  # if angle in degrees
-        add_ts("Face_frame", getattr(self.app, "Face_frame", None), unit="frame")
-        add_ts("Pupil_frame", getattr(self.app, "Pupil_frame", None), unit="frame")
+        add_ts("pupil_center", self._get_arr("pupil_center"))
+        add_ts("pupil_center_X", self._get_arr("pupil_center_X"))
+        add_ts("pupil_center_y", self._get_arr("pupil_center_y"))
+        add_ts("pupil_dilation", self._get_arr("pupil_dilation"))
+        add_ts("pupil_dilation_blinking_corrected", self._get_arr("final_pupil_area"))
+        add_ts("X_saccade", self._get_arr("X_saccade_updated"))
+        add_ts("Y_saccade", self._get_arr("Y_saccade_updated"))
+        add_ts("pupil_distance_from_corner", self._get_arr("pupil_distance_from_corner"))
+        add_ts("width", self._get_arr("width"))
+        add_ts("height", self._get_arr("height"))
+        add_ts("motion_energy", self._get_arr("motion_energy"))
+        add_ts("motion_energy_without_grooming", self._get_arr("facemotion_without_grooming"))
+        add_ts("grooming_ids", self._get_arr("grooming_ids"), unit="frame")
+        add_ts("grooming_threshold", self._get_arr("grooming_thr"), unit="a.u.")
+        add_ts("blinking_ids", self._get_arr("blinking_ids"), unit="frame")
+        add_ts("pupil_angle", self._get_arr("angle"), unit="deg")
+        add_ts("Face_frame", self._get_arr("Face_frame"), unit="frame")
+        add_ts("Pupil_frame", self._get_arr("Pupil_frame"), unit="frame")
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -300,83 +317,56 @@ class SaveHandler:
             io.write(nwbfile)
         logger.info("NWB saved to %s", output_path)
 
-    # -------------------------- Saving: Figures ------------------------------
-
+    # ---------------------------- Save: Figures ------------------------------- #
     def _save_figures(self) -> None:
-        """
-        Saves quick-look PNGs for:
-          - blinking corrected pupil area
-          - raw pupil area
-          - motion energy (with grooming threshold line)
-          - face motion without grooming
-          - pupil center X/Y
-        """
-        # Pupil (blinking corrected)
         self._maybe_plot_line(
-            data=getattr(self.app, "final_pupil_area", None),
+            data=self._get_arr("final_pupil_area"),
             label="blinking_corrected",
             color="firebrick",
             filename="blinking_corrected.png",
-            saccade=getattr(self.app, "X_saccade_updated", None),
+            saccade=self._get_arr("X_saccade_updated"),
         )
-
-        # Pupil (raw)
         self._maybe_plot_line(
-            data=getattr(self.app, "pupil_dilation", None),
+            data=self._get_arr("pupil_dilation"),
             label="pupil_dilation",
             color="olive",
             filename="pupil_area.png",
-            saccade=getattr(self.app, "X_saccade_updated", None),
+            saccade=self._get_arr("X_saccade_updated"),
         )
-
-        # Motion energy
         self._maybe_plot_line(
-            data=getattr(self.app, "motion_energy", None),
+            data=self._get_arr("motion_energy"),
             label="motion_energy",
             color="salmon",
             filename="motion_energy.png",
             draw_groom_thr=True,
         )
-
-        # Face motion without grooming
         self._maybe_plot_line(
-            data=getattr(self.app, "facemotion_without_grooming", None),
+            data=self._get_arr("facemotion_without_grooming"),
             label="facemotion_without_grooming",
             color="grey",
             filename="facemotion_without_grooming.png",
         )
 
         # Pupil center X/Y dual panel
-        x = getattr(self.app, "pupil_center_X", None)
-        y = getattr(self.app, "pupil_center_y", None)
-        if x is not None and y is not None:
-            x_arr = np.asarray(x)
-            y_arr = np.asarray(y)
-            if x_arr.size and y_arr.size:
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 6), sharex=True)
-                t = np.arange(len(x_arr))
-                ax1.plot(t, x_arr, color="teal", label="Pupil center X")
-                ax1.set_ylabel("X (px)")
-                ax1.set_title("Pupil center X over time")
-                ax1.grid(alpha=0.3)
-                ax1.legend()
+        x = self._get_arr("pupil_center_X")
+        y = self._get_arr("pupil_center_y")
+        if x is not None and y is not None and x.size and y.size:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 6), sharex=True)
+            t = np.arange(len(x))
+            ax1.plot(t, x, color="teal", label="Pupil center X")
+            ax1.set_ylabel("X (px)"); ax1.set_title("Pupil center X over time")
+            ax1.grid(alpha=0.3); ax1.legend()
+            ax2.plot(t, y, color="darkorange", label="Pupil center Y")
+            ax2.set_ylabel("Y (px)"); ax2.set_xlabel("Frame")
+            ax2.set_title("Pupil center Y over time")
+            ax2.grid(alpha=0.3); ax2.legend()
+            fig.tight_layout()
+            p = self.save_dir / "pupil_center_xy.png"
+            fig.savefig(p, dpi=300)
+            plt.close(fig)
+            logger.info("Saved %s", p)
 
-                t2 = np.arange(len(y_arr))
-                ax2.plot(t2, y_arr, color="darkorange", label="Pupil center Y")
-                ax2.set_ylabel("Y (px)")
-                ax2.set_xlabel("Frame")
-                ax2.set_title("Pupil center Y over time")
-                ax2.grid(alpha=0.3)
-                ax2.legend()
-
-                fig.tight_layout()
-                p = self.save_dir / "pupil_center_xy.png"
-                fig.savefig(p, dpi=300)
-                plt.close(fig)
-                logger.info("Saved %s", p)
-
-    # -- plotting primitives --------------------------------------------------
-
+    # --------------------------- Plot primitives ------------------------------ #
     def _maybe_plot_line(
         self,
         data: Optional[np.ndarray],
@@ -386,7 +376,6 @@ class SaveHandler:
         saccade: Optional[np.ndarray] = None,
         draw_groom_thr: bool = False,
     ) -> None:
-        """Plot a single line to PNG if `data` is a nonempty array."""
         if data is None:
             return
         arr = np.asarray(data, dtype=float)
@@ -400,12 +389,14 @@ class SaveHandler:
             self._overlay_saccade(ax, saccade, arr)
 
         if draw_groom_thr:
-            thr = np.asarray(getattr(self.app, "grooming_thr", np.array([])), dtype=float)
-            thr = thr[np.isfinite(thr)]
-            if thr.size:
-                ax.axhline(y=float(np.nanmean(thr)), color="black", linestyle="--", linewidth=1.2,
-                           label="Grooming threshold")
-                ax.legend()
+            thr = self._get_arr("grooming_thr")
+            if thr is not None:
+                thr = np.asarray(thr, dtype=float)
+                thr = thr[np.isfinite(thr)]
+                if thr.size:
+                    ax.axhline(y=float(np.nanmean(thr)), color="black", linestyle="--", linewidth=1.2,
+                               label="Grooming threshold")
+                    ax.legend()
 
         fig.tight_layout()
         out = self.save_dir / filename
@@ -415,32 +406,22 @@ class SaveHandler:
 
     @staticmethod
     def _plot_line(ax: plt.Axes, data: np.ndarray, label: str, color: str) -> None:
-        """Simple line plot with labels."""
         t = np.arange(len(data))
         ax.plot(t, data, color=color, label=label, linestyle="--")
         ax.set_title(label.replace("_", " ").capitalize(), fontsize=12, fontweight="bold")
-        ax.set_xlabel("Frame")
-        ax.set_ylabel("Value")
-        ax.grid(alpha=0.3)
-        ax.legend()
+        ax.set_xlabel("Frame"); ax.set_ylabel("Value")
+        ax.grid(alpha=0.3); ax.legend()
 
     @staticmethod
     def _overlay_saccade(ax: plt.Axes, saccade: np.ndarray, main: np.ndarray) -> None:
-        """
-        Overlay a small-height colormap strip for saccade data above the max(main).
-        Accepts:
-            - 1D (len == len(main)) or
-            - 2D with shape (H, W) where W == len(main).
-        If shape has an extra first column (legacy), trims to match.
-        """
         try:
             sac = np.asarray(saccade, dtype=float)
             if sac.ndim == 1:
                 if sac.shape[0] != len(main):
                     return
-                sac = sac[None, :]  # make (1, T)
+                sac = sac[None, :]  # (1, T)
             elif sac.ndim == 2:
-                # Legacy: if first column is an index/time column, drop it
+                # legacy first-column trimming
                 if sac.shape[1] == len(main) + 1:
                     sac = sac[:, 1:]
                 if sac.shape[1] != len(main):
@@ -448,14 +429,22 @@ class SaveHandler:
             else:
                 return
 
-            data_max = np.nanmax(main)
-            data_min = np.nanmin(main)
+            data_max = np.nanmax(main); data_min = np.nanmin(main)
             rng = max(1e-9, data_max - data_min)
-            y_min = data_max + 0.10 * rng
-            y_max = data_max + 0.20 * rng
-
+            y_min = data_max + 0.10 * rng; y_max = data_max + 0.20 * rng
             t = np.arange(len(main))
             ax.pcolormesh(t, [y_min, y_max], sac, cmap="RdYlGn", shading="auto")
         except Exception:
-            # Never crash the figure for overlay issues
             logger.debug("Skipping saccade overlay due to an error.", exc_info=True)
+
+    # ------------------------------ Utilities -------------------------------- #
+    def _call_bool_method(self, candidates: Tuple[str, ...]) -> bool:
+        for name in candidates:
+            fn = getattr(self.app, name, None)
+            if callable(fn):
+                try:
+                    return bool(fn())
+                except Exception:
+                    logger.warning("Method %s() raised; treating as False.", name, exc_info=True)
+                    return False
+        return False
