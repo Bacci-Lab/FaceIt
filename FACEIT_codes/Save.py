@@ -394,7 +394,7 @@ class SaveHandler:
                 thr = np.asarray(thr, dtype=float)
                 thr = thr[np.isfinite(thr)]
                 if thr.size:
-                    ax.axhline(y=float(np.nanmean(thr)), color="black", linestyle="--", linewidth=1.2,
+                    ax.axhline(y=float(np.nanmean(thr)), color="black", linewidth=1.2,
                                label="Grooming threshold")
                     ax.legend()
 

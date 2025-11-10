@@ -741,9 +741,9 @@ class FaceMotionApp(QtWidgets.QMainWindow):
         if self.radio_button_none_secondary.isChecked():
             selected_direction = None
         elif self.radio_button_H.isChecked():
-            selected_direction = "Horizontal"
-        elif self.radio_button_V.isChecked():
             selected_direction = "Vertical"
+        elif self.radio_button_V.isChecked():
+            selected_direction = "Horizontal"
         self.secondary_direction = selected_direction
 
 

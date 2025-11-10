@@ -137,50 +137,30 @@ def _symmetric_concave_mask(h: int, w: int, axis: str, strength: float, power: f
 
 
 def change_Gradual_saturation(image_bgr: np.ndarray,
-                              settings: SaturationSettings,
-                              show: bool = False) -> np.ndarray:
-    """
-    Apply spatial brightness/saturation gradient in HSV space (color input).
-
-    Returns RGB image (for display). Keeps values in [0, 255].
-    """
+                              settings: SaturationSettings) -> np.ndarray:
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
     h, w = hsv.shape[:2]
     gradient = np.ones((h, w), dtype=np.float32)
 
-    # primary ramp
     if settings.primary_direction:
-        gradient *= _direction_mask(h, w,
-                                    settings.primary_direction,
-                                    settings.brightness_curve,
-                                    settings.brightness)
+        gradient *= _direction_mask(h, w, settings.primary_direction,
+                                    settings.brightness_curve, settings.brightness)
 
-    # secondary symmetric concave gain
     if settings.secondary_direction:
         gradient *= _symmetric_concave_mask(
-            h, w,
-            axis=settings.secondary_direction,
+            h, w, axis=settings.secondary_direction,
             strength=settings.secondary_BrightGain,
             power=settings.brightness_concave_power,
         )
 
-    # Apply gradient to V; adjust S multiplicatively
+    # Apply: S uses the user "gradual saturation" knob; V uses the spatial gradient
+    hsv[..., 1] = np.clip(hsv[..., 1] * float(settings.saturation_ununiform), 0, 255)
     hsv[..., 2] = np.clip(hsv[..., 2] * gradient, 0, 255)
-    hsv[..., 1] = np.clip(hsv[..., 1] * settings.saturation_ununiform, 0, 255)
 
-    # Back to RGB for Qt display
     bgr = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-
-    if show:
-        import matplotlib.pyplot as plt
-        plt.figure(figsize=(6, 2))
-        plt.imshow(gradient, cmap="gray", aspect="auto")
-        plt.title("Brightness weight mask")
-        plt.tight_layout()
-        plt.show()
-
     return rgb
+
 
 
 def change_saturation_uniform(image: np.ndarray,
@@ -192,7 +172,7 @@ def change_saturation_uniform(image: np.ndarray,
     - In HSV: scale S and V by (1 + saturation/100).
     - In BGR: apply contrast gain via convertScaleAbs(alpha=contrast).
     """
-    brightness_offset = 0  # keep mean unchanged
+    brightness_offset = 0
 
     # Ensure BGR input
     if image.ndim == 2 or (image.ndim == 3 and image.shape[2] == 1):
@@ -210,15 +190,6 @@ def change_saturation_uniform(image: np.ndarray,
 
 def apply_intensity_gradient_gray(gray_image: np.ndarray,
                                   settings: SaturationSettings) -> np.ndarray:
-    """
-    Gradual adjustment for grayscale input; returns BGR (for display/pipeline).
-
-    Steps
-    -----
-    1) Build combined gradient (primary + optional secondary).
-    2) Convert gray→BGR→HSV, scale S by saturation_ununiform, scale V by gradient.
-    3) Back to BGR.
-    """
     if gray_image.ndim != 2:
         raise ValueError("apply_intensity_gradient_gray expects a 2D grayscale array")
 
@@ -239,14 +210,18 @@ def apply_intensity_gradient_gray(gray_image: np.ndarray,
             power=settings.brightness_concave_power,
         )
 
+    # gray -> BGR -> HSV
     bgr = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
 
-    hsv[..., 1] = np.clip(hsv[..., 1] * (settings.saturation_ununiform), 0, 255)
-    hsv[..., 2] = np.clip(hsv[..., 2] * gradient, 0, 255)
+    # S is ~0 for gray; scaling it does nothing.
+    # Use the "gradual saturation" knob as a multiplicative gain on V instead.
+    gain = float(settings.saturation_ununiform)  # e.g., 0.5 .. 3.0
+    hsv[..., 2] = np.clip(hsv[..., 2] * gradient * gain, 0, 255)
 
     out = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
     return out
+
 
 
 # ======================================================================
