@@ -103,9 +103,9 @@ def process_single_frame(args):
         if eye_corner_center is not None else np.nan
     )
 
-    center = (int(center[0]), int(center[1]))
-    width, height = int(width), int(height)
-    current_area = np.pi * width * height
+    center = (float(center[0]), float(center[1]))
+    width, height = float(width), float(height)
+    current_area = float(np.pi * width * height)
 
     return (current_area, center, center[0], center[1],
             width, height, pupil_distance_from_corner,
@@ -181,9 +181,9 @@ def _detect_frame(i, frame, roi_slice, cfg):
         disable_filtering=cfg["disable_filtering"],
     )
 
-    cx, cy = int(center[0]), int(center[1])
-    w, h = int(width), int(height)
-    area = math.pi * w * h
+    cx, cy = float(center[0]), float(center[1])
+    w, h = float(width), float(height)
+    area = float(math.pi * w * h)
 
     if cfg["eye_corner_center"] is not None:
         ex, ey = cfg["eye_corner_center"]
@@ -234,9 +234,9 @@ def _detect_one(i, images, roi_slice, cfg):
         disable_filtering=cfg["disable_filtering"],
     )
 
-    cx, cy = int(center[0]), int(center[1])
-    width, height = int(width), int(height)
-    area = math.pi * width * height
+    cx, cy = float(center[0]), float(center[1])
+    width, height = float(width), float(height)
+    area = float(math.pi * width * height)
 
     if cfg["eye_corner_center"] is not None:
         ex, ey = cfg["eye_corner_center"]

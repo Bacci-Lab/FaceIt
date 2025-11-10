@@ -4,7 +4,7 @@ import cv2
 import bottleneck as bn
 from sklearn.cluster import DBSCAN
 
-def find_ellipse(binary_image, show=False):
+def find_ellipse(binary_image):
     """
     Fits an ellipse to non-zero pixels in a binary image.
 
@@ -642,18 +642,18 @@ def detect_pupil(
         filter_contours=not disable_filtering,
     )
     if binary_method == "Adaptive":
-        pupil_ROI0, center, width, height, angle = find_ellipse(binary_image ,show=False)
+        pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
         pupil_area = np.pi * (width * height)
     elif binary_method == "Constant":
         if reflect_ellipse is None or reflect_ellipse == [[], [], []]:
-            pupil_ROI0, center, width, height, angle = find_ellipse(binary_image ,show=False)
+            pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
         else:
             All_reflects = [
                 [reflect_ellipse[0][variable], (reflect_ellipse[1][variable], reflect_ellipse[2][variable]), 0]
                 for variable in
                 range(len(reflect_ellipse[1]))]
             for i in range(3):
-                pupil_ROI0, center, width, height, angle = find_ellipse(binary_image ,show=False)
+                pupil_ROI0, center, width, height, angle = find_ellipse(binary_image)
                 binary_image_update = overlap_reflect(All_reflects, pupil_ROI0, binary_image)
                 binary_image = binary_image_update
 
