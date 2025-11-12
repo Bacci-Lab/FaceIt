@@ -8,8 +8,42 @@ from tqdm import tqdm
 from PyQt5 import QtWidgets
 from FACEIT_codes import functions
 import threading
-
 import logging, time
+
+
+# ---- TRUE DECODABLE FRAME COUNT (PyAV preferred, OpenCV fallback) ----
+try:
+    import av
+    _HAS_PYAV = True
+except Exception:
+    _HAS_PYAV = False
+
+def decodable_frame_count(video_path: str) -> int:
+    """
+    Return the exact number of frames that can actually be decoded in sequence.
+    Uses PyAV if available (fast & robust), else falls back to OpenCV sequential read.
+    """
+    if _HAS_PYAV:
+        c = av.open(video_path)
+        st = c.streams.video[0]
+        cnt = 0
+        for _ in c.decode(st):
+            cnt += 1
+        c.close()
+        return cnt
+    # Fallback: sequential decode with OpenCV
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return 0
+    cnt = 0
+    while True:
+        ok, _ = cap.read()
+        if not ok:
+            break
+        cnt += 1
+    cap.release()
+    return cnt
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -148,24 +182,27 @@ class LoadData:
             return
         app.cap = cap
 
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+        # OpenCV props (for info only)
         fps_src = cap.get(cv2.CAP_PROP_FPS) or 0
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-        logging.info(f"[Video] Probed props: {total_frames} frames, {fps_src:.2f} fps, {w}x{h}")
 
-        if total_frames <= 0:
-            logging.error(f"[Video] No frames in {selected_path}")
+        # >>> TRUE decodable count (sequential) <<<
+        real_total = decodable_frame_count(selected_path)
+        logging.info(f"[Video] Decodable frames (sequential) = {real_total}, {fps_src:.2f} fps, {w}x{h}")
+
+        if real_total <= 0:
+            logging.error(f"[Video] No decodable frames in {selected_path}")
             cap.release()
             app.cap = None
             return
 
-        app.len_file = total_frames
+        app.len_file = real_total
 
         # bound the slider safely without emitting signals
         blocker = QSignalBlocker(app.Slider_frame)
         app.Slider_frame.setMinimum(0)
-        app.Slider_frame.setMaximum(max(0, total_frames - 1))
+        app.Slider_frame.setMaximum(max(0, real_total - 1))
         app.Slider_frame.setValue(0)
         del blocker
         app.lineEdit_frame_number.setText("0")
