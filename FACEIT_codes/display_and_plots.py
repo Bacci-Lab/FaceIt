@@ -17,10 +17,6 @@ class PlotHandler:
         self.panning = False
         self.press_event = None
 
-        # Create figure and canvas ONCE (for performance optimization)
-        self.fig, self.ax = plt.subplots()
-        self.canvas = FigureCanvas(self.fig)
-
     def plot_result(
             self,
             data: np.ndarray,
@@ -195,6 +191,7 @@ class PlotHandler:
         fig.tight_layout(pad=0)
         fig.subplots_adjust(left=0.01, right=1, top=0.95, bottom=0.25)
         canvas.draw()
+        plt.close(fig)
 
     def _clear_graphics_view(self, graphics_view):
         layout = graphics_view.layout()
@@ -266,6 +263,11 @@ class Display:
         - app_instance: The main application instance to access its attributes.
         """
         self.app_instance = app_instance
+        self._pending_frame = 0
+        self._debounce_timer = QtCore.QTimer()
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(50)
+        self._debounce_timer.timeout.connect(self._heavy_update)
 
 
     def apply_intensity_gradient(self, gray_image):
@@ -444,34 +446,34 @@ class Display:
 
     def update_frame_view(self, frame: int):
         """
-        Updates the displayed frame and associated plots/ROIs safely for both NPY and Video sources.
+        Called on every slider tick. Immediately shows the raw frame, then
+        schedules the heavy work (ROI detection + plot redraw) 200 ms after
+        the last movement so rapid scrubbing stays fluid.
         """
-
-        # Must have total length
         total = getattr(self.app_instance, "len_file", 0) or 0
         if total <= 0:
             return
 
-        # Clamp index to [0, total-1]
-        max_idx = total - 1
-        if frame < 0:
-            frame = 0
-        elif frame > max_idx:
-            frame = max_idx
+        frame = max(0, min(frame, total - 1))
 
-        # Keep GUI elements in sync (avoid recursive valueChanged)
         from PyQt5.QtCore import QSignalBlocker
         blocker = QSignalBlocker(self.app_instance.Slider_frame)
         if self.app_instance.Slider_frame.value() != frame:
             self.app_instance.Slider_frame.setValue(frame)
         self.app_instance.lineEdit_frame_number.setText(str(frame))
-
         self.app_instance.frame = frame
+        self._pending_frame = frame
 
-        # Load current frame depending on mode (with guards)
+        # --- light path: just load and show the frame image ---
+        self._load_and_display_frame(frame)
+
+        # --- debounced heavy path: restart timer on every tick ---
+        self._debounce_timer.start()
+
+    def _load_and_display_frame(self, frame: int):
+        """Load and render the main frame image only (no detection, no plots)."""
         if self.app_instance.NPY:
             if not (self.app_instance.folder_path and os.path.isdir(self.app_instance.folder_path)):
-                # stale state (e.g., switched to video but flags wrong)
                 return
             self.app_instance.image = functions.load_npy_by_index(
                 self.app_instance.folder_path, frame
@@ -483,22 +485,25 @@ class Display:
                 self.app_instance.cap, frame
             )
         else:
-            # no source
             return
 
-        # Display the main image and update the scene
         self.app_instance.graphicsView_MainFig, self.app_instance.scene = functions.display_region(
             self.app_instance.image, self.app_instance.graphicsView_MainFig,
             self.app_instance.image_width, self.app_instance.image_height, self.app_instance.scene
         )
 
-        # ROIs
+    def _heavy_update(self):
+        """
+        Fired by the debounce timer 200 ms after the last slider movement.
+        Runs ROI/pupil detection and redraws result plots for the current frame.
+        """
+        # ROI sub-image + pupil detection
         if self.app_instance.current_ROI == "pupil":
             self._display_pupil_roi()
         elif self.app_instance.current_ROI == "face":
             self._display_face_roi()
 
-        # Plots (safe if arrays are longer than frame; your plot handler handles cursor)
+        # Plot updates
         if getattr(self.app_instance, 'final_pupil_area', None) is not None:
             plot_handler = PlotHandler(self.app_instance)
             plot_handler.plot_result(
